@@ -28,6 +28,7 @@ import {
     launchContractsDeployed,
 } from '@/Config/launchContracts';
 import { TPIX_CHAIN_CONFIG } from '@/utils/web3';
+import { t } from '@/Composables/useTranslation';
 
 const USDT_DECIMALS = 6;
 const TPIX_DECIMALS = 18;
@@ -217,7 +218,7 @@ export function useBondingCurve() {
             };
             loaded.value = true;
         } catch (err) {
-            loadError.value = err.message || 'ไม่สามารถโหลดข้อมูล bonding curve';
+            loadError.value = err.message || t('fn.useBondingCurve.loadFailed');
         } finally {
             refreshing.value = false;
         }
@@ -276,15 +277,15 @@ export function useBondingCurve() {
             await walletStore.switchChain(TPIX_CHAIN_ID);
             return walletStore.chainId === TPIX_CHAIN_ID;
         } catch (err) {
-            error.value = 'กรุณาสลับเครือข่ายไปยัง TPIX Chain';
+            error.value = t('fn.useBondingCurve.switchToTpix');
             return false;
         }
     }
 
     /** Approve USDT ให้ curve ดึงเงิน */
     async function approveUsdt() {
-        if (!walletStore.signer) throw new Error('กรุณาเชื่อมต่อ wallet');
-        if (!(await ensureOnTpixChain())) throw new Error('Wrong chain');
+        if (!walletStore.signer) throw new Error(t('fn.useBondingCurve.connectWallet'));
+        if (!(await ensureOnTpixChain())) throw new Error(t('fn.useBondingCurve.wrongChain'));
 
         isApproving.value = true;
         error.value = null;
@@ -297,7 +298,7 @@ export function useBondingCurve() {
             await refreshUserBalances();
             return tx.hash;
         } catch (err) {
-            error.value = normalizeError(err, 'Approve ล้มเหลว');
+            error.value = normalizeError(err, t('fn.useBondingCurve.approveFailed'));
             throw err;
         } finally {
             isApproving.value = false;
@@ -310,7 +311,7 @@ export function useBondingCurve() {
      */
     async function buy() {
         if (!canBuy.value) return;
-        if (!walletStore.signer) throw new Error('กรุณาเชื่อมต่อ wallet');
+        if (!walletStore.signer) throw new Error(t('fn.useBondingCurve.connectWallet'));
         if (!(await ensureOnTpixChain())) return;
 
         // Auto-approve ถ้ายังไม่ approve
@@ -342,7 +343,7 @@ export function useBondingCurve() {
             await Promise.all([refreshState(), refreshUserBalances()]);
             return receipt;
         } catch (err) {
-            error.value = normalizeError(err, 'การซื้อล้มเหลว');
+            error.value = normalizeError(err, t('fn.useBondingCurve.buyFailed'));
             throw err;
         } finally {
             isBuying.value = false;
@@ -354,14 +355,14 @@ export function useBondingCurve() {
      * @param tpixInStr string — จำนวน TPIX (human-readable, เช่น '10.5')
      */
     async function sell(tpixInStr) {
-        if (!walletStore.signer) throw new Error('กรุณาเชื่อมต่อ wallet');
+        if (!walletStore.signer) throw new Error(t('fn.useBondingCurve.connectWallet'));
         if (!(await ensureOnTpixChain())) return;
 
         isSelling.value = true;
         error.value = null;
         try {
             const tpixIn = parseUnits(tpixInStr, TPIX_DECIMALS);
-            if (tpixIn <= 0n) throw new Error('จำนวนไม่ถูกต้อง');
+            if (tpixIn <= 0n) throw new Error(t('fn.useBondingCurve.invalidAmount'));
 
             // Approve WTPIX ให้ curve ดึง
             const wtpix = new Contract(LAUNCH_CONTRACTS.WTPIX, ERC20_ABI, walletStore.signer);
@@ -390,7 +391,7 @@ export function useBondingCurve() {
             await Promise.all([refreshState(), refreshUserBalances()]);
             return receipt;
         } catch (err) {
-            error.value = normalizeError(err, 'การขายล้มเหลว');
+            error.value = normalizeError(err, t('fn.useBondingCurve.sellFailed'));
             throw err;
         } finally {
             isSelling.value = false;
@@ -399,9 +400,9 @@ export function useBondingCurve() {
 
     function normalizeError(err, fallback) {
         if (err.code === 4001 || err.code === 'ACTION_REJECTED') {
-            return 'ผู้ใช้ยกเลิก transaction';
+            return t('fn.useBondingCurve.userRejected');
         }
-        if (err.message?.includes('insufficient')) return 'ยอดเงินไม่เพียงพอ';
+        if (err.message?.includes('insufficient')) return t('fn.useBondingCurve.insufficientBalance');
         if (err.reason) return err.reason;
         return err.shortMessage || err.message || fallback;
     }

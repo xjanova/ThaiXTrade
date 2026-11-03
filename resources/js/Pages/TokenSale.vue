@@ -6,7 +6,7 @@
  * Developed by Xman Studio
  */
 
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import axios from 'axios';
@@ -22,7 +22,22 @@ import VestingSchedule from '@/Components/TokenSale/VestingSchedule.vue';
 import { useTranslation } from '@/Composables/useTranslation';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
-const { t } = useTranslation();
+const { t, locale } = useTranslation();
+
+function formatDate(val) {
+    return new Date(val).toLocaleDateString(locale.value === 'th' ? 'th-TH' : 'en-US');
+}
+
+// สถานะการซื้อจากเซิร์ฟเวอร์ — แปลเฉพาะค่าที่รู้จัก ค่าอื่นแสดงตามที่ได้มา
+const purchaseStatusKeys = {
+    confirmed: 'page.tokenSale.status.confirmed',
+    pending: 'page.tokenSale.status.pending',
+    failed: 'page.tokenSale.status.failed',
+    refunded: 'page.tokenSale.status.refunded',
+};
+function purchaseStatusLabel(status) {
+    return purchaseStatusKeys[status] ? t(purchaseStatusKeys[status]) : status;
+}
 
 // Props จาก backend (Inertia)
 const props = defineProps({
@@ -38,42 +53,24 @@ const { retryPendingPurchases } = useTokenSale();
 const selectedPhaseId = ref(null);
 
 // ขั้นตอนการซื้อ (How to Buy)
+// เก็บ key แปลภาษา — เรียก t() ตอน render เพื่อให้สลับภาษาได้ทันที
 const howToBuySteps = [
-    {
-        step: 1,
-        title: 'Connect Wallet',
-        description: 'Connect MetaMask, Trust Wallet or the TPIX Wallet app and switch to TPIX Chain — this is where your TPIX is sent.',
-        icon: 'wallet',
-    },
-    {
-        step: 2,
-        title: 'Choose Amount',
-        description: 'Pick a payment method (credit/debit card) and enter the amount in USD.',
-        icon: 'calculator',
-    },
-    {
-        step: 3,
-        title: 'Confirm Transaction',
-        description: 'Check the total, then enter your card on the secure Stripe page. You may be asked to sign once to prove the wallet is yours (no gas).',
-        icon: 'check',
-    },
-    {
-        step: 4,
-        title: 'Receive TPIX',
-        description: 'Your TPIX tokens will be allocated with a vesting schedule.',
-        icon: 'gift',
-    },
+    { step: 1, key: 'step1', icon: 'wallet' },
+    { step: 2, key: 'step2', icon: 'calculator' },
+    { step: 3, key: 'step3', icon: 'check' },
+    { step: 4, key: 'step4', icon: 'gift' },
 ];
 
 // Tokenomics data (7B total)
-const tokenomicsData = [
-    { label: 'Public Sale (ICO)', percent: 10, color: '#06B6D4' },
-    { label: 'Liquidity Pool', percent: 30, color: '#8B5CF6' },
-    { label: 'Master Node Rewards', percent: 20, color: '#00C853' },
-    { label: 'Team & Advisors', percent: 20, color: '#F97316' },
-    { label: 'Ecosystem Fund', percent: 10, color: '#3B82F6' },
-    { label: 'Development', percent: 10, color: '#EC4899' },
-];
+// computed — ป้ายในกราฟเปลี่ยนตามภาษาทันทีที่สลับ
+const tokenomicsData = computed(() => [
+    { label: t('page.tokenSale.tokenomics.publicSale'), percent: 10, color: '#06B6D4' },
+    { label: t('page.tokenSale.tokenomics.liquidity'), percent: 30, color: '#8B5CF6' },
+    { label: t('page.tokenSale.tokenomics.masterNode'), percent: 20, color: '#00C853' },
+    { label: t('page.tokenSale.tokenomics.team'), percent: 20, color: '#F97316' },
+    { label: t('page.tokenSale.tokenomics.ecosystem'), percent: 10, color: '#3B82F6' },
+    { label: t('page.tokenSale.tokenomics.development'), percent: 10, color: '#EC4899' },
+]);
 
 onMounted(async () => {
     loadTradablePair();
@@ -138,7 +135,7 @@ async function loadTradablePair() {
 </script>
 
 <template>
-    <Head title="TPIX Token Sale — Buy TPIX" />
+    <Head :title="t('page.tokenSale.metaTitle')" />
 
     <AppLayout :hide-sidebar="true">
         <!-- ===== HERO SECTION ===== -->
@@ -157,13 +154,12 @@ async function loadTradablePair() {
                     {{ t('tokenSale.title') }}
                 </h1>
                 <p class="text-lg text-gray-400 mb-8 max-w-2xl mx-auto">
-                    Be part of the TPIX Chain ecosystem. Purchase TPIX tokens at the best price
-                    during our token sale event.
+                    {{ t('page.tokenSale.heroDesc') }}
                 </p>
 
                 <!-- Countdown Timer -->
                 <div v-if="tokenSaleStore.sale?.ends_at" class="mb-8">
-                    <p class="text-sm text-gray-400 mb-3 uppercase tracking-wider">Sale Ends In</p>
+                    <p class="text-sm text-gray-400 mb-3 uppercase tracking-wider">{{ t('page.tokenSale.saleEndsIn') }}</p>
                     <CountdownTimer :target-date="tokenSaleStore.sale.ends_at" />
                 </div>
 
@@ -182,7 +178,7 @@ async function loadTradablePair() {
         <!-- ===== SALE PHASES ===== -->
         <section class="max-w-6xl mx-auto px-4 sm:px-6 py-12">
             <h2 class="text-2xl font-bold text-white mb-2">{{ t('tokenSale.phase') }}</h2>
-            <p class="text-gray-400 mb-8">Select a phase to purchase TPIX tokens.</p>
+            <p class="text-gray-400 mb-8">{{ t('page.tokenSale.selectPhase') }}</p>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <PhaseCard
@@ -196,7 +192,7 @@ async function loadTradablePair() {
 
             <!-- ถ้ายังไม่มี phases แสดง placeholder -->
             <div v-if="tokenSaleStore.phases.length === 0 && !tokenSaleStore.isLoadingSale" class="text-center py-12">
-                <p class="text-gray-400">Token sale phases will be announced soon.</p>
+                <p class="text-gray-400">{{ t('page.tokenSale.phasesSoon') }}</p>
             </div>
         </section>
 
@@ -253,8 +249,8 @@ async function loadTradablePair() {
                             </div>
                             <!-- Content -->
                             <div>
-                                <h4 class="text-white font-semibold mb-1">{{ item.title }}</h4>
-                                <p class="text-sm text-gray-400">{{ item.description }}</p>
+                                <h4 class="text-white font-semibold mb-1">{{ t(`page.tokenSale.steps.${item.key}.title`) }}</h4>
+                                <p class="text-sm text-gray-400">{{ t(`page.tokenSale.steps.${item.key}.desc`) }}</p>
                             </div>
                         </div>
                     </div>
@@ -262,13 +258,13 @@ async function loadTradablePair() {
                     <!-- Network info -->
                     <div class="mt-8 p-4 rounded-lg bg-white/5 border border-white/10">
                         <p class="text-sm text-gray-400">
-                            <span class="text-white font-semibold">Network:</span> TPIX Chain (Chain ID 4289)
+                            <span class="text-white font-semibold">{{ t('page.tokenSale.info.networkLabel') }}</span> {{ t('page.tokenSale.info.networkValue') }}
                         </p>
                         <p class="text-sm text-gray-400 mt-1">
-                            <span class="text-white font-semibold">Payment:</span> Credit / debit card (Visa, Mastercard, JCB, AMEX)
+                            <span class="text-white font-semibold">{{ t('page.tokenSale.info.paymentLabel') }}</span> {{ t('page.tokenSale.info.paymentValue') }}
                         </p>
                         <p class="text-sm text-gray-400 mt-1">
-                            <span class="text-white font-semibold">Token:</span> TPIX (Native on TPIX Chain)
+                            <span class="text-white font-semibold">{{ t('page.tokenSale.info.tokenLabel') }}</span> {{ t('page.tokenSale.info.tokenValue') }}
                         </p>
                     </div>
                 </div>
@@ -283,19 +279,19 @@ async function loadTradablePair() {
                 <!-- Token details -->
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8 pt-6 border-t border-white/10">
                     <div class="text-center">
-                        <span class="text-sm text-gray-400">Total Supply</span>
+                        <span class="text-sm text-gray-400">{{ t('page.tokenSale.details.totalSupply') }}</span>
                         <p class="text-lg font-bold text-white">7,000,000,000</p>
                     </div>
                     <div class="text-center">
-                        <span class="text-sm text-gray-400">Decimals</span>
+                        <span class="text-sm text-gray-400">{{ t('page.tokenSale.details.decimals') }}</span>
                         <p class="text-lg font-bold text-white">18</p>
                     </div>
                     <div class="text-center">
-                        <span class="text-sm text-gray-400">Chain</span>
+                        <span class="text-sm text-gray-400">{{ t('page.tokenSale.details.chain') }}</span>
                         <p class="text-lg font-bold text-white">TPIX Chain</p>
                     </div>
                     <div class="text-center">
-                        <span class="text-sm text-gray-400">Consensus</span>
+                        <span class="text-sm text-gray-400">{{ t('page.tokenSale.details.consensus') }}</span>
                         <p class="text-lg font-bold text-white">IBFT PoA</p>
                     </div>
                 </div>
@@ -307,36 +303,36 @@ async function loadTradablePair() {
             <!-- Purchase Summary Cards -->
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <div class="glass-dark p-4 rounded-xl border border-white/10 text-center">
-                    <p class="text-xs text-gray-400 mb-1">My Total TPIX</p>
+                    <p class="text-xs text-gray-400 mb-1">{{ t('page.tokenSale.summary.myTotal') }}</p>
                     <p class="text-xl font-bold text-primary-400">{{ Number(tokenSaleStore.totalPurchased || 0).toLocaleString() }}</p>
                 </div>
                 <div class="glass-dark p-4 rounded-xl border border-white/10 text-center">
-                    <p class="text-xs text-gray-400 mb-1">Claimable Now</p>
+                    <p class="text-xs text-gray-400 mb-1">{{ t('page.tokenSale.summary.claimable') }}</p>
                     <p class="text-xl font-bold text-trading-green">{{ Number(tokenSaleStore.totalClaimable || 0).toLocaleString() }}</p>
                 </div>
                 <div class="glass-dark p-4 rounded-xl border border-white/10 text-center">
-                    <p class="text-xs text-gray-400 mb-1">Total Purchases</p>
+                    <p class="text-xs text-gray-400 mb-1">{{ t('page.tokenSale.summary.totalPurchases') }}</p>
                     <p class="text-xl font-bold text-white">{{ tokenSaleStore.purchases?.length || 0 }}</p>
                 </div>
             </div>
 
             <!-- Purchase History -->
             <div v-if="tokenSaleStore.purchases?.length > 0" class="glass-dark p-6 rounded-xl border border-white/10 mb-6">
-                <h3 class="text-lg font-bold text-white mb-4">Purchase History</h3>
+                <h3 class="text-lg font-bold text-white mb-4">{{ t('page.tokenSale.history.title') }}</h3>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="border-b border-white/10">
-                                <th class="text-left pb-3 text-gray-400 font-medium">Date</th>
-                                <th class="text-left pb-3 text-gray-400 font-medium">Amount</th>
-                                <th class="text-left pb-3 text-gray-400 font-medium">Paid</th>
-                                <th class="text-left pb-3 text-gray-400 font-medium">Status</th>
-                                <th class="text-left pb-3 text-gray-400 font-medium">Tx</th>
+                                <th class="text-left pb-3 text-gray-400 font-medium">{{ t('page.tokenSale.history.date') }}</th>
+                                <th class="text-left pb-3 text-gray-400 font-medium">{{ t('page.tokenSale.history.amount') }}</th>
+                                <th class="text-left pb-3 text-gray-400 font-medium">{{ t('page.tokenSale.history.paid') }}</th>
+                                <th class="text-left pb-3 text-gray-400 font-medium">{{ t('page.tokenSale.history.status') }}</th>
+                                <th class="text-left pb-3 text-gray-400 font-medium">{{ t('page.tokenSale.history.tx') }}</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr v-for="p in tokenSaleStore.purchases" :key="p.id" class="border-b border-white/5">
-                                <td class="py-3 text-gray-300">{{ new Date(p.created_at).toLocaleDateString() }}</td>
+                                <td class="py-3 text-gray-300">{{ formatDate(p.created_at) }}</td>
                                 <td class="py-3 text-white font-medium">{{ Number(p.tpix_amount).toLocaleString() }} TPIX</td>
                                 <td class="py-3 text-gray-300">{{ p.payment_amount }} {{ p.payment_currency }}</td>
                                 <td class="py-3">
@@ -345,9 +341,9 @@ async function loadTradablePair() {
                                         p.status === 'confirmed' ? 'bg-green-500/10 text-green-400' :
                                         p.status === 'pending' ? 'bg-yellow-500/10 text-yellow-400' :
                                         'bg-gray-500/10 text-gray-400'
-                                    ]">{{ p.status }}</span>
+                                    ]">{{ purchaseStatusLabel(p.status) }}</span>
                                     <p v-if="p.status === 'confirmed' && p.claim_hold_until && new Date(p.claim_hold_until) > new Date()" class="text-xs text-yellow-400/80 mt-1">
-                                        Claim opens {{ new Date(p.claim_hold_until).toLocaleDateString() }}
+                                        {{ t('page.tokenSale.history.claimOpens', { date: formatDate(p.claim_hold_until) }) }}
                                     </p>
                                 </td>
                                 <td class="py-3">
@@ -378,63 +374,54 @@ async function loadTradablePair() {
 
         <!-- ===== FAQ ===== -->
         <section class="max-w-4xl mx-auto px-4 sm:px-6 py-12">
-            <h2 class="text-2xl font-bold text-white mb-8 text-center">Frequently Asked Questions</h2>
+            <h2 class="text-2xl font-bold text-white mb-8 text-center">{{ t('page.tokenSale.faq.title') }}</h2>
 
             <div class="space-y-4">
                 <details class="glass-dark rounded-xl border border-white/10 p-4 group">
                     <summary class="text-white font-semibold cursor-pointer list-none flex justify-between items-center">
-                        What is TPIX?
+                        {{ t('page.tokenSale.faq.q1') }}
                         <svg class="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                         </svg>
                     </summary>
                     <p class="text-gray-400 mt-3 text-sm">
-                        TPIX is the native coin of TPIX Chain — a Polygon Edge-based blockchain with IBFT consensus,
-                        zero gas fees, and 2-second block times. TPIX powers the entire ecosystem including DEX, master node,
-                        token factory, and cross-chain bridge.
+                        {{ t('page.tokenSale.faq.a1') }}
                     </p>
                 </details>
 
                 <details class="glass-dark rounded-xl border border-white/10 p-4 group">
                     <summary class="text-white font-semibold cursor-pointer list-none flex justify-between items-center">
-                        How does the vesting work?
+                        {{ t('page.tokenSale.faq.q2') }}
                         <svg class="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                         </svg>
                     </summary>
                     <p class="text-gray-400 mt-3 text-sm">
-                        Each phase has its own vesting schedule. A percentage is unlocked at TGE (Token Generation Event),
-                        followed by a cliff period, then linear daily vesting over the remaining duration.
-                        The exact terms of each price tier are shown on its card above.
+                        {{ t('page.tokenSale.faq.a2') }}
                     </p>
                 </details>
 
                 <details class="glass-dark rounded-xl border border-white/10 p-4 group">
                     <summary class="text-white font-semibold cursor-pointer list-none flex justify-between items-center">
-                        Which wallets are supported?
+                        {{ t('page.tokenSale.faq.q3') }}
                         <svg class="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                         </svg>
                     </summary>
                     <p class="text-gray-400 mt-3 text-sm">
-                        We support MetaMask, Trust Wallet, Coinbase Wallet, and OKX Wallet.
-                        Make sure your wallet is on TPIX Chain (Chain ID 4289) before purchasing — the buy form can add and switch the network for you.
+                        {{ t('page.tokenSale.faq.a3') }}
                     </p>
                 </details>
 
                 <details class="glass-dark rounded-xl border border-white/10 p-4 group">
                     <summary class="text-white font-semibold cursor-pointer list-none flex justify-between items-center">
-                        When can I claim my tokens?
+                        {{ t('page.tokenSale.faq.q4') }}
                         <svg class="w-5 h-5 text-gray-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                         </svg>
                     </summary>
                     <p class="text-gray-400 mt-3 text-sm">
-                        The TGE share of a bank transfer purchase is queued once the transfer is confirmed.
-                        Card purchases wait out a holding period first, because a card payment can still be
-                        charged back, and the date is shown next to your purchase. Remaining tokens vest
-                        according to the schedule. You can also receive wTPIX (Wrapped TPIX) on BSC as an
-                        interim tradeable token before the TPIX Chain bridge is live.
+                        {{ t('page.tokenSale.faq.a4') }}
                     </p>
                 </details>
             </div>
@@ -443,16 +430,16 @@ async function loadTradablePair() {
         <!-- ===== CTA ===== -->
         <section class="max-w-4xl mx-auto px-4 sm:px-6 py-12 text-center">
             <div class="glass-brand p-8 sm:p-12 rounded-2xl">
-                <h2 class="text-2xl sm:text-3xl font-bold text-white mb-3">Ready to Join?</h2>
+                <h2 class="text-2xl sm:text-3xl font-bold text-white mb-3">{{ t('page.tokenSale.cta.title') }}</h2>
                 <p class="text-gray-300 mb-6">
-                    Don't miss the opportunity to be an early TPIX holder.
+                    {{ t('page.tokenSale.cta.desc') }}
                 </p>
                 <div class="flex flex-col sm:flex-row gap-3 justify-center">
                     <a href="#buy-section" class="btn-primary px-8 py-3 font-semibold">
-                        Buy TPIX Now
+                        {{ t('page.tokenSale.cta.buy') }}
                     </a>
                     <a href="/whitepaper" class="btn-secondary px-8 py-3 font-semibold">
-                        Read Whitepaper
+                        {{ t('page.tokenSale.cta.whitepaper') }}
                     </a>
                 </div>
             </div>

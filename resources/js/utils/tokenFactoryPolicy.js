@@ -9,6 +9,20 @@
  * Developed by Xman Studio
  */
 
+import { t } from '@/Composables/useTranslation';
+
+const I18N_NS = 'util.tokenFactoryPolicy';
+
+/**
+ * ข้อความของประเภท/ตัวเลือกตามภาษาที่เลือก — ไม่มีคำแปลก็ใช้ข้อความไทยจากเซิร์ฟเวอร์
+ * เรียกตอนสร้างผลลัพธ์ (ใน computed ของหน้า) เพื่อให้สลับภาษาแล้วเปลี่ยนตาม
+ */
+function policyText(group, key, field, fallback) {
+    const path = `${I18N_NS}.${group}.${key}.${field}`;
+    const text = t(path);
+    return text === path ? (fallback || '') : text;
+}
+
 /** token_type ของฟอร์ม → ประเภทในนโยบาย */
 export const UI_TYPE_TO_POLICY = {
     standard: 'erc20',
@@ -112,13 +126,23 @@ export function requiredRiskAcks(policy, uiType, subOptions = {}) {
     const acks = [];
     const typeMeta = policy.types?.[type];
     if (typeMeta?.risky) {
-        acks.push({ key: type, label: typeMeta.label_th, warning: typeMeta.warning_th, kind: 'type' });
+        acks.push({
+            key: type,
+            label: policyText('types', type, 'label', typeMeta.label_th),
+            warning: policyText('types', type, 'warning', typeMeta.warning_th),
+            kind: 'type',
+        });
     }
 
     for (const option of requestedOptions(policy, uiType, subOptions)) {
         const meta = policy.options[option];
         if (meta?.risky) {
-            acks.push({ key: option, label: meta.label_th, warning: meta.warning_th, kind: 'option' });
+            acks.push({
+                key: option,
+                label: policyText('options', option, 'label', meta.label_th),
+                warning: policyText('options', option, 'warning', meta.warning_th),
+                kind: 'option',
+            });
         }
     }
 
@@ -132,13 +156,15 @@ export function computeFee(policy, uiType, subOptions = {}) {
 
     const breakdown = [];
     const typeFee = Number(policy.types[type].fee) || 0;
-    breakdown.push({ key: type, label_th: `ค่าสร้าง${policy.types[type].label_th}`, amount: typeFee });
+    // label = ข้อความตามภาษาปัจจุบัน (หน้าเว็บอ่าน label_th ก่อน จึงไม่ส่ง label_th มาอีก)
+    const typeLabel = policyText('types', type, 'label', policy.types[type].label_th);
+    breakdown.push({ key: type, label: t(`${I18N_NS}.createFee`, { label: typeLabel }), amount: typeFee });
     let total = typeFee;
 
     for (const option of requestedOptions(policy, uiType, subOptions)) {
         const amount = Number(policy.options[option]?.fee) || 0;
         if (amount > 0) {
-            breakdown.push({ key: option, label_th: policy.options[option].label_th, amount });
+            breakdown.push({ key: option, label: policyText('options', option, 'label', policy.options[option].label_th), amount });
             total += amount;
         }
     }

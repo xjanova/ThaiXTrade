@@ -10,9 +10,10 @@
  * Developed by Xman Studio
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { reactive } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
+import { t, setLocale } from '@/Composables/useTranslation';
 
 const wallet = reactive({
     address: null,
@@ -56,12 +57,12 @@ function mountRegistration() {
 }
 
 async function fillForm(w) {
-    await w.find('input[placeholder^="เช่น ข้าวหอมมะลิ"]').setValue('ข้าวหอมมะลิ');
+    await w.find(`input[placeholder="${t('ui.foodPassportProductRegistration.namePlaceholder')}"]`).setValue('ข้าวหอมมะลิ');
     await w.findAll('button').find((b) => b.text().includes('ธัญพืช')).trigger('click');
-    await w.find('input[placeholder^="เช่น สุรินทร์"]').setValue('สุรินทร์');
+    await w.find(`input[placeholder="${t('ui.foodPassportProductRegistration.originPlaceholder')}"]`).setValue('สุรินทร์');
 }
 
-const submitButton = (w) => w.findAll('button').find((b) => b.text().includes('ลงทะเบียนสินค้า'));
+const submitButton = (w) => w.findAll('button').find((b) => b.text().includes(t('ui.foodPassportProductRegistration.submit')));
 
 function mountMint() {
     return mount(MintCertificate, {
@@ -69,7 +70,7 @@ function mountMint() {
     });
 }
 
-const mintButton = (w) => w.findAll('button').find((b) => b.text() === 'Mint Certificate');
+const mintButton = (w) => w.findAll('button').find((b) => b.text() === t('ui.foodPassportMintCertificate.mintButton'));
 
 beforeEach(() => {
     post.mockReset();
@@ -77,6 +78,10 @@ beforeEach(() => {
     wallet.openConnectModal.mockReset();
     global.fetch = vi.fn(() => { throw new Error('fetch must not be used for FoodPassport writes'); });
     connect(WALLET_A);
+});
+
+afterEach(() => {
+    setLocale('en');
 });
 
 describe('ProductRegistration', () => {
@@ -95,7 +100,7 @@ describe('ProductRegistration', () => {
         expect(body).toMatchObject({ wallet_address: WALLET_A, name: 'ข้าวหอมมะลิ', category: 'grain', origin: 'สุรินทร์' });
         expect(body).not.toHaveProperty('producer_address');
         expect(w.emitted('registered')[0][0]).toMatchObject({ id: 7 });
-        expect(w.text()).toContain('Product ID: 7');
+        expect(w.text()).toContain(t('ui.foodPassportProductRegistration.success', { id: 7, batch: 'BATCH-7' }));
     });
 
     it('กดซ้ำระหว่างรอ ส่งคำขอเดียว', async () => {
@@ -122,7 +127,7 @@ describe('ProductRegistration', () => {
         await submitButton(w).trigger('click');
         await flushPromises();
 
-        expect(w.text()).toContain('ต้องเซ็นยืนยันกระเป๋าก่อน');
+        expect(w.text()).toContain(t('fn.useFoodPassportWrite.needsVerification'));
         expect(w.text()).not.toContain('raw WALLET_NOT_VERIFIED');
         expect(w.emitted('registered')).toBeFalsy();
 
@@ -151,17 +156,20 @@ describe('ProductRegistration', () => {
     });
 
     it('error อื่นแสดงข้อความไทย ไม่ใช่ข้อความดิบ และไม่มีปุ่มเซ็น', async () => {
+        setLocale('th');
         post.mockImplementationOnce(() => fail(419, 'CSRF')).mockImplementationOnce(() => Promise.reject(new Error('Network Error')));
         const w = mountRegistration();
         await fillForm(w);
 
         await submitButton(w).trigger('click');
         await flushPromises();
+        expect(w.text()).toContain(t('fn.useFoodPassportWrite.sessionExpired'));
         expect(w.text()).toContain('รีเฟรชหน้า');
         expect(w.find('[data-test="verify-wallet"]').exists()).toBe(false);
 
         await submitButton(w).trigger('click');
         await flushPromises();
+        expect(w.text()).toContain(t('fn.useFoodPassportWrite.networkError'));
         expect(w.text()).toContain('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
         expect(w.text()).not.toContain('Network Error');
     });
@@ -178,7 +186,7 @@ describe('ProductRegistration', () => {
         await flushPromises();
 
         expect(w.emitted('registered')).toBeFalsy();
-        expect(w.text()).not.toContain('Product ID: 9');
+        expect(w.text()).not.toContain(t('ui.foodPassportProductRegistration.success', { id: 9, batch: 'B9' }));
     });
 });
 
@@ -205,7 +213,7 @@ describe('MintCertificate', () => {
 
         await mintButton(w).trigger('click');
         await flushPromises();
-        expect(w.text()).toContain('ต้องเซ็นยืนยันกระเป๋าก่อน');
+        expect(w.text()).toContain(t('fn.useFoodPassportWrite.needsVerification'));
 
         await w.find('[data-test="verify-wallet"]').trigger('click');
         await flushPromises();
@@ -215,12 +223,14 @@ describe('MintCertificate', () => {
     });
 
     it('สินค้าของคนอื่น → ข้อความไทย กลับไปหน้ายืนยัน', async () => {
+        setLocale('th');
         post.mockImplementation(() => fail(403, 'NOT_PRODUCER'));
         const w = mountMint();
 
         await mintButton(w).trigger('click');
         await flushPromises();
 
+        expect(w.text()).toContain(t('fn.useFoodPassportWrite.notProducer'));
         expect(w.text()).toContain('เฉพาะกระเป๋าผู้ผลิต');
         expect(w.find('[data-test="verify-wallet"]').exists()).toBe(false);
         expect(mintButton(w).exists()).toBe(true);

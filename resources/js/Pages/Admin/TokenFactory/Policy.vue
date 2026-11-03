@@ -13,6 +13,9 @@
 import { computed } from 'vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     policy: { type: Object, required: true },
@@ -30,15 +33,15 @@ const optionKeys = Object.keys(props.policy.options || {});
 function initialForm() {
     const types = {};
     for (const key of typeKeys) {
-        const t = props.policy.types[key];
+        const tp = props.policy.types[key];
         types[key] = {
-            state: t.state === 'on' ? 'on' : 'off',
-            fee: t.fee,
-            max_supply: t.max_supply,
-            decimals_min: t.decimals_min,
-            decimals_max: t.decimals_max,
-            auto_approve: !!t.auto_approve,
-            require_kyc: !!t.require_kyc,
+            state: tp.state === 'on' ? 'on' : 'off',
+            fee: tp.fee,
+            max_supply: tp.max_supply,
+            decimals_min: tp.decimals_min,
+            decimals_max: tp.decimals_max,
+            auto_approve: !!tp.auto_approve,
+            require_kyc: !!tp.require_kyc,
         };
     }
     const options = {};
@@ -72,6 +75,21 @@ const form = useForm(initialForm());
 
 const isLocked = (group, key) => props.policy[group]?.[key]?.state === 'locked';
 
+/**
+ * ป้าย/คำอธิบาย/คำเตือนของประเภทและตัวเลือกมาจากเซิร์ฟเวอร์เป็นภาษาไทยอย่างเดียว (*_th)
+ * แปลฝั่งหน้าเว็บตามคีย์ของประเภท/ตัวเลือก — คีย์ใหม่ที่ยังไม่มีคำแปลใช้ข้อความจากเซิร์ฟเวอร์แทน
+ */
+function policyText(group, key, field, fallback) {
+    const path = `admin.tokenFactoryPolicy.${group}.${key}.${field}`;
+    const text = t(path);
+    return text === path ? (fallback || '') : text;
+}
+
+const itemLabel = (group, key) => policyText(group, key, 'label', props.policy[group]?.[key]?.label_th);
+const itemDesc = (group, key) => policyText(group, key, 'desc', props.policy[group]?.[key]?.desc_th);
+const itemWarning = (group, key) => policyText(group, key, 'warning', props.policy[group]?.[key]?.warning_th);
+const itemLockedReason = (group, key) => policyText(group, key, 'locked', props.policy[group]?.[key]?.locked_reason);
+
 /** จำนวนช่องที่เปลี่ยนจากค่าที่บันทึกไว้ — แสดงในกล่องยืนยัน */
 const changedCount = computed(() => {
     const before = JSON.stringify(initialForm());
@@ -95,12 +113,12 @@ const riskyTurningOn = computed(() => {
     const list = [];
     for (const key of typeKeys) {
         if (props.policy.types[key].risky && form.types[key].state === 'on' && props.policy.types[key].state !== 'on') {
-            list.push(props.policy.types[key].label_th);
+            list.push(itemLabel('types', key));
         }
     }
     for (const key of optionKeys) {
         if (props.policy.options[key].risky && form.options[key].state === 'on' && props.policy.options[key].state !== 'on') {
-            list.push(props.policy.options[key].label_th);
+            list.push(itemLabel('options', key));
         }
     }
     return list;
@@ -109,11 +127,11 @@ const riskyTurningOn = computed(() => {
 function save() {
     if (changedCount.value === 0) return;
 
-    let message = `ยืนยันบันทึกนโยบาย Token Factory (${changedCount.value} รายการที่เปลี่ยน)?`;
+    let message = t('admin.tokenFactoryPolicy.confirm.save', { n: changedCount.value });
     if (riskyTurningOn.value.length) {
-        message += `\n\n⚠️ กำลังเปิดของที่เสี่ยงต่อผู้ซื้อ:\n- ${riskyTurningOn.value.join('\n- ')}`;
+        message += `\n\n${t('admin.tokenFactoryPolicy.confirm.risky')}\n- ${riskyTurningOn.value.join('\n- ')}`;
     }
-    message += '\n\nทุกการเปลี่ยนแปลงจะถูกบันทึกใน Audit Log';
+    message += `\n\n${t('admin.tokenFactoryPolicy.confirm.audit')}`;
     if (!window.confirm(message)) return;
 
     form.transform((data) => ({
@@ -137,7 +155,7 @@ function addReserved() {
 
 function removeReserved(index) {
     const row = form.reserved_symbols[index];
-    if (row.symbol && !window.confirm(`ลบสัญลักษณ์สงวน ${row.symbol}? หลังบันทึก ใครก็ใช้สัญลักษณ์นี้ได้`)) return;
+    if (row.symbol && !window.confirm(t('admin.tokenFactoryPolicy.confirm.removeReserved', { symbol: row.symbol }))) return;
     form.reserved_symbols.splice(index, 1);
 }
 
@@ -153,18 +171,18 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
 </script>
 
 <template>
-    <Head title="ตั้งค่า Token Factory" />
+    <Head :title="t('admin.tokenFactoryPolicy.title')" />
 
-    <AdminLayout title="ตั้งค่า Token Factory">
+    <AdminLayout :title="t('admin.tokenFactoryPolicy.title')">
         <div class="max-w-5xl space-y-6">
             <div class="flex items-center justify-between gap-4">
                 <div>
-                    <h1 class="text-xl font-bold text-white">ตั้งค่า Token Factory</h1>
+                    <h1 class="text-xl font-bold text-white">{{ t('admin.tokenFactoryPolicy.title') }}</h1>
                     <p class="text-sm text-dark-400 mt-1">
-                        เปิด/ปิดประเภทเหรียญและตัวเลือกทีละตัว · ของที่เสี่ยงปิดไว้ก่อนเสมอ · ทุกการเปลี่ยนแปลงลง Audit Log
+                        {{ t('admin.tokenFactoryPolicy.subtitle') }}
                     </p>
                 </div>
-                <Link href="/admin/token-factory" class="text-sm text-primary-400 hover:text-primary-300">← รายการเหรียญ</Link>
+                <Link href="/admin/token-factory" class="text-sm text-primary-400 hover:text-primary-300">{{ t('admin.tokenFactoryPolicy.back') }}</Link>
             </div>
 
             <div v-if="flash.success" class="p-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-sm">{{ flash.success }}</div>
@@ -172,38 +190,38 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
 
             <!-- ภาพรวม -->
             <section class="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4">
-                <h2 class="text-sm font-semibold text-white">ภาพรวม</h2>
+                <h2 class="text-sm font-semibold text-white">{{ t('admin.tokenFactoryPolicy.overview') }}</h2>
                 <div class="grid sm:grid-cols-2 gap-4">
                     <label class="flex items-center justify-between gap-3 p-3 rounded-xl bg-dark-800/50 border border-white/5">
-                        <span class="text-sm text-dark-200">เปิดให้สร้างเหรียญ</span>
+                        <span class="text-sm text-dark-200">{{ t('admin.tokenFactoryPolicy.creationEnabled') }}</span>
                         <input v-model="form.creation_enabled" type="checkbox" class="rounded" data-test="creation-enabled" />
                     </label>
                     <label class="flex items-center justify-between gap-3 p-3 rounded-xl bg-dark-800/50 border border-white/5">
-                        <span class="text-sm text-dark-200">ต้องยืนยันตัวตน (KYC) ทุกประเภท</span>
+                        <span class="text-sm text-dark-200">{{ t('admin.tokenFactoryPolicy.requireKycAll') }}</span>
                         <input v-model="form.require_kyc" type="checkbox" class="rounded" />
                     </label>
                     <label class="flex items-center justify-between gap-3 p-3 rounded-xl bg-dark-800/50 border border-white/5 sm:col-span-2">
                         <span class="text-sm text-dark-200">
-                            ลิสต์เหรียญอัตโนมัติเมื่อ deploy เสร็จ
-                            <span class="block text-[11px] text-dark-500">ปิด = แอดมินกด "List" เองก่อนเหรียญจะขึ้นหน้า Explore และเปิดคู่เทรดบน DEX</span>
+                            {{ t('admin.tokenFactoryPolicy.autoList') }}
+                            <span class="block text-[11px] text-dark-500">{{ t('admin.tokenFactoryPolicy.autoListHint') }}</span>
                         </span>
                         <input v-model="form.auto_list_on_deploy" type="checkbox" class="rounded" />
                     </label>
                     <div class="p-3 rounded-xl bg-dark-800/50 border border-white/5 sm:col-span-2" data-test="refund-mode">
-                        <span class="text-sm text-dark-200">คืนค่าธรรมเนียมเมื่อปฏิเสธคำขอ (คืนเต็มจำนวนที่โอนมา)</span>
+                        <span class="text-sm text-dark-200">{{ t('admin.tokenFactoryPolicy.refundMode') }}</span>
                         <div class="mt-2 grid sm:grid-cols-2 gap-2">
                             <label class="flex items-start gap-2 p-2 rounded-lg cursor-pointer" :class="form.refund_mode === 'manual' ? 'bg-primary-500/10 border border-primary-500/30' : 'border border-white/5'">
                                 <input v-model="form.refund_mode" type="radio" value="manual" class="mt-1" />
                                 <span class="text-xs text-dark-200">
-                                    แอดมินโอนเอง
-                                    <span class="block text-[11px] text-dark-500">โอนจากกระเป๋ารับค่าธรรมเนียม/กระเป๋าร้อน แล้ววาง tx hash ในหน้ารายการ — ระบบตรวจบนเชนก่อนปิดรายการ</span>
+                                    {{ t('admin.tokenFactoryPolicy.refundManual') }}
+                                    <span class="block text-[11px] text-dark-500">{{ t('admin.tokenFactoryPolicy.refundManualHint') }}</span>
                                 </span>
                             </label>
                             <label class="flex items-start gap-2 p-2 rounded-lg cursor-pointer" :class="form.refund_mode === 'auto' ? 'bg-primary-500/10 border border-primary-500/30' : 'border border-white/5'">
                                 <input v-model="form.refund_mode" type="radio" value="auto" class="mt-1" />
                                 <span class="text-xs text-dark-200">
-                                    จ่ายคืนอัตโนมัติ
-                                    <span class="block text-[11px] text-dark-500">ปฏิเสธแล้วระบบเข้าคิวจ่ายจากกระเป๋าร้อนของคลังทันที (อยู่ใต้วงเงินต่อครั้ง/ต่อวันของคลัง) — กระเป๋าร้อนต้องมี TPIX พอ</span>
+                                    {{ t('admin.tokenFactoryPolicy.refundAuto') }}
+                                    <span class="block text-[11px] text-dark-500">{{ t('admin.tokenFactoryPolicy.refundAutoHint') }}</span>
                                 </span>
                             </label>
                         </div>
@@ -213,35 +231,35 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
 
                 <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div class="sm:col-span-2 lg:col-span-3">
-                        <label :class="labelClass">กระเป๋ารับค่าธรรมเนียม (TPIX บนเชน 4289) — จำเป็นถ้ามีค่าธรรมเนียม</label>
+                        <label :class="labelClass">{{ t('admin.tokenFactoryPolicy.feeWallet') }}</label>
                         <input v-model="form.fee_wallet" type="text" :class="inputClass" placeholder="0x..." data-test="fee-wallet" />
                         <p class="text-[11px] text-dark-500 mt-1">
-                            ที่ใช้อยู่ตอนนี้: <span class="font-mono text-dark-300">{{ resolvedFeeWallet || 'ยังไม่ได้ตั้ง — ยังรับคำขอที่มีค่าธรรมเนียมไม่ได้' }}</span>
+                            {{ t('admin.tokenFactoryPolicy.inUse') }} <span class="font-mono text-dark-300">{{ resolvedFeeWallet || t('admin.tokenFactoryPolicy.feeWalletNotSet') }}</span>
                         </p>
                         <p v-if="revenueTpixWallet && revenueTpixWallet !== form.fee_wallet" class="text-[11px] text-dark-500 mt-1">
-                            กระเป๋ารายได้ TPIX ในหน้าตั้งค่า: <span class="font-mono">{{ revenueTpixWallet }}</span>
-                            <button type="button" class="ml-2 text-primary-300 hover:text-primary-200" @click="form.fee_wallet = revenueTpixWallet">ใช้ที่อยู่นี้</button>
+                            {{ t('admin.tokenFactoryPolicy.revenueWallet') }} <span class="font-mono">{{ revenueTpixWallet }}</span>
+                            <button type="button" class="ml-2 text-primary-300 hover:text-primary-200" @click="form.fee_wallet = revenueTpixWallet">{{ t('admin.tokenFactoryPolicy.useThis') }}</button>
                         </p>
                         <p v-if="errors.fee_wallet" class="text-xs text-red-400 mt-1">{{ errors.fee_wallet }}</p>
                     </div>
                     <div>
-                        <label :class="labelClass">บล็อกยืนยันก่อนรับค่าธรรมเนียม</label>
+                        <label :class="labelClass">{{ t('admin.tokenFactoryPolicy.requiredConfirmations') }}</label>
                         <input v-model.number="form.required_confirmations" type="number" min="1" max="100" :class="inputClass" />
                     </div>
                     <div>
-                        <label :class="labelClass">อายุใบเสนอราคา (นาที)</label>
+                        <label :class="labelClass">{{ t('admin.tokenFactoryPolicy.quoteTtl') }}</label>
                         <input v-model.number="form.quote_ttl_minutes" type="number" min="5" max="120" :class="inputClass" />
                     </div>
                     <div>
-                        <label :class="labelClass">สร้างได้ต่อกระเป๋าต่อวัน</label>
+                        <label :class="labelClass">{{ t('admin.tokenFactoryPolicy.dailyLimit') }}</label>
                         <input v-model.number="form.daily_limit_per_wallet" type="number" min="1" max="100" :class="inputClass" />
                     </div>
                     <div>
-                        <label :class="labelClass">ความยาวชื่อสูงสุด</label>
+                        <label :class="labelClass">{{ t('admin.tokenFactoryPolicy.nameMax') }}</label>
                         <input v-model.number="form.name_max_length" type="number" min="2" max="100" :class="inputClass" />
                     </div>
                     <div>
-                        <label :class="labelClass">ความยาวสัญลักษณ์สูงสุด (A–Z, 0–9)</label>
+                        <label :class="labelClass">{{ t('admin.tokenFactoryPolicy.symbolMax') }}</label>
                         <input v-model.number="form.symbol_max_length" type="number" min="2" max="20" :class="inputClass" />
                     </div>
                 </div>
@@ -249,7 +267,7 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
 
             <!-- ประเภทเหรียญ -->
             <section class="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
-                <h2 class="text-sm font-semibold text-white">ประเภทเหรียญ</h2>
+                <h2 class="text-sm font-semibold text-white">{{ t('admin.tokenFactoryPolicy.typesTitle') }}</h2>
                 <div
                     v-for="key in typeKeys"
                     :key="key"
@@ -260,48 +278,48 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div class="min-w-0">
                             <p class="text-sm font-semibold text-white">
-                                {{ policy.types[key].label_th }}
-                                <span v-if="policy.types[key].risky" class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">เสี่ยง</span>
+                                {{ itemLabel('types', key) }}
+                                <span v-if="policy.types[key].risky" class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">{{ t('admin.tokenFactoryPolicy.risky') }}</span>
                             </p>
-                            <p class="text-xs text-dark-400 mt-0.5">{{ policy.types[key].desc_th }}</p>
+                            <p class="text-xs text-dark-400 mt-0.5">{{ itemDesc('types', key) }}</p>
                         </div>
 
-                        <span v-if="isLocked('types', key)" class="text-xs px-2 py-1 rounded-lg bg-dark-700 text-dark-300" data-test="locked-badge">🔒 ล็อก</span>
+                        <span v-if="isLocked('types', key)" class="text-xs px-2 py-1 rounded-lg bg-dark-700 text-dark-300" data-test="locked-badge">🔒 {{ t('admin.tokenFactoryPolicy.locked') }}</span>
                         <div v-else class="inline-flex rounded-lg border border-white/10 overflow-hidden">
-                            <button type="button" :class="stateButton(form.types[key].state === 'off', 'off')" @click="form.types[key].state = 'off'">ปิด</button>
-                            <button type="button" :class="stateButton(form.types[key].state === 'on', 'on')" @click="form.types[key].state = 'on'">เปิด</button>
+                            <button type="button" :class="stateButton(form.types[key].state === 'off', 'off')" @click="form.types[key].state = 'off'">{{ t('admin.tokenFactoryPolicy.off') }}</button>
+                            <button type="button" :class="stateButton(form.types[key].state === 'on', 'on')" @click="form.types[key].state = 'on'">{{ t('admin.tokenFactoryPolicy.on') }}</button>
                         </div>
                     </div>
 
-                    <p v-if="isLocked('types', key)" class="mt-2 text-xs text-dark-400">{{ policy.types[key].locked_reason }}</p>
+                    <p v-if="isLocked('types', key)" class="mt-2 text-xs text-dark-400">{{ itemLockedReason('types', key) }}</p>
                     <p v-else-if="policy.types[key].risky && form.types[key].state === 'on'" class="mt-2 text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg p-2">
-                        ผู้สร้างจะเห็นคำเตือนนี้และต้องติ๊กยอมรับ: {{ policy.types[key].warning_th }}
+                        {{ t('admin.tokenFactoryPolicy.warningPrefix') }} {{ itemWarning('types', key) }}
                     </p>
 
                     <div v-if="!isLocked('types', key)" class="mt-3 grid grid-cols-2 sm:grid-cols-6 gap-3">
                         <div>
-                            <label :class="labelClass">ค่าธรรมเนียม (TPIX)</label>
+                            <label :class="labelClass">{{ t('admin.tokenFactoryPolicy.fee') }}</label>
                             <input v-model="form.types[key].fee" type="number" min="0.000001" step="any" :class="inputClass" />
                         </div>
                         <div class="sm:col-span-2">
-                            <label :class="labelClass">จำนวนสูงสุด</label>
+                            <label :class="labelClass">{{ t('admin.tokenFactoryPolicy.maxSupply') }}</label>
                             <input v-model="form.types[key].max_supply" type="text" inputmode="numeric" :class="inputClass" />
                         </div>
                         <div>
-                            <label :class="labelClass">ทศนิยมต่ำสุด</label>
+                            <label :class="labelClass">{{ t('admin.tokenFactoryPolicy.decimalsMin') }}</label>
                             <input v-model.number="form.types[key].decimals_min" type="number" min="0" max="18" :class="inputClass" />
                         </div>
                         <div>
-                            <label :class="labelClass">ทศนิยมสูงสุด</label>
+                            <label :class="labelClass">{{ t('admin.tokenFactoryPolicy.decimalsMax') }}</label>
                             <input v-model.number="form.types[key].decimals_max" type="number" min="0" max="18" :class="inputClass" />
                         </div>
                         <div class="flex flex-col justify-end gap-1.5 text-xs text-dark-300">
-                            <label class="flex items-center gap-2"><input v-model="form.types[key].auto_approve" type="checkbox" class="rounded" /> อนุมัติอัตโนมัติ</label>
-                            <label class="flex items-center gap-2"><input v-model="form.types[key].require_kyc" type="checkbox" class="rounded" /> ต้อง KYC</label>
+                            <label class="flex items-center gap-2"><input v-model="form.types[key].auto_approve" type="checkbox" class="rounded" /> {{ t('admin.tokenFactoryPolicy.autoApprove') }}</label>
+                            <label class="flex items-center gap-2"><input v-model="form.types[key].require_kyc" type="checkbox" class="rounded" /> {{ t('admin.tokenFactoryPolicy.requireKyc') }}</label>
                         </div>
                     </div>
                     <p v-if="form.types[key].auto_approve && !isLocked('types', key)" class="mt-2 text-[11px] text-amber-300">
-                        อนุมัติอัตโนมัติใช้เฉพาะคำขอที่ไม่มีตัวเลือกเสี่ยง — มีของเสี่ยงต้องรอแอดมินอนุมัติเสมอ
+                        {{ t('admin.tokenFactoryPolicy.autoApproveNote') }}
                     </p>
                     <p v-for="field in ['state', 'fee', 'max_supply', 'decimals']" :key="field">
                         <span v-if="errors[`types.${key}.${field}`]" class="text-xs text-red-400">{{ errors[`types.${key}.${field}`] }}</span>
@@ -311,7 +329,7 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
 
             <!-- ตัวเลือกย่อย -->
             <section class="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
-                <h2 class="text-sm font-semibold text-white">ตัวเลือกย่อย</h2>
+                <h2 class="text-sm font-semibold text-white">{{ t('admin.tokenFactoryPolicy.optionsTitle') }}</h2>
                 <div
                     v-for="key in optionKeys"
                     :key="key"
@@ -322,25 +340,25 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div class="min-w-0">
                             <p class="text-sm font-semibold text-white">
-                                {{ policy.options[key].label_th }}
-                                <span v-if="policy.options[key].risky" class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">เสี่ยง</span>
+                                {{ itemLabel('options', key) }}
+                                <span v-if="policy.options[key].risky" class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300">{{ t('admin.tokenFactoryPolicy.risky') }}</span>
                             </p>
-                            <p class="text-xs text-dark-400 mt-0.5">{{ policy.options[key].desc_th }}</p>
+                            <p class="text-xs text-dark-400 mt-0.5">{{ itemDesc('options', key) }}</p>
                         </div>
                         <div class="flex items-center gap-3">
                             <div v-if="!isLocked('options', key)" class="w-28">
-                                <input v-model="form.options[key].fee" type="number" min="0.000001" step="any" :class="inputClass" title="ค่าธรรมเนียม (TPIX)" />
+                                <input v-model="form.options[key].fee" type="number" min="0.000001" step="any" :class="inputClass" :title="t('admin.tokenFactoryPolicy.fee')" />
                             </div>
-                            <span v-if="isLocked('options', key)" class="text-xs px-2 py-1 rounded-lg bg-dark-700 text-dark-300" data-test="locked-badge">🔒 ล็อก</span>
+                            <span v-if="isLocked('options', key)" class="text-xs px-2 py-1 rounded-lg bg-dark-700 text-dark-300" data-test="locked-badge">🔒 {{ t('admin.tokenFactoryPolicy.locked') }}</span>
                             <div v-else class="inline-flex rounded-lg border border-white/10 overflow-hidden">
-                                <button type="button" :class="stateButton(form.options[key].state === 'off', 'off')" @click="form.options[key].state = 'off'">ปิด</button>
-                                <button type="button" :class="stateButton(form.options[key].state === 'on', 'on')" @click="form.options[key].state = 'on'">เปิด</button>
+                                <button type="button" :class="stateButton(form.options[key].state === 'off', 'off')" @click="form.options[key].state = 'off'">{{ t('admin.tokenFactoryPolicy.off') }}</button>
+                                <button type="button" :class="stateButton(form.options[key].state === 'on', 'on')" @click="form.options[key].state = 'on'">{{ t('admin.tokenFactoryPolicy.on') }}</button>
                             </div>
                         </div>
                     </div>
-                    <p v-if="isLocked('options', key)" class="mt-2 text-xs text-dark-400">{{ policy.options[key].locked_reason }}</p>
+                    <p v-if="isLocked('options', key)" class="mt-2 text-xs text-dark-400">{{ itemLockedReason('options', key) }}</p>
                     <p v-else-if="policy.options[key].risky && form.options[key].state === 'on'" class="mt-2 text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg p-2">
-                        ผู้สร้างจะเห็นคำเตือนนี้และต้องติ๊กยอมรับ: {{ policy.options[key].warning_th }}
+                        {{ t('admin.tokenFactoryPolicy.warningPrefix') }} {{ itemWarning('options', key) }}
                     </p>
                     <span v-if="errors[`options.${key}.state`]" class="text-xs text-red-400">{{ errors[`options.${key}.state`] }}</span>
                     <span v-if="errors[`options.${key}.fee`]" class="text-xs text-red-400">{{ errors[`options.${key}.fee`] }}</span>
@@ -351,21 +369,21 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
             <section class="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h2 class="text-sm font-semibold text-white">สัญลักษณ์สงวน</h2>
-                        <p class="text-xs text-dark-400 mt-0.5">ใช้ได้เฉพาะกระเป๋าที่ระบุ (เว้นว่าง = ไม่มีใครใช้ได้) เช่น ใส่กระเป๋าเจ้าของโครงการเพื่อสร้าง IDTC ตัวทางการ</p>
+                        <h2 class="text-sm font-semibold text-white">{{ t('admin.tokenFactoryPolicy.reservedTitle') }}</h2>
+                        <p class="text-xs text-dark-400 mt-0.5">{{ t('admin.tokenFactoryPolicy.reservedDesc') }}</p>
                     </div>
-                    <button type="button" class="text-xs px-3 py-1.5 rounded-lg bg-primary-500/10 text-primary-300 hover:bg-primary-500/20" @click="addReserved">+ เพิ่ม</button>
+                    <button type="button" class="text-xs px-3 py-1.5 rounded-lg bg-primary-500/10 text-primary-300 hover:bg-primary-500/20" @click="addReserved">{{ t('admin.tokenFactoryPolicy.add') }}</button>
                 </div>
                 <div v-for="(row, index) in form.reserved_symbols" :key="index" class="grid grid-cols-1 sm:grid-cols-[140px_1fr_auto] gap-3 items-start">
                     <input v-model="row.symbol" type="text" maxlength="20" :class="inputClass" placeholder="SYMBOL" />
-                    <textarea v-model="row.wallets" rows="1" :class="[inputClass, 'font-mono text-xs']" placeholder="0x... (หนึ่งกระเป๋าต่อบรรทัด)"></textarea>
-                    <button type="button" class="text-xs px-3 py-2 rounded-lg text-red-300 hover:bg-red-500/10" @click="removeReserved(index)">ลบ</button>
+                    <textarea v-model="row.wallets" rows="1" :class="[inputClass, 'font-mono text-xs']" :placeholder="t('admin.tokenFactoryPolicy.walletsPlaceholder')"></textarea>
+                    <button type="button" class="text-xs px-3 py-2 rounded-lg text-red-300 hover:bg-red-500/10" @click="removeReserved(index)">{{ t('admin.tokenFactoryPolicy.remove') }}</button>
                     <p v-if="errors[`reserved_symbols.${index}`]" class="text-xs text-red-400 sm:col-span-3">{{ errors[`reserved_symbols.${index}`] }}</p>
                 </div>
             </section>
 
             <div class="flex items-center justify-end gap-3 pb-10">
-                <span class="text-xs text-dark-400">{{ changedCount ? `เปลี่ยน ${changedCount} รายการ (ยังไม่บันทึก)` : 'ไม่มีการเปลี่ยนแปลง' }}</span>
+                <span class="text-xs text-dark-400">{{ changedCount ? t('admin.tokenFactoryPolicy.changed', { n: changedCount }) : t('admin.tokenFactoryPolicy.noChanges') }}</span>
                 <button
                     type="button"
                     class="btn-primary px-6 py-2.5 disabled:opacity-40"
@@ -373,7 +391,7 @@ const labelClass = 'block text-xs font-medium text-dark-300 mb-1';
                     data-test="save-policy"
                     @click="save"
                 >
-                    {{ form.processing ? 'กำลังบันทึก...' : 'บันทึกนโยบาย' }}
+                    {{ form.processing ? t('admin.tokenFactoryPolicy.saving') : t('admin.tokenFactoryPolicy.save') }}
                 </button>
             </div>
         </div>

@@ -6,6 +6,9 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { t } from '@/Composables/useTranslation';
+
+const tw = (key, params) => t(`admin.bridgeWtpix.${key}`, params);
 
 const usdtReserves = { snapshot: null, chains: [], limits: {}, enabled: false, tpix: {}, minter: {} };
 const tpixReserves = {
@@ -80,12 +83,12 @@ describe('Admin — TPIX ⇄ wTPIX bridge', () => {
             props: { tab: 'transfers', state, transfers: { data: [row] }, counts: { needs_review: 1 }, settings: { limits: {} }, filters: {} },
         });
 
-        expect(wrapper.text()).toContain('เกินวงเงินต่อครั้ง');
-        await wrapper.findAll('button').find((b) => b.text() === 'อนุมัติ').trigger('click');
+        expect(wrapper.text()).toContain(tw('reasons.over_tx_limit'));
+        await wrapper.findAll('button').find((b) => b.text() === tw('approve')).trigger('click');
         await flushPromises();
         expect(post).not.toHaveBeenCalled();
         // ConfirmDialog teleport ไปที่ body — อ่านจาก document แทน wrapper
-        expect(document.body.textContent).toContain('ยืนยันการอนุมัติ');
+        expect(document.body.textContent).toContain(tw('dialogs.approveTitle'));
         expect(document.body.textContent).toContain('149999 wTPIX');
         wrapper.unmount();
     });
@@ -95,7 +98,7 @@ describe('Admin — TPIX ⇄ wTPIX bridge', () => {
 
         const list = wrapper.find('[data-test="readiness"]').text();
         expect(list).toContain('wTPIX.minters(minter) = true');
-        expect(list).toContain('(แนะนำ)');
-        expect(wrapper.text()).toContain('ยังไม่ผ่าน 1 ข้อที่บังคับ');
+        expect(list).toContain(tw('readiness.recommended'));
+        expect(wrapper.text()).toContain(tw('readiness.failed', { n: 1 }));
     });
 });

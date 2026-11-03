@@ -8,6 +8,9 @@
 import { ref, computed } from 'vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 // Flash message จาก backend
 const flash = computed(() => usePage().props.flash || {});
@@ -42,17 +45,17 @@ const props = defineProps({
 const activeTab = ref('general');
 
 const tabs = [
-    { key: 'general', label: 'General', icon: 'settings' },
-    { key: 'revenue', label: 'Revenue Wallet', icon: 'wallet' },
-    { key: 'seo', label: 'SEO', icon: 'search' },
-    { key: 'trading', label: 'Trading', icon: 'chart' },
-    { key: 'factory', label: 'Token Factory', icon: 'settings' },
-    { key: 'payment', label: 'Payment', icon: 'card' },
-    { key: 'ai', label: 'AI', icon: 'brain' },
-    { key: 'email', label: 'Email', icon: 'mail' },
-    { key: 'security', label: 'Security', icon: 'shield' },
-    { key: 'social', label: 'Social', icon: 'share' },
-    { key: 'map', label: 'แผนที่', icon: 'settings' },
+    { key: 'general', labelKey: 'admin.settings.tabs.general', icon: 'settings' },
+    { key: 'revenue', labelKey: 'admin.settings.tabs.revenue', icon: 'wallet' },
+    { key: 'seo', labelKey: 'admin.settings.tabs.seo', icon: 'search' },
+    { key: 'trading', labelKey: 'admin.settings.tabs.trading', icon: 'chart' },
+    { key: 'factory', labelKey: 'admin.settings.tabs.factory', icon: 'settings' },
+    { key: 'payment', labelKey: 'admin.settings.tabs.payment', icon: 'card' },
+    { key: 'ai', labelKey: 'admin.settings.tabs.ai', icon: 'brain' },
+    { key: 'email', labelKey: 'admin.settings.tabs.email', icon: 'mail' },
+    { key: 'security', labelKey: 'admin.settings.tabs.security', icon: 'shield' },
+    { key: 'social', labelKey: 'admin.settings.tabs.social', icon: 'share' },
+    { key: 'map', labelKey: 'admin.settings.tabs.map', icon: 'settings' },
 ];
 
 // ต้องตรงกับ MoneySettings::GROUPS ฝั่งเซิร์ฟเวอร์
@@ -283,12 +286,19 @@ const testAdvisor = (provider) => {
 };
 
 /** ป้ายบอกว่าคีย์ที่ใช้อยู่มาจากไหน — กันแอดมินสับสนตอนช่องกรอกว่างแต่ระบบบอกว่าพร้อม */
-const advisorSourceLabel = {
-    admin: 'คีย์ที่กรอกไว้ตรงนี้',
-    shared: 'ใช้คีย์ Gemini ช่องสร้างรูปด้านบน',
-    env: 'มาจาก .env บนเซิร์ฟเวอร์',
-    none: 'ยังไม่ได้ตั้งคีย์',
+const advisorSourceKeys = {
+    admin: 'admin.settings.advisor.source.admin',
+    shared: 'admin.settings.advisor.source.shared',
+    env: 'admin.settings.advisor.source.env',
+    none: 'admin.settings.advisor.source.none',
 };
+
+// แปลตอน render เพื่อให้สลับภาษาแล้วป้ายเปลี่ยนตาม — source ที่ไม่รู้จักแสดงว่าง (เหมือนเดิม)
+function advisorSourceLabel(source) {
+    const key = advisorSourceKeys[source];
+
+    return key ? t(key) : '';
+}
 
 function advisorProvider(name) {
     return props.advisorStatus?.providers?.[name] || { configured: false, source: 'none' };
@@ -329,12 +339,12 @@ function removeTimeSlot(index) {
 
 const selectedCategories = ref(JSON.parse(contentForm.content_categories || '[]'));
 const allCategories = [
-    { value: 'tpix_chain', label: 'TPIX Chain' },
-    { value: 'defi', label: 'DeFi' },
-    { value: 'news', label: 'News' },
-    { value: 'analysis', label: 'Analysis' },
-    { value: 'tutorial', label: 'Tutorial' },
-    { value: 'technology', label: 'Technology' },
+    { value: 'tpix_chain', labelKey: 'admin.settings.content.cat.tpix_chain' },
+    { value: 'defi', labelKey: 'admin.settings.content.cat.defi' },
+    { value: 'news', labelKey: 'admin.settings.content.cat.news' },
+    { value: 'analysis', labelKey: 'admin.settings.content.cat.analysis' },
+    { value: 'tutorial', labelKey: 'admin.settings.content.cat.tutorial' },
+    { value: 'technology', labelKey: 'admin.settings.content.cat.technology' },
 ];
 
 function toggleCategory(cat) {
@@ -374,9 +384,9 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 </script>
 
 <template>
-    <Head title="Settings" />
+    <Head :title="t('admin.settings.title')" />
 
-    <AdminLayout title="Settings">
+    <AdminLayout :title="t('admin.settings.title')">
         <!-- Tabs -->
         <div class="flex items-center gap-1 mb-6 bg-dark-800/30 p-1 rounded-xl border border-white/5 overflow-x-auto">
             <button
@@ -386,7 +396,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 class="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap"
                 :class="activeTab === tab.key ? 'bg-primary-500/10 text-primary-400' : 'text-dark-400 hover:text-white hover:bg-white/5'"
             >
-                {{ tab.label }}
+                {{ t(tab.labelKey) }}
             </button>
         </div>
 
@@ -394,27 +404,27 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
         <div v-show="activeTab === 'general'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
             <!-- Success notification -->
             <div v-if="showSuccess" class="mb-4 p-3 rounded-xl bg-trading-green/10 border border-trading-green/30 text-trading-green text-sm">
-                บันทึกสำเร็จ!
+                {{ t('admin.settings.common.saveSuccess') }}
             </div>
-            <h3 class="text-lg font-semibold text-white mb-6">General Settings</h3>
+            <h3 class="text-lg font-semibold text-white mb-6">{{ t('admin.settings.general.heading') }}</h3>
             <form @submit.prevent="saveGeneral" class="space-y-6 max-w-2xl">
                 <div>
-                    <label :class="labelClass">Site Name</label>
+                    <label :class="labelClass">{{ t('admin.settings.general.siteName') }}</label>
                     <input v-model="generalForm.site_name" type="text" :class="inputClass" placeholder="TPIX TRADE" />
                     <p v-if="generalForm.errors.site_name" class="mt-1 text-sm text-red-400">{{ generalForm.errors.site_name }}</p>
                 </div>
 
                 <div>
-                    <label :class="labelClass">Site Description</label>
-                    <textarea v-model="generalForm.site_description" :class="inputClass" rows="3" placeholder="Decentralized exchange platform"></textarea>
+                    <label :class="labelClass">{{ t('admin.settings.general.siteDescription') }}</label>
+                    <textarea v-model="generalForm.site_description" :class="inputClass" rows="3" :placeholder="t('admin.settings.general.siteDescriptionPlaceholder')"></textarea>
                     <p v-if="generalForm.errors.site_description" class="mt-1 text-sm text-red-400">{{ generalForm.errors.site_description }}</p>
                 </div>
 
                 <div>
-                    <label :class="labelClass">Logo</label>
+                    <label :class="labelClass">{{ t('admin.settings.general.logo') }}</label>
                     <div class="flex items-center gap-4">
                         <div v-if="logoPreview" class="w-16 h-16 rounded-xl bg-dark-800 border border-white/10 overflow-hidden flex items-center justify-center">
-                            <img :src="logoPreview" alt="Logo" class="max-w-full max-h-full object-contain" />
+                            <img :src="logoPreview" :alt="t('admin.settings.general.logo')" class="max-w-full max-h-full object-contain" />
                         </div>
                         <div v-else class="w-16 h-16 rounded-xl bg-dark-800 border border-white/10 flex items-center justify-center">
                             <svg class="w-6 h-6 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -422,17 +432,17 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                             </svg>
                         </div>
                         <label class="cursor-pointer px-4 py-2 rounded-xl bg-dark-800 border border-white/10 text-sm text-dark-300 hover:text-white hover:bg-dark-700 transition-colors">
-                            Choose File
+                            {{ t('admin.settings.common.chooseFile') }}
                             <input type="file" @change="handleLogoChange" accept="image/*" class="hidden" />
                         </label>
                     </div>
                 </div>
 
                 <div>
-                    <label :class="labelClass">Favicon</label>
+                    <label :class="labelClass">{{ t('admin.settings.general.favicon') }}</label>
                     <div class="flex items-center gap-4">
                         <div v-if="faviconPreview" class="w-10 h-10 rounded-lg bg-dark-800 border border-white/10 overflow-hidden flex items-center justify-center">
-                            <img :src="faviconPreview" alt="Favicon" class="max-w-full max-h-full object-contain" />
+                            <img :src="faviconPreview" :alt="t('admin.settings.general.favicon')" class="max-w-full max-h-full object-contain" />
                         </div>
                         <div v-else class="w-10 h-10 rounded-lg bg-dark-800 border border-white/10 flex items-center justify-center">
                             <svg class="w-4 h-4 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -440,14 +450,14 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                             </svg>
                         </div>
                         <label class="cursor-pointer px-4 py-2 rounded-xl bg-dark-800 border border-white/10 text-sm text-dark-300 hover:text-white hover:bg-dark-700 transition-colors">
-                            Choose File
+                            {{ t('admin.settings.common.chooseFile') }}
                             <input type="file" @change="handleFaviconChange" accept="image/*" class="hidden" />
                         </label>
                     </div>
                 </div>
 
                 <div>
-                    <label :class="labelClass">Primary Color</label>
+                    <label :class="labelClass">{{ t('admin.settings.general.primaryColor') }}</label>
                     <div class="flex items-center gap-3">
                         <input v-model="generalForm.primary_color" type="color" class="w-12 h-12 rounded-xl border border-dark-600 bg-dark-800 cursor-pointer" />
                         <input v-model="generalForm.primary_color" type="text" :class="inputClass" class="flex-1" placeholder="#0ea5e9" />
@@ -456,8 +466,8 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
                 <div class="pt-4">
                     <button type="submit" :disabled="generalForm.processing" class="btn-primary px-6 py-2.5">
-                        <span v-if="generalForm.processing">Saving...</span>
-                        <span v-else>Save General Settings</span>
+                        <span v-if="generalForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                        <span v-else>{{ t('admin.settings.general.save') }}</span>
                     </button>
                 </div>
             </form>
@@ -465,27 +475,27 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
         <!-- SEO Tab -->
         <div v-show="activeTab === 'seo'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-            <h3 class="text-lg font-semibold text-white mb-6">SEO Settings</h3>
+            <h3 class="text-lg font-semibold text-white mb-6">{{ t('admin.settings.seo.heading') }}</h3>
             <form @submit.prevent="saveSeo" class="space-y-6 max-w-2xl">
                 <div>
-                    <label :class="labelClass">Meta Title</label>
-                    <input v-model="seoForm.meta_title" type="text" :class="inputClass" placeholder="TPIX TRADE - Decentralized Exchange" />
+                    <label :class="labelClass">{{ t('admin.settings.seo.metaTitle') }}</label>
+                    <input v-model="seoForm.meta_title" type="text" :class="inputClass" :placeholder="t('admin.settings.seo.metaTitlePlaceholder')" />
                 </div>
 
                 <div>
-                    <label :class="labelClass">Meta Description</label>
-                    <textarea v-model="seoForm.meta_description" :class="inputClass" rows="3" placeholder="Trade across all major blockchains from one interface"></textarea>
-                    <p class="mt-1 text-xs text-dark-500">{{ (seoForm.meta_description || '').length }}/160 characters</p>
+                    <label :class="labelClass">{{ t('admin.settings.seo.metaDescription') }}</label>
+                    <textarea v-model="seoForm.meta_description" :class="inputClass" rows="3" :placeholder="t('admin.settings.seo.metaDescriptionPlaceholder')"></textarea>
+                    <p class="mt-1 text-xs text-dark-500">{{ t('admin.settings.seo.charCount', { n: (seoForm.meta_description || '').length }) }}</p>
                 </div>
 
                 <div>
-                    <label :class="labelClass">OG Image</label>
+                    <label :class="labelClass">{{ t('admin.settings.seo.ogImage') }}</label>
                     <div class="flex items-center gap-4">
                         <div v-if="ogImagePreview" class="w-32 h-20 rounded-xl bg-dark-800 border border-white/10 overflow-hidden">
-                            <img :src="ogImagePreview" alt="OG Image" class="w-full h-full object-cover" />
+                            <img :src="ogImagePreview" :alt="t('admin.settings.seo.ogImage')" class="w-full h-full object-cover" />
                         </div>
                         <label class="cursor-pointer px-4 py-2 rounded-xl bg-dark-800 border border-white/10 text-sm text-dark-300 hover:text-white hover:bg-dark-700 transition-colors">
-                            Choose File
+                            {{ t('admin.settings.common.chooseFile') }}
                             <input type="file" @change="handleOgImageChange" accept="image/*" class="hidden" />
                         </label>
                     </div>
@@ -493,8 +503,8 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
                 <div class="pt-4">
                     <button type="submit" :disabled="seoForm.processing" class="btn-primary px-6 py-2.5">
-                        <span v-if="seoForm.processing">Saving...</span>
-                        <span v-else>Save SEO Settings</span>
+                        <span v-if="seoForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                        <span v-else>{{ t('admin.settings.seo.save') }}</span>
                     </button>
                 </div>
             </form>
@@ -511,8 +521,8 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         </svg>
                     </div>
                     <div>
-                        <h3 class="text-lg font-semibold text-white">Revenue Wallets</h3>
-                        <p class="text-xs text-gray-400">แยกกระเป๋ารับรายได้ตามเหรียญและเชน — TPIX (Native) / wTPIX (Wrapped)</p>
+                        <h3 class="text-lg font-semibold text-white">{{ t('admin.settings.revenue.heading') }}</h3>
+                        <p class="text-xs text-gray-400">{{ t('admin.settings.revenue.subtitle') }}</p>
                     </div>
                 </div>
             </div>
@@ -525,40 +535,40 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                             <span class="text-cyan-400 text-sm font-bold">T</span>
                         </div>
                         <div>
-                            <h4 class="text-sm font-semibold text-white">TPIX (Native Coin)</h4>
-                            <p class="text-xs text-gray-400">TPIX Chain (ID: 4289) — เหรียญหลักของเชน</p>
+                            <h4 class="text-sm font-semibold text-white">{{ t('admin.settings.revenue.tpix.title') }}</h4>
+                            <p class="text-xs text-gray-400">{{ t('admin.settings.revenue.tpix.subtitle') }}</p>
                         </div>
-                        <span class="ml-auto px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-medium">Native</span>
+                        <span class="ml-auto px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-medium">{{ t('admin.settings.revenue.native') }}</span>
                     </div>
 
                     <div class="max-w-2xl space-y-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-300 mb-2">TPIX Wallet Address</label>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">{{ t('admin.settings.revenue.tpix.walletLabel') }}</label>
                             <div class="relative">
-                                <input v-model="revenueForm.tpix_wallet" type="text" :class="inputClass" placeholder="0x... (กระเป๋ารับ TPIX บน TPIX Chain)" />
+                                <input v-model="revenueForm.tpix_wallet" type="text" :class="inputClass" :placeholder="t('admin.settings.revenue.tpix.walletPlaceholder')" />
                                 <div v-if="revenueForm.tpix_wallet" class="absolute right-3 top-1/2 -translate-y-1/2">
                                     <span v-if="isValidEvmAddress(revenueForm.tpix_wallet)" class="text-green-400 text-xs flex items-center gap-1">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                        Valid
+                                        {{ t('admin.settings.common.valid') }}
                                     </span>
-                                    <span v-else class="text-red-400 text-xs">Invalid</span>
+                                    <span v-else class="text-red-400 text-xs">{{ t('admin.settings.common.invalid') }}</span>
                                 </div>
                             </div>
                             <p v-if="revenueForm.errors.tpix_wallet" class="mt-1 text-sm text-red-400">{{ revenueForm.errors.tpix_wallet }}</p>
-                            <p class="text-xs text-gray-500 mt-1.5">รายได้จาก Trading Fees และ Swap Fees จะเข้ากระเป๋านี้ (ค่าสร้างเหรียญตั้งกระเป๋าแยกที่หน้า ตั้งค่า Token Factory)</p>
+                            <p class="text-xs text-gray-500 mt-1.5">{{ t('admin.settings.revenue.tpix.walletHint') }}</p>
                         </div>
 
                         <!-- TPIX Revenue Sources -->
                         <div class="p-3 rounded-xl bg-cyan-500/5 border border-cyan-500/10">
-                            <p class="text-xs font-medium text-cyan-400 mb-2">รายได้ที่รับเป็น TPIX</p>
+                            <p class="text-xs font-medium text-cyan-400 mb-2">{{ t('admin.settings.revenue.tpix.sourcesTitle') }}</p>
                             <div class="grid grid-cols-3 gap-2 text-xs">
                                 <div class="flex items-center gap-1.5 text-gray-300">
                                     <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-                                    Trading Fees
+                                    {{ t('admin.settings.revenue.sources.tradingFees') }}
                                 </div>
                                 <div class="flex items-center gap-1.5 text-gray-300">
                                     <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
-                                    Swap Fees
+                                    {{ t('admin.settings.revenue.sources.swapFees') }}
                                 </div>
                             </div>
                         </div>
@@ -572,16 +582,16 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                             <span class="text-amber-400 text-sm font-bold">w</span>
                         </div>
                         <div>
-                            <h4 class="text-sm font-semibold text-white">wTPIX (Wrapped Token)</h4>
-                            <p class="text-xs text-gray-400">เหรียญ Wrapped บนเชนอื่น — เลือกเชนได้</p>
+                            <h4 class="text-sm font-semibold text-white">{{ t('admin.settings.revenue.wtpix.title') }}</h4>
+                            <p class="text-xs text-gray-400">{{ t('admin.settings.revenue.wtpix.subtitle') }}</p>
                         </div>
-                        <span class="ml-auto px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium">Wrapped</span>
+                        <span class="ml-auto px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium">{{ t('admin.settings.revenue.wrapped') }}</span>
                     </div>
 
                     <div class="max-w-2xl space-y-4">
                         <!-- Chain Selector -->
                         <div>
-                            <label class="block text-sm font-medium text-gray-300 mb-2">เชนสำหรับ wTPIX</label>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">{{ t('admin.settings.revenue.wtpix.chainLabel') }}</label>
                             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 <button
                                     v-for="chain in wtpixChainOptions"
@@ -600,32 +610,32 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-300 mb-2">wTPIX Wallet Address</label>
+                            <label class="block text-sm font-medium text-gray-300 mb-2">{{ t('admin.settings.revenue.wtpix.walletLabel') }}</label>
                             <div class="relative">
-                                <input v-model="revenueForm.wtpix_wallet" type="text" :class="inputClass" placeholder="0x... (กระเป๋ารับ wTPIX บนเชนที่เลือก)" />
+                                <input v-model="revenueForm.wtpix_wallet" type="text" :class="inputClass" :placeholder="t('admin.settings.revenue.wtpix.walletPlaceholder')" />
                                 <div v-if="revenueForm.wtpix_wallet" class="absolute right-3 top-1/2 -translate-y-1/2">
                                     <span v-if="isValidEvmAddress(revenueForm.wtpix_wallet)" class="text-green-400 text-xs flex items-center gap-1">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                        Valid
+                                        {{ t('admin.settings.common.valid') }}
                                     </span>
-                                    <span v-else class="text-red-400 text-xs">Invalid</span>
+                                    <span v-else class="text-red-400 text-xs">{{ t('admin.settings.common.invalid') }}</span>
                                 </div>
                             </div>
                             <p v-if="revenueForm.errors.wtpix_wallet" class="mt-1 text-sm text-red-400">{{ revenueForm.errors.wtpix_wallet }}</p>
-                            <p class="text-xs text-gray-500 mt-1.5">รายได้จากการซื้อขาย wTPIX บน {{ wtpixChainOptions.find(c => c.id == revenueForm.wtpix_chain_id)?.name || 'เชนที่เลือก' }}</p>
+                            <p class="text-xs text-gray-500 mt-1.5">{{ t('admin.settings.revenue.wtpix.walletHint', { chain: wtpixChainOptions.find(c => c.id == revenueForm.wtpix_chain_id)?.name || t('admin.settings.revenue.wtpix.selectedChain') }) }}</p>
                         </div>
 
                         <!-- wTPIX Info -->
                         <div class="p-3 rounded-xl bg-amber-500/5 border border-amber-500/10">
-                            <p class="text-xs font-medium text-amber-400 mb-2">รายได้ที่รับเป็น wTPIX</p>
+                            <p class="text-xs font-medium text-amber-400 mb-2">{{ t('admin.settings.revenue.wtpix.sourcesTitle') }}</p>
                             <div class="grid grid-cols-2 gap-2 text-xs">
                                 <div class="flex items-center gap-1.5 text-gray-300">
                                     <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-                                    Cross-chain Trading
+                                    {{ t('admin.settings.revenue.sources.crossChainTrading') }}
                                 </div>
                                 <div class="flex items-center gap-1.5 text-gray-300">
                                     <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>
-                                    Bridge Fees
+                                    {{ t('admin.settings.revenue.sources.bridgeFees') }}
                                 </div>
                             </div>
                         </div>
@@ -634,13 +644,13 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
                 <!-- Options -->
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                    <h4 class="text-sm font-semibold text-white mb-4">Options</h4>
+                    <h4 class="text-sm font-semibold text-white mb-4">{{ t('admin.settings.revenue.options') }}</h4>
 
                     <!-- Auto Sync Toggle -->
                     <div class="flex items-center justify-between py-3 px-4 rounded-xl bg-white/5 border border-white/10 max-w-2xl">
                         <div>
-                            <p class="text-sm font-medium text-white">Auto Sync Wallet</p>
-                            <p class="text-xs text-gray-400">ซิงค์ TPIX wallet ไปยัง Trading Fee และ Factory Fee อัตโนมัติ</p>
+                            <p class="text-sm font-medium text-white">{{ t('admin.settings.revenue.autoSync.title') }}</p>
+                            <p class="text-xs text-gray-400">{{ t('admin.settings.revenue.autoSync.hint') }}</p>
                         </div>
                         <button type="button" @click="revenueForm.auto_collect_enabled = !revenueForm.auto_collect_enabled"
                             :class="['w-12 h-6 rounded-full transition-colors', revenueForm.auto_collect_enabled ? 'bg-trading-green' : 'bg-dark-600']">
@@ -653,13 +663,13 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                         </svg>
-                        ยังไม่ได้ตั้งกระเป๋ารับรายได้ — ระบบ Trading และ Token Factory จะไม่สามารถเก็บค่าธรรมเนียมได้
+                        {{ t('admin.settings.revenue.noWalletWarning') }}
                     </div>
 
                     <div class="mt-6">
                         <button type="submit" :disabled="revenueForm.processing" class="btn-primary px-6 py-2.5">
-                            <span v-if="revenueForm.processing">Saving...</span>
-                            <span v-else>Save Revenue Wallets</span>
+                            <span v-if="revenueForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                            <span v-else>{{ t('admin.settings.revenue.save') }}</span>
                         </button>
                     </div>
                 </div>
@@ -668,23 +678,23 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
         <!-- Trading Tab -->
         <div v-show="activeTab === 'trading'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-            <h3 class="text-lg font-semibold text-white mb-6">Trading Settings</h3>
+            <h3 class="text-lg font-semibold text-white mb-6">{{ t('admin.settings.trading.heading') }}</h3>
             <form @submit.prevent="saveTrading" class="space-y-6 max-w-2xl">
                 <!-- Feature Toggles -->
                 <div class="p-4 rounded-xl bg-dark-800/50 border border-white/10">
-                    <h4 class="text-sm font-semibold text-white mb-4">Feature Toggles</h4>
+                    <h4 class="text-sm font-semibold text-white mb-4">{{ t('admin.settings.trading.featureToggles') }}</h4>
                     <div class="flex flex-wrap gap-6">
                         <div class="flex items-center gap-3">
-                            <label class="text-sm text-dark-300">🛡️ Master Node</label>
+                            <label class="text-sm text-dark-300">🛡️ {{ t('admin.settings.trading.masterNode') }}</label>
                             <button type="button" @click="tradingForm.masternode_enabled = !tradingForm.masternode_enabled"
                                 :class="['w-12 h-6 rounded-full transition-colors', tradingForm.masternode_enabled ? 'bg-trading-green' : 'bg-dark-600']">
                                 <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', tradingForm.masternode_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
                             </button>
-                            <span :class="['text-xs', tradingForm.masternode_enabled ? 'text-trading-green' : 'text-dark-500']">{{ tradingForm.masternode_enabled ? 'ON' : 'OFF' }}</span>
+                            <span :class="['text-xs', tradingForm.masternode_enabled ? 'text-trading-green' : 'text-dark-500']">{{ tradingForm.masternode_enabled ? t('admin.settings.common.on') : t('admin.settings.common.off') }}</span>
                         </div>
                         <!-- สะพาน USDT มีสวิตช์ ด่านความพร้อม และวงเงินของตัวเองที่ /admin/bridge (ที่เดียว ไม่ซ้ำสองที่) -->
                         <a href="/admin/bridge" class="flex items-center gap-2 text-sm text-primary-400 hover:underline">
-                            🌉 Bridge → /admin/bridge
+                            🌉 {{ t('admin.settings.trading.bridgeLink') }} → /admin/bridge
                         </a>
                     </div>
                 </div>
@@ -695,27 +705,27 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
                         </svg>
-                        Fee Collection (DEX Revenue)
+                        {{ t('admin.settings.trading.feeCollection') }}
                     </h4>
 
                     <div class="space-y-4">
                         <div>
-                            <label :class="labelClass">Fee Collector Wallet Address</label>
+                            <label :class="labelClass">{{ t('admin.settings.trading.feeCollectorWallet') }}</label>
                             <input v-model="tradingForm.fee_collector_wallet" type="text" :class="inputClass" placeholder="0x..." />
                             <p v-if="tradingForm.errors.fee_collector_wallet" class="mt-1 text-sm text-red-400">{{ tradingForm.errors.fee_collector_wallet }}</p>
-                            <p class="mt-1 text-xs text-dark-500">EVM wallet address that receives all platform swap fees</p>
+                            <p class="mt-1 text-xs text-dark-500">{{ t('admin.settings.trading.feeCollectorHint') }}</p>
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <label :class="labelClass">Default Fee Rate (%)</label>
+                                <label :class="labelClass">{{ t('admin.settings.trading.defaultFeeRate') }}</label>
                                 <input v-model.number="tradingForm.default_fee_rate" type="number" step="0.01" min="0" max="5" :class="inputClass" placeholder="0.3" />
-                                <p class="mt-1 text-xs text-dark-500">Default: 0.3% per swap</p>
+                                <p class="mt-1 text-xs text-dark-500">{{ t('admin.settings.trading.defaultFeeRateHint') }}</p>
                             </div>
                             <div>
-                                <label :class="labelClass">Max Fee Rate (%)</label>
+                                <label :class="labelClass">{{ t('admin.settings.trading.maxFeeRate') }}</label>
                                 <input v-model.number="tradingForm.max_fee_rate" type="number" step="0.1" min="0" max="10" :class="inputClass" placeholder="5.0" />
-                                <p class="mt-1 text-xs text-dark-500">Maximum allowed fee cap</p>
+                                <p class="mt-1 text-xs text-dark-500">{{ t('admin.settings.trading.maxFeeRateHint') }}</p>
                             </div>
                         </div>
                     </div>
@@ -723,15 +733,15 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
                 <!-- Slippage Section -->
                 <div>
-                    <label :class="labelClass">Default Slippage (%)</label>
+                    <label :class="labelClass">{{ t('admin.settings.trading.defaultSlippage') }}</label>
                     <input v-model.number="tradingForm.default_slippage" type="number" step="0.1" min="0" :class="inputClass" placeholder="0.5" />
-                    <p class="mt-1 text-xs text-dark-500">Default slippage tolerance for trades</p>
+                    <p class="mt-1 text-xs text-dark-500">{{ t('admin.settings.trading.defaultSlippageHint') }}</p>
                 </div>
 
                 <div>
-                    <label :class="labelClass">Max Slippage (%)</label>
+                    <label :class="labelClass">{{ t('admin.settings.trading.maxSlippage') }}</label>
                     <input v-model.number="tradingForm.max_slippage" type="number" step="0.1" min="0" :class="inputClass" placeholder="50" />
-                    <p class="mt-1 text-xs text-dark-500">Maximum allowed slippage tolerance</p>
+                    <p class="mt-1 text-xs text-dark-500">{{ t('admin.settings.trading.maxSlippageHint') }}</p>
                 </div>
 
                 <!-- WalletConnect Section -->
@@ -746,18 +756,18 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     </h4>
                     <div>
                         <label :class="labelClass">Project ID</label>
-                        <input v-model="tradingForm.walletconnect_project_id" type="text" :class="inputClass" placeholder="e.g. 52dc35105b74..." />
+                        <input v-model="tradingForm.walletconnect_project_id" type="text" :class="inputClass" :placeholder="t('admin.settings.trading.walletconnect.projectIdPlaceholder')" />
                         <p class="mt-1 text-xs text-dark-500">
-                            Project ID จาก <a href="https://cloud.reown.com" target="_blank" class="text-blue-400 hover:underline">cloud.reown.com</a>
-                            — ใช้สำหรับเชื่อมต่อ wallet ผ่าน QR code (TPIX Wallet app, MetaMask mobile, etc.)
+                            {{ t('admin.settings.trading.walletconnect.hintPrefix') }} <a href="https://cloud.reown.com" target="_blank" class="text-blue-400 hover:underline">cloud.reown.com</a>
+                            {{ t('admin.settings.trading.walletconnect.hintSuffix') }}
                         </p>
                     </div>
                 </div>
 
                 <div class="pt-4">
                     <button type="submit" :disabled="tradingForm.processing" class="btn-primary px-6 py-2.5">
-                        <span v-if="tradingForm.processing">Saving...</span>
-                        <span v-else>Save Trading Settings</span>
+                        <span v-if="tradingForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                        <span v-else>{{ t('admin.settings.trading.save') }}</span>
                     </button>
                 </div>
             </form>
@@ -771,13 +781,12 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 (ตัวคิดเงินอ่านค่าคนละชุด) — ตอนนี้ทั้งหมดอยู่ในนโยบายที่เดียว
             -->
             <p class="text-sm text-dark-300 max-w-2xl">
-                การเปิด/ปิดประเภทเหรียญ ตัวเลือกที่เสี่ยง ค่าธรรมเนียม เพดานจำนวนเหรียญ การอนุมัติอัตโนมัติ
-                และกระเป๋ารับค่าธรรมเนียม ย้ายไปอยู่ที่หน้า <span class="text-white font-medium">ตั้งค่า Token Factory</span> แล้ว (เฉพาะ super admin)
+                {{ t('admin.settings.factory.movedPrefix') }} <span class="text-white font-medium">{{ t('admin.settings.factory.pageName') }}</span> {{ t('admin.settings.factory.movedSuffix') }}
             </p>
             <p class="text-xs text-dark-500 mt-2">
-                กระเป๋ารับค่าธรรมเนียมสร้างเหรียญต้องตั้งในหน้านั้นเท่านั้น — ระบบไม่ดึงจากแท็บ Revenue Wallet
+                {{ t('admin.settings.factory.walletNote') }}
             </p>
-            <a href="/admin/token-factory/policy" class="btn-primary inline-block mt-5 px-6 py-2.5">ไปที่ ตั้งค่า Token Factory</a>
+            <a href="/admin/token-factory/policy" class="btn-primary inline-block mt-5 px-6 py-2.5">{{ t('admin.settings.factory.goTo') }}</a>
         </div>
 
         <!-- Email Tab -->
@@ -794,32 +803,32 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
             <!-- Email Configuration -->
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">Email Configuration</h3>
-                <p class="text-dark-400 text-sm mb-6">ตั้งค่า Resend API สำหรับส่งอีเมลจากระบบ</p>
+                <h3 class="text-lg font-semibold text-white mb-2">{{ t('admin.settings.email.configTitle') }}</h3>
+                <p class="text-dark-400 text-sm mb-6">{{ t('admin.settings.email.configSubtitle') }}</p>
 
                 <form @submit.prevent="saveEmail" class="space-y-6 max-w-2xl">
                     <div>
                         <label :class="labelClass">Resend API Key</label>
                         <input v-model="emailForm.resend_api_key" type="password" :class="inputClass" placeholder="re_xxxxxxxxxxxxxxxx" />
-                        <p class="text-dark-500 text-xs mt-1">สมัครฟรีที่ <a href="https://resend.com" target="_blank" class="text-primary-400 hover:underline">resend.com</a> — ส่งได้ 3,000 เมล/เดือน (ฟรี)</p>
+                        <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.email.signupPrefix') }} <a href="https://resend.com" target="_blank" class="text-primary-400 hover:underline">resend.com</a> {{ t('admin.settings.email.signupSuffix') }}</p>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <label :class="labelClass">From Email</label>
+                            <label :class="labelClass">{{ t('admin.settings.email.fromEmail') }}</label>
                             <input v-model="emailForm.mail_from_address" type="email" :class="inputClass" placeholder="noreply@xman4289.com" />
-                            <p class="text-dark-500 text-xs mt-1">ต้องเป็น domain ที่ verified ใน Resend</p>
+                            <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.email.fromEmailHint') }}</p>
                         </div>
                         <div>
-                            <label :class="labelClass">From Name</label>
+                            <label :class="labelClass">{{ t('admin.settings.email.fromName') }}</label>
                             <input v-model="emailForm.mail_from_name" type="text" :class="inputClass" placeholder="TPIX TRADE" />
                         </div>
                     </div>
 
                     <div class="pt-2">
                         <button type="submit" :disabled="emailForm.processing" class="btn-primary px-6 py-2.5">
-                            <span v-if="emailForm.processing">Saving...</span>
-                            <span v-else>Save Email Settings</span>
+                            <span v-if="emailForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                            <span v-else>{{ t('admin.settings.email.save') }}</span>
                         </button>
                     </div>
                 </form>
@@ -827,12 +836,12 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
             <!-- Send Test Email -->
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                <h3 class="text-lg font-semibold text-white mb-2">ทดสอบส่งอีเมล</h3>
-                <p class="text-dark-400 text-sm mb-6">ส่งอีเมลทดสอบเพื่อตรวจสอบว่าระบบทำงานปกติ</p>
+                <h3 class="text-lg font-semibold text-white mb-2">{{ t('admin.settings.email.testTitle') }}</h3>
+                <p class="text-dark-400 text-sm mb-6">{{ t('admin.settings.email.testSubtitle') }}</p>
 
                 <div class="flex items-end gap-3 max-w-2xl">
                     <div class="flex-1">
-                        <label :class="labelClass">Email ปลายทาง</label>
+                        <label :class="labelClass">{{ t('admin.settings.email.testRecipient') }}</label>
                         <input v-model="testEmailAddress" type="email" :class="inputClass" placeholder="your@email.com" />
                     </div>
                     <button
@@ -845,11 +854,11 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     >
                         <span v-if="emailTestLoading" class="flex items-center gap-2">
                             <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                            Sending...
+                            {{ t('admin.settings.email.sending') }}
                         </span>
                         <span v-else class="flex items-center gap-2">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                            Send Test Email
+                            {{ t('admin.settings.email.sendTest') }}
                         </span>
                     </button>
                 </div>
@@ -857,34 +866,34 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
             <!-- Info Section -->
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                <h3 class="text-lg font-semibold text-white mb-4">ข้อมูลระบบอีเมล</h3>
+                <h3 class="text-lg font-semibold text-white mb-4">{{ t('admin.settings.email.infoTitle') }}</h3>
                 <div class="space-y-3 text-sm">
                     <div class="flex items-start gap-3 p-3 rounded-xl bg-dark-800/50">
                         <span class="text-primary-400 mt-0.5">📧</span>
                         <div>
                             <p class="text-white font-medium">Resend</p>
-                            <p class="text-dark-400">ใช้ Resend API สำหรับส่งอีเมล — เร็ว เสถียร รองรับ SPF/DKIM</p>
+                            <p class="text-dark-400">{{ t('admin.settings.email.info.resendDesc') }}</p>
                         </div>
                     </div>
                     <div class="flex items-start gap-3 p-3 rounded-xl bg-dark-800/50">
                         <span class="text-trading-green mt-0.5">✅</span>
                         <div>
-                            <p class="text-white font-medium">Domain ที่ Verified</p>
-                            <p class="text-dark-400">xman4289.com — ส่งอีเมลได้ทันที ไม่ถูก spam</p>
+                            <p class="text-white font-medium">{{ t('admin.settings.email.info.domainTitle') }}</p>
+                            <p class="text-dark-400">{{ t('admin.settings.email.info.domainDesc') }}</p>
                         </div>
                     </div>
                     <div class="flex items-start gap-3 p-3 rounded-xl bg-dark-800/50">
                         <span class="text-yellow-400 mt-0.5">📊</span>
                         <div>
-                            <p class="text-white font-medium">Free Plan</p>
-                            <p class="text-dark-400">ส่งได้ 3,000 เมล/เดือน, 100 เมล/วัน — เพียงพอสำหรับ notification</p>
+                            <p class="text-white font-medium">{{ t('admin.settings.email.info.planTitle') }}</p>
+                            <p class="text-dark-400">{{ t('admin.settings.email.info.planDesc') }}</p>
                         </div>
                     </div>
                     <div class="flex items-start gap-3 p-3 rounded-xl bg-dark-800/50">
                         <span class="text-accent-400 mt-0.5">🎨</span>
                         <div>
-                            <p class="text-white font-medium">Template</p>
-                            <p class="text-dark-400">Dark theme แบบ TPIX TRADE พร้อมรองรับ Thai + responsive ทุกอุปกรณ์</p>
+                            <p class="text-white font-medium">{{ t('admin.settings.email.info.templateTitle') }}</p>
+                            <p class="text-dark-400">{{ t('admin.settings.email.info.templateDesc') }}</p>
                         </div>
                     </div>
                 </div>
@@ -893,14 +902,14 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
         <!-- Security Tab -->
         <div v-show="activeTab === 'security'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-            <h3 class="text-lg font-semibold text-white mb-6">Security Settings</h3>
+            <h3 class="text-lg font-semibold text-white mb-6">{{ t('admin.settings.security.heading') }}</h3>
             <form @submit.prevent="saveSecurity" class="space-y-6 max-w-2xl">
                 <!-- Turnstile Toggle -->
                 <div>
                     <div class="flex items-center justify-between">
                         <div>
                             <label class="text-sm font-medium text-white">Cloudflare Turnstile</label>
-                            <p class="text-xs text-dark-500 mt-0.5">Enable bot protection on login</p>
+                            <p class="text-xs text-dark-500 mt-0.5">{{ t('admin.settings.security.turnstileHint') }}</p>
                         </div>
                         <button
                             type="button"
@@ -928,19 +937,19 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 </div>
 
                 <div>
-                    <label :class="labelClass">Max Login Attempts</label>
+                    <label :class="labelClass">{{ t('admin.settings.security.maxLoginAttempts') }}</label>
                     <input v-model.number="securityForm.max_login_attempts" type="number" min="1" :class="inputClass" placeholder="5" />
                 </div>
 
                 <div>
-                    <label :class="labelClass">Lockout Duration (minutes)</label>
+                    <label :class="labelClass">{{ t('admin.settings.security.lockoutDuration') }}</label>
                     <input v-model.number="securityForm.lockout_duration" type="number" min="1" :class="inputClass" placeholder="15" />
                 </div>
 
                 <div class="pt-4">
                     <button type="submit" :disabled="securityForm.processing" class="btn-primary px-6 py-2.5">
-                        <span v-if="securityForm.processing">Saving...</span>
-                        <span v-else>Save Security Settings</span>
+                        <span v-if="securityForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                        <span v-else>{{ t('admin.settings.security.save') }}</span>
                     </button>
                 </div>
             </form>
@@ -948,7 +957,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
         <!-- Social Tab -->
         <div v-show="activeTab === 'social'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-            <h3 class="text-lg font-semibold text-white mb-6">Social Links</h3>
+            <h3 class="text-lg font-semibold text-white mb-6">{{ t('admin.settings.social.heading') }}</h3>
             <form @submit.prevent="saveSocial" class="space-y-6 max-w-2xl">
                 <div>
                     <label :class="labelClass">Twitter / X</label>
@@ -965,18 +974,18 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
                 <div class="pt-4">
                     <button type="submit" :disabled="socialForm.processing" class="btn-primary px-6 py-2.5">
-                        <span v-if="socialForm.processing">Saving...</span>
-                        <span v-else>Save Social Links</span>
+                        <span v-if="socialForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                        <span v-else>{{ t('admin.settings.social.save') }}</span>
                     </button>
                 </div>
             </form>
         </div>
         <!-- Payment (Stripe) Tab -->
         <div v-show="activeTab === 'payment'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-            <h3 class="text-lg font-semibold text-white mb-6">💳 Payment Settings (Stripe)</h3>
+            <h3 class="text-lg font-semibold text-white mb-6">💳 {{ t('admin.settings.payment.heading') }}</h3>
             <form @submit.prevent="savePayment" class="space-y-6 max-w-2xl">
                 <div class="flex items-center gap-3 mb-4">
-                    <label class="text-sm text-dark-300">เปิดใช้ Stripe</label>
+                    <label class="text-sm text-dark-300">{{ t('admin.settings.payment.enableStripe') }}</label>
                     <button type="button" @click="paymentForm.stripe_enabled = !paymentForm.stripe_enabled"
                         :class="['w-12 h-6 rounded-full transition-colors', paymentForm.stripe_enabled ? 'bg-primary-500' : 'bg-dark-600']">
                         <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', paymentForm.stripe_enabled ? 'translate-x-6' : 'translate-x-0.5']"></div>
@@ -986,7 +995,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <label :class="labelClass">Stripe Publishable Key</label>
                     <input v-model="paymentForm.stripe_public_key" type="text" :class="inputClass" placeholder="pk_live_..." />
                     <p v-if="paymentForm.errors.stripe_public_key" class="mt-1 text-sm text-red-400">{{ paymentForm.errors.stripe_public_key }}</p>
-                    <p class="text-dark-500 text-xs mt-1">ดูได้ที่ https://dashboard.stripe.com/apikeys</p>
+                    <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.payment.publicKeyHint') }}</p>
                 </div>
                 <div>
                     <label :class="labelClass">Stripe Secret Key</label>
@@ -996,26 +1005,26 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 <div>
                     <label :class="labelClass">Stripe Webhook Secret</label>
                     <input v-model="paymentForm.stripe_webhook_secret" type="password" :class="inputClass" placeholder="whsec_..." />
-                    <p class="text-dark-500 text-xs mt-1">Webhook endpoint: {{ $page.props.appUrl || '' }}/api/v1/stripe/webhook</p>
+                    <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.payment.webhookEndpoint') }} {{ $page.props.appUrl || '' }}/api/v1/stripe/webhook</p>
                 </div>
                 <div>
-                    <label :class="labelClass">ค่าบริการชำระด้วยบัตร (%)</label>
+                    <label :class="labelClass">{{ t('admin.settings.payment.cardFee') }}</label>
                     <input v-model="paymentForm.card_service_fee_percent" type="number" min="0" max="50" step="0.1" :class="inputClass" placeholder="3" />
                     <p class="text-dark-500 text-xs mt-1">
-                        บวกเพิ่มจากค่าเหรียญ แสดงเป็นบรรทัดแยกในหน้าซื้อและหน้า Stripe — ไม่ลดจำนวนเหรียญที่ลูกค้าได้ · 0 = ไม่เก็บ
+                        {{ t('admin.settings.payment.cardFeeHint') }}
                     </p>
                 </div>
                 <div>
-                    <label :class="labelClass">พักการ claim ของการซื้อด้วยบัตร (วัน)</label>
+                    <label :class="labelClass">{{ t('admin.settings.payment.claimHold') }}</label>
                     <input v-model="paymentForm.card_claim_hold_days" type="number" min="0" max="180" step="1" :class="inputClass" placeholder="60" />
                     <p class="text-dark-500 text-xs mt-1">
-                        ผู้ถือบัตรดึงเงินคืนได้หลังรูด เหรียญของออเดอร์บัตรจึงรอจนครบจำนวนวันนี้ก่อน · มีผลกับออเดอร์ใหม่เท่านั้น · 0 = ไม่พัก
+                        {{ t('admin.settings.payment.claimHoldHint') }}
                     </p>
                 </div>
                 <div class="pt-4">
                     <button type="submit" :disabled="paymentForm.processing" class="btn-primary px-6 py-2.5">
-                        <span v-if="paymentForm.processing">Saving...</span>
-                        <span v-else>Save Payment Settings</span>
+                        <span v-if="paymentForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                        <span v-else>{{ t('admin.settings.payment.save') }}</span>
                     </button>
                 </div>
             </form>
@@ -1023,71 +1032,67 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
         <!-- Map Tab -->
         <div v-show="activeTab === 'map'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-            <h3 class="text-lg font-semibold text-white mb-2">🗺️ แผนที่ (หน้ารายงานตำแหน่งมาสเตอร์โหนด)</h3>
+            <h3 class="text-lg font-semibold text-white mb-2">🗺️ {{ t('admin.settings.map.heading') }}</h3>
             <p class="text-dark-400 text-sm mb-6 max-w-2xl leading-relaxed">
-                แผนที่วาดสองชั้น ชั้นล่างเป็นรูปประเทศที่เก็บไว้ในระบบ ใช้ได้ตลอดไปไม่มีวันหมดอายุ
-                ชั้นบนเป็นภาพไทล์จากผู้ให้บริการ ซึ่งทำให้ซูมได้ลึกและเห็นถนน/เมืองละเอียด
-                ใส่คีย์ตรงนี้เพื่อเปิดชั้นบน ทั้งหน้าเว็บและโปรแกรมมาสเตอร์โหนดจะดึงค่านี้ไปใช้ทันที
+                {{ t('admin.settings.map.intro') }}
             </p>
 
             <!-- สถานะจริงจากเซิร์ฟเวอร์ — ค่าคีย์ในช่องถูกปิดไว้ ดูจากช่องไม่ออก -->
             <div class="mb-6 flex flex-wrap items-center gap-2 text-sm">
                 <span v-if="mapStatus.source === 'admin'"
                       class="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
-                    ✅ ตั้งคีย์แล้ว (จากหน้านี้)
+                    ✅ {{ t('admin.settings.map.status.admin') }}
                 </span>
                 <span v-else-if="mapStatus.source === 'env'"
                       class="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400">
-                    ⚠️ ใช้คีย์จากไฟล์ .env อยู่ — กรอกที่นี่แล้วจะใช้ของที่นี่แทน
+                    ⚠️ {{ t('admin.settings.map.status.env') }}
                 </span>
                 <span v-else
                       class="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-dark-300">
-                    ยังไม่ได้ตั้งคีย์ — ตอนนี้ใช้แผนที่ในระบบอย่างเดียว (ซูมได้ถึงระดับประเทศ)
+                    {{ t('admin.settings.map.status.none') }}
                 </span>
             </div>
 
             <form @submit.prevent="saveMap" class="space-y-6 max-w-2xl">
                 <div>
-                    <label :class="labelClass">API Key ของผู้ให้บริการแผนที่</label>
+                    <label :class="labelClass">{{ t('admin.settings.map.apiKey') }}</label>
                     <input v-model="mapForm.map_tile_key" type="password" :class="inputClass"
-                           placeholder="วางคีย์ที่ได้จาก CARTO ที่นี่" autocomplete="off" />
+                           :placeholder="t('admin.settings.map.apiKeyPlaceholder')" autocomplete="off" />
                     <p class="text-dark-500 text-xs mt-1 leading-relaxed">
-                        ขอคีย์ฟรีได้ที่
+                        {{ t('admin.settings.map.freeKeyPrefix') }}
                         <a href="https://carto.com/basemaps/apikey" target="_blank" rel="noopener"
                            class="text-primary-400 hover:underline">carto.com/basemaps/apikey</a>
-                        — ฟรี 5 ล้านครั้ง/เดือน<br>
-                        ปล่อยว่าง = ปิดชั้นไทล์ ใช้แผนที่ในระบบแทน (ดีกว่าโชว์ภาพที่มีลายน้ำ
-                        “API KEY REQUIRED” พาดทั้งแผนที่ ซึ่งเป็นสิ่งที่เกิดเมื่อเรียกโดยไม่มีคีย์)
+                        {{ t('admin.settings.map.freeKeySuffix') }}<br>
+                        {{ t('admin.settings.map.emptyNote') }}
                     </p>
                 </div>
 
                 <div>
-                    <label :class="labelClass">แม่แบบ URL ไทล์</label>
+                    <label :class="labelClass">{{ t('admin.settings.map.tileUrl') }}</label>
                     <input v-model="mapForm.map_tile_url" type="text" :class="inputClass"
                            placeholder="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
                     <p class="text-dark-500 text-xs mt-1">
-                        ไม่ต้องใส่คีย์ในช่องนี้ ระบบจะต่อ <code class="text-dark-400">?key=…</code> ให้เอง ·
-                        เปลี่ยนผู้ให้บริการรายอื่นได้โดยไม่ต้องแก้โค้ด
+                        {{ t('admin.settings.map.tileUrlHintPrefix') }} <code class="text-dark-400">?key=…</code> {{ t('admin.settings.map.tileUrlHintSuffix') }}
                     </p>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label :class="labelClass">Subdomains</label>
+                        <label :class="labelClass">{{ t('admin.settings.map.subdomains') }}</label>
                         <input v-model="mapForm.map_tile_subdomains" type="text" :class="inputClass" placeholder="abcd" />
-                        <p class="text-dark-500 text-xs mt-1">ตัวอักษรที่ใช้แทน {s} ใน URL</p>
+                        <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.map.subdomainsHint') }}</p>
                     </div>
                     <div>
-                        <label :class="labelClass">ซูมได้ลึกสุด</label>
+                        <label :class="labelClass">{{ t('admin.settings.map.maxZoom') }}</label>
                         <input v-model="mapForm.map_tile_max_zoom" type="number" min="5" max="20" :class="inputClass" placeholder="15" />
-                        <p class="text-dark-500 text-xs mt-1">ไม่มีคีย์จะถูกจำกัดที่ 5 โดยอัตโนมัติ</p>
+                        <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.map.maxZoomHint') }}</p>
                     </div>
                 </div>
 
                 <div class="pt-4">
                     <button type="submit" :disabled="mapForm.processing" class="btn-primary px-6 py-2.5">
-                        <span v-if="mapForm.processing">กำลังบันทึก...</span>
-                        <span v-else>บันทึกค่าแผนที่</span>
+                        <span v-if="mapForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                        <span v-else>{{ t('admin.settings.map.save') }}</span>
                     </button>
                 </div>
             </form>
@@ -1095,7 +1100,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
         <!-- AI Tab -->
         <div v-show="activeTab === 'ai'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-            <h3 v-if="canManageSecurity" class="text-lg font-semibold text-white mb-6">🤖 AI Settings (Groq)</h3>
+            <h3 v-if="canManageSecurity" class="text-lg font-semibold text-white mb-6">🤖 {{ t('admin.settings.ai.heading') }}</h3>
 
             <!-- ผลการทดสอบคีย์กลับมาเป็น flash — ต้องมีที่แสดงในแท็บนี้ ไม่งั้นกดแล้วเหมือนไม่มีอะไรเกิดขึ้น -->
             <div v-if="flash.success" class="mb-6 p-4 rounded-xl bg-trading-green/10 border border-trading-green/30 text-trading-green text-sm flex items-start gap-2">
@@ -1110,13 +1115,13 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 <div>
                     <label :class="labelClass">Groq API Key</label>
                     <input v-model="aiForm.groq_api_key" type="password" :class="inputClass" placeholder="gsk_..." />
-                    <p class="text-dark-500 text-xs mt-1">สมัครฟรีที่ https://console.groq.com/keys</p>
+                    <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.ai.groqKeyHint') }}</p>
                 </div>
                 <div>
-                    <label :class="labelClass">Default AI Model</label>
+                    <label :class="labelClass">{{ t('admin.settings.ai.defaultModel') }}</label>
                     <select v-model="aiForm.groq_default_model" :class="inputClass">
-                        <option value="llama-3.3-70b-versatile">Llama 3.3 70B (แนะนำ)</option>
-                        <option value="llama-3.1-8b-instant">Llama 3.1 8B (เร็ว)</option>
+                        <option value="llama-3.3-70b-versatile">{{ t('admin.settings.ai.models.llama70b') }}</option>
+                        <option value="llama-3.1-8b-instant">{{ t('admin.settings.ai.models.llama8b') }}</option>
                         <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
                         <option value="gemma2-9b-it">Gemma 2 9B</option>
                     </select>
@@ -1141,44 +1146,44 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 <div class="p-4 rounded-xl bg-gradient-to-br from-accent-500/5 via-primary-500/5 to-warm-500/5 border border-primary-500/10">
                     <h4 class="text-sm font-semibold text-primary-400 mb-4 flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                        AI Image Generation
+                        {{ t('admin.settings.ai.imageGen') }}
                     </h4>
-                    <p class="text-dark-500 text-xs mb-4">ไม่จำเป็นต้องใส่ — ระบบจะใช้ Pollinations.ai (ฟรี) เป็น fallback อัตโนมัติ</p>
+                    <p class="text-dark-500 text-xs mb-4">{{ t('admin.settings.ai.imageGenHint') }}</p>
 
                     <div class="space-y-4">
                         <div>
                             <label :class="labelClass">Cloudflare Worker URL</label>
                             <input v-model="aiForm.cloudflare_image_url" type="text" :class="inputClass" placeholder="https://tpix-image-gen.xjanovax.workers.dev/" />
-                            <p class="text-dark-500 text-xs mt-1">FLUX.1 Schnell via Cloudflare Workers AI — เร็วที่สุด ฟรี</p>
+                            <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.ai.cfUrlHint') }}</p>
                         </div>
                         <div>
                             <label :class="labelClass">Cloudflare Worker API Key</label>
-                            <input v-model="aiForm.cloudflare_image_key" type="password" :class="inputClass" placeholder="X-API-Key สำหรับ Worker" />
-                            <p class="text-dark-500 text-xs mt-1">ตั้งค่าใน Worker Settings → Variables and Secrets</p>
+                            <input v-model="aiForm.cloudflare_image_key" type="password" :class="inputClass" :placeholder="t('admin.settings.ai.cfKeyPlaceholder')" />
+                            <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.ai.cfKeyHint') }}</p>
                         </div>
                         <hr class="border-white/5" />
                         <div>
                             <label :class="labelClass">Together.ai API Key (FLUX)</label>
-                            <input v-model="aiForm.together_api_key" type="password" :class="inputClass" placeholder="(optional)" />
-                            <p class="text-dark-500 text-xs mt-1">FLUX.1 Schnell — คุณภาพสูง สมัครฟรีที่ together.ai</p>
+                            <input v-model="aiForm.together_api_key" type="password" :class="inputClass" :placeholder="t('admin.settings.common.optional')" />
+                            <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.ai.togetherHint') }}</p>
                         </div>
                         <div>
                             <label :class="labelClass">Hugging Face API Key</label>
-                            <input v-model="aiForm.huggingface_api_key" type="password" :class="inputClass" placeholder="hf_... (optional)" />
-                            <p class="text-dark-500 text-xs mt-1">SDXL-Lightning — เร็ว สมัครฟรีที่ huggingface.co</p>
+                            <input v-model="aiForm.huggingface_api_key" type="password" :class="inputClass" :placeholder="t('admin.settings.ai.hfPlaceholder')" />
+                            <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.ai.hfHint') }}</p>
                         </div>
                         <div>
                             <label :class="labelClass">Google Gemini API Key</label>
-                            <input v-model="aiForm.gemini_api_key" type="password" :class="inputClass" placeholder="(optional)" />
-                            <p class="text-dark-500 text-xs mt-1">Imagen — 500 รูป/วัน ฟรี สมัครที่ aistudio.google.com</p>
+                            <input v-model="aiForm.gemini_api_key" type="password" :class="inputClass" :placeholder="t('admin.settings.common.optional')" />
+                            <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.ai.geminiHint') }}</p>
                         </div>
                     </div>
                 </div>
 
                 <div class="pt-4">
                     <button type="submit" :disabled="aiForm.processing" class="btn-primary px-6 py-2.5">
-                        <span v-if="aiForm.processing">Saving...</span>
-                        <span v-else>Save AI Settings</span>
+                        <span v-if="aiForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                        <span v-else>{{ t('admin.settings.ai.save') }}</span>
                     </button>
                 </div>
             </form>
@@ -1188,7 +1193,7 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 <div class="flex items-start justify-between gap-4 mb-1">
                     <h4 class="text-base font-semibold text-white flex items-center gap-2">
                         <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
-                        ที่ปรึกษา AI ของบอทเทรด
+                        {{ t('admin.settings.advisor.title') }}
                     </h4>
                     <button type="button" @click="advisorForm.advisor_enabled = !advisorForm.advisor_enabled"
                         :class="['shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors', advisorForm.advisor_enabled ? 'bg-primary-500' : 'bg-dark-600']">
@@ -1196,32 +1201,32 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     </button>
                 </div>
                 <p class="text-dark-500 text-xs mb-4">
-                    ให้ความเห็นประกอบการปรับตั้งค่าบอทเท่านั้น — <span class="text-dark-400">สั่งเทรดเองไม่ได้</span>
-                    ไม่ใส่คีย์ระบบก็ยังเดินตามปกติ แค่ไม่มีคำแนะนำ
+                    {{ t('admin.settings.advisor.introPrefix') }} <span class="text-dark-400">{{ t('admin.settings.advisor.introCannotTrade') }}</span>
+                    {{ t('admin.settings.advisor.introSuffix') }}
                 </p>
 
                 <form @submit.prevent="saveAdvisor" class="space-y-5 max-w-2xl">
                     <!-- Gemini — แพลนฟรี -->
                     <div class="p-4 rounded-lg bg-black/20 border border-white/5">
                         <div class="flex items-center justify-between gap-3 mb-3">
-                            <span class="text-sm font-medium text-white">Google Gemini <span class="text-dark-500 font-normal">— แพลนฟรี</span></span>
+                            <span class="text-sm font-medium text-white">Google Gemini <span class="text-dark-500 font-normal">{{ t('admin.settings.advisor.freePlan') }}</span></span>
                             <span :class="['text-[11px] px-2 py-0.5 rounded-full ring-1', advisorProvider('gemini').configured ? 'text-trading-green bg-trading-green/10 ring-trading-green/25' : 'text-amber-300 bg-amber-500/10 ring-amber-500/25']">
-                                {{ advisorSourceLabel[advisorProvider('gemini').source] }}
+                                {{ advisorSourceLabel(advisorProvider('gemini').source) }}
                             </span>
                         </div>
                         <div class="space-y-3">
                             <div>
                                 <label :class="labelClass">API Key</label>
-                                <input v-model="advisorForm.advisor_gemini_api_key" type="password" :class="inputClass" placeholder="เว้นว่าง = ใช้คีย์ Gemini ช่องสร้างรูปด้านบน" autocomplete="off" />
-                                <p class="text-dark-500 text-xs mt-1">รับคีย์ฟรีที่ aistudio.google.com/apikey</p>
+                                <input v-model="advisorForm.advisor_gemini_api_key" type="password" :class="inputClass" :placeholder="t('admin.settings.advisor.geminiKeyPlaceholder')" autocomplete="off" />
+                                <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.advisor.geminiKeyHint') }}</p>
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label :class="labelClass">โมเดล</label>
+                                    <label :class="labelClass">{{ t('admin.settings.advisor.model') }}</label>
                                     <input v-model="advisorForm.advisor_gemini_model" type="text" :class="inputClass" placeholder="gemini-2.0-flash" />
                                 </div>
                                 <div>
-                                    <label :class="labelClass">เพดานต่อวัน</label>
+                                    <label :class="labelClass">{{ t('admin.settings.advisor.dailyCap') }}</label>
                                     <input v-model.number="advisorForm.advisor_gemini_max_calls" type="number" min="1" max="10000" :class="inputClass" />
                                 </div>
                             </div>
@@ -1229,32 +1234,32 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         <button type="button" @click="testAdvisor('gemini')"
                             :disabled="!advisorProvider('gemini').configured || !!advisorTesting"
                             class="mt-3 px-4 py-2 text-xs rounded-lg bg-white/5 text-dark-200 border border-white/10 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                            {{ advisorTesting === 'gemini' ? 'กำลังทดสอบ...' : 'ทดสอบคีย์' }}
+                            {{ advisorTesting === 'gemini' ? t('admin.settings.advisor.testing') : t('admin.settings.advisor.testKey') }}
                         </button>
-                        <span v-if="!advisorProvider('gemini').configured" class="ml-2 text-xs text-dark-500">บันทึกคีย์ก่อนถึงทดสอบได้</span>
+                        <span v-if="!advisorProvider('gemini').configured" class="ml-2 text-xs text-dark-500">{{ t('admin.settings.advisor.saveKeyFirst') }}</span>
                     </div>
 
                     <!-- OpenAI — แพลนเสียเงิน -->
                     <div class="p-4 rounded-lg bg-black/20 border border-white/5">
                         <div class="flex items-center justify-between gap-3 mb-3">
-                            <span class="text-sm font-medium text-white">OpenAI <span class="text-dark-500 font-normal">— แพลนเสียเงิน</span></span>
+                            <span class="text-sm font-medium text-white">OpenAI <span class="text-dark-500 font-normal">{{ t('admin.settings.advisor.paidPlan') }}</span></span>
                             <span :class="['text-[11px] px-2 py-0.5 rounded-full ring-1', advisorProvider('openai').configured ? 'text-trading-green bg-trading-green/10 ring-trading-green/25' : 'text-amber-300 bg-amber-500/10 ring-amber-500/25']">
-                                {{ advisorSourceLabel[advisorProvider('openai').source] }}
+                                {{ advisorSourceLabel(advisorProvider('openai').source) }}
                             </span>
                         </div>
                         <div class="space-y-3">
                             <div>
                                 <label :class="labelClass">API Key</label>
                                 <input v-model="advisorForm.advisor_openai_api_key" type="password" :class="inputClass" placeholder="sk-..." autocomplete="off" />
-                                <p class="text-dark-500 text-xs mt-1">ค่าใช้จ่ายส่วนนี้เราออกเองจากค่าเช่าแพลน</p>
+                                <p class="text-dark-500 text-xs mt-1">{{ t('admin.settings.advisor.openaiKeyHint') }}</p>
                             </div>
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label :class="labelClass">โมเดล</label>
+                                    <label :class="labelClass">{{ t('admin.settings.advisor.model') }}</label>
                                     <input v-model="advisorForm.advisor_openai_model" type="text" :class="inputClass" placeholder="gpt-4o-mini" />
                                 </div>
                                 <div>
-                                    <label :class="labelClass">เพดานต่อวัน</label>
+                                    <label :class="labelClass">{{ t('admin.settings.advisor.dailyCap') }}</label>
                                     <input v-model.number="advisorForm.advisor_openai_max_calls" type="number" min="1" max="10000" :class="inputClass" />
                                 </div>
                             </div>
@@ -1262,14 +1267,14 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                         <button type="button" @click="testAdvisor('openai')"
                             :disabled="!advisorProvider('openai').configured || !!advisorTesting"
                             class="mt-3 px-4 py-2 text-xs rounded-lg bg-white/5 text-dark-200 border border-white/10 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                            {{ advisorTesting === 'openai' ? 'กำลังทดสอบ...' : 'ทดสอบคีย์' }}
+                            {{ advisorTesting === 'openai' ? t('admin.settings.advisor.testing') : t('admin.settings.advisor.testKey') }}
                         </button>
-                        <span v-if="!advisorProvider('openai').configured" class="ml-2 text-xs text-dark-500">บันทึกคีย์ก่อนถึงทดสอบได้</span>
+                        <span v-if="!advisorProvider('openai').configured" class="ml-2 text-xs text-dark-500">{{ t('admin.settings.advisor.saveKeyFirst') }}</span>
                     </div>
 
                     <button type="submit" :disabled="advisorForm.processing" class="btn-primary px-6 py-2.5">
-                        <span v-if="advisorForm.processing">กำลังบันทึก...</span>
-                        <span v-else>บันทึกที่ปรึกษา AI</span>
+                        <span v-if="advisorForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                        <span v-else>{{ t('admin.settings.advisor.save') }}</span>
                     </button>
                 </form>
             </div>
@@ -1278,16 +1283,16 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
             <div class="mt-6 p-5 rounded-xl bg-gradient-to-br from-trading-green/5 via-primary-500/5 to-accent-500/5 border border-trading-green/10">
                 <h4 class="text-base font-semibold text-white mb-1 flex items-center gap-2">
                     <svg class="w-5 h-5 text-trading-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    Auto Content Schedule
+                    {{ t('admin.settings.content.title') }}
                 </h4>
-                <p class="text-dark-500 text-xs mb-4">ตั้งเวลาสร้างบทความ AI อัตโนมัติ — ระบบจะสร้าง + gen รูปให้เอง</p>
+                <p class="text-dark-500 text-xs mb-4">{{ t('admin.settings.content.subtitle') }}</p>
 
                 <form @submit.prevent="saveContent" class="space-y-5 max-w-2xl">
                     <!-- Enable Toggle -->
                     <div class="flex items-center justify-between">
                         <div>
-                            <label class="text-sm font-medium text-white">เปิดใช้ Auto Content</label>
-                            <p class="text-xs text-dark-500 mt-0.5">สร้างบทความ AI อัตโนมัติตามเวลาที่ตั้ง</p>
+                            <label class="text-sm font-medium text-white">{{ t('admin.settings.content.enable') }}</label>
+                            <p class="text-xs text-dark-500 mt-0.5">{{ t('admin.settings.content.enableHint') }}</p>
                         </div>
                         <button type="button" @click="contentForm.content_auto_enabled = !contentForm.content_auto_enabled"
                             :class="['relative inline-flex h-6 w-11 items-center rounded-full transition-colors', contentForm.content_auto_enabled ? 'bg-trading-green' : 'bg-dark-600']">
@@ -1298,8 +1303,8 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <!-- ข่าวจากเหตุการณ์จริง — ทำงานแยกจาก Auto Content ตามเวลา -->
                     <div class="flex items-center justify-between">
                         <div>
-                            <label class="text-sm font-medium text-white">ข่าวจากเหตุการณ์จริง</label>
-                            <p class="text-xs text-dark-500 mt-0.5">deploy สัญญา · DEX เปิด · คู่เทรดใหม่ → เขียนข่าวไทย+อังกฤษทันที ไม่รอช่วงเวลา (ใช้ค่า "Publish ทันที" ด้านล่าง)</p>
+                            <label class="text-sm font-medium text-white">{{ t('admin.settings.content.eventNews') }}</label>
+                            <p class="text-xs text-dark-500 mt-0.5">{{ t('admin.settings.content.eventNewsHint') }}</p>
                         </div>
                         <button type="button" @click="contentForm.content_event_enabled = !contentForm.content_event_enabled"
                             :class="['relative inline-flex h-6 w-11 items-center rounded-full transition-colors', contentForm.content_event_enabled ? 'bg-trading-green' : 'bg-dark-600']">
@@ -1310,14 +1315,14 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                     <div v-if="contentForm.content_auto_enabled" class="space-y-4 pl-4 border-l-2 border-trading-green/30">
                         <!-- Time Slots -->
                         <div>
-                            <label :class="labelClass">ช่วงเวลาสร้าง</label>
+                            <label :class="labelClass">{{ t('admin.settings.content.timeSlots') }}</label>
                             <div class="flex flex-wrap gap-2 mb-2">
                                 <span v-for="(slot, i) in timeSlots" :key="i"
                                     class="inline-flex items-center gap-1 px-3 py-1.5 bg-trading-green/10 text-trading-green rounded-lg text-sm">
                                     {{ slot }}
                                     <button type="button" @click="removeTimeSlot(i)" class="hover:text-white ml-1">&times;</button>
                                 </span>
-                                <span v-if="!timeSlots.length" class="text-xs text-dark-500">ยังไม่มี</span>
+                                <span v-if="!timeSlots.length" class="text-xs text-dark-500">{{ t('admin.settings.content.noSlots') }}</span>
                             </div>
                             <div class="flex gap-2">
                                 <input v-model="newTimeSlot" type="time" :class="inputClass" class="!w-40" />
@@ -1327,46 +1332,46 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
 
                         <!-- Max per day -->
                         <div>
-                            <label :class="labelClass">จำนวนสูงสุดต่อวัน</label>
+                            <label :class="labelClass">{{ t('admin.settings.content.maxPerDay') }}</label>
                             <input v-model.number="contentForm.content_max_per_day" type="number" min="1" max="10" :class="inputClass" class="!w-32" />
                         </div>
 
                         <!-- Categories -->
                         <div>
-                            <label :class="labelClass">หมวดหมู่ที่สร้าง</label>
+                            <label :class="labelClass">{{ t('admin.settings.content.categories') }}</label>
                             <div class="flex flex-wrap gap-2">
                                 <button v-for="cat in allCategories" :key="cat.value" type="button" @click="toggleCategory(cat.value)"
                                     :class="['px-3 py-1.5 rounded-xl text-xs transition-all border', selectedCategories.includes(cat.value) ? 'bg-primary-500/10 text-primary-400 border-primary-500/30' : 'bg-dark-800/50 text-dark-400 border-white/5 hover:border-white/20']">
-                                    {{ cat.label }}
+                                    {{ t(cat.labelKey) }}
                                 </button>
                             </div>
                         </div>
 
                         <!-- Language -->
                         <div>
-                            <label :class="labelClass">ภาษา</label>
+                            <label :class="labelClass">{{ t('admin.settings.content.language') }}</label>
                             <select v-model="contentForm.content_language" :class="inputClass" class="!w-48">
-                                <option value="th">ไทย</option>
-                                <option value="en">English</option>
-                                <option value="both">ทั้งสองภาษา</option>
+                                <option value="th">{{ t('admin.settings.content.lang.th') }}</option>
+                                <option value="en">{{ t('admin.settings.content.lang.en') }}</option>
+                                <option value="both">{{ t('admin.settings.content.lang.both') }}</option>
                             </select>
                         </div>
                     </div>
 
                     <!-- Auto Publish — ใช้กับทั้งข่าวเหตุการณ์และบทความตามเวลา จึงต้องเห็นแม้ปิด Auto Content -->
                     <div class="flex items-center gap-3">
-                        <label class="text-sm text-dark-300">Publish ทันที</label>
+                        <label class="text-sm text-dark-300">{{ t('admin.settings.content.publishNow') }}</label>
                         <button type="button" @click="contentForm.content_auto_publish = !contentForm.content_auto_publish"
                             :class="['w-12 h-6 rounded-full transition-colors', contentForm.content_auto_publish ? 'bg-trading-green' : 'bg-dark-600']">
                             <div :class="['w-5 h-5 bg-white rounded-full shadow transition-transform', contentForm.content_auto_publish ? 'translate-x-6' : 'translate-x-0.5']"></div>
                         </button>
-                        <span class="text-xs text-dark-500">{{ contentForm.content_auto_publish ? 'Publish ทันทีเมื่อสร้างเสร็จ' : 'บันทึกเป็น Draft (ตรวจก่อน publish)' }}</span>
+                        <span class="text-xs text-dark-500">{{ contentForm.content_auto_publish ? t('admin.settings.content.publishNowOn') : t('admin.settings.content.publishNowOff') }}</span>
                     </div>
 
                     <div class="pt-2">
                         <button type="submit" :disabled="contentForm.processing" class="btn-primary px-6 py-2.5">
-                            <span v-if="contentForm.processing">Saving...</span>
-                            <span v-else>Save Content Schedule</span>
+                            <span v-if="contentForm.processing">{{ t('admin.settings.common.saving') }}</span>
+                            <span v-else>{{ t('admin.settings.content.save') }}</span>
                         </button>
                     </div>
                 </form>

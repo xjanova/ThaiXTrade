@@ -26,6 +26,9 @@ import { useTokenSale } from '@/Composables/useTokenSale';
 import { isMobile, downloadTpixApp } from '@/utils/mobileWallet';
 import { TPIX_CHAIN_CONFIG } from '@/utils/web3';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const walletStore = useWalletStore();
 const tokenSaleStore = useTokenSaleStore();
@@ -128,7 +131,9 @@ function setAmount(value) {
  */
 const cardFeePercent = computed(() => Number(tokenSaleStore.sale?.card_fee_percent || 0));
 const cardHoldDays = computed(() => Number(tokenSaleStore.sale?.card_claim_hold_days || 0));
-const bankExpiresAt = computed(() => (bankOrder.value?.expires_at ? new Date(bankOrder.value.expires_at).toLocaleString() : ''));
+const bankExpiresAt = computed(() => (bankOrder.value?.expires_at
+    ? new Date(bankOrder.value.expires_at).toLocaleString(locale.value === 'th' ? 'th-TH' : 'en-US')
+    : ''));
 
 const feeUsd = computed(() => {
     if (method.value !== 'card' || !amountNumber.value) return 0;
@@ -158,9 +163,9 @@ const canSubmit = computed(() => {
 /** บอกเหตุผลที่ปุ่มยังกดไม่ได้ — ปุ่มสีจางเฉยๆ ทำให้คนไม่รู้ว่าต้องทำอะไรต่อ */
 const submitHint = computed(() => {
     if (isSubmittingOrder.value) return '';
-    if (!amountNumber.value) return 'เลือกหรือพิมพ์จำนวนเงินด้านบนก่อน';
-    if (belowMin.value) return `ขั้นต่ำ $${formatMoney(minUsd.value)} ต่อการซื้อหนึ่งครั้ง`;
-    if (isLoadingPreview.value || !preview.value) return 'กำลังคำนวณจำนวนเหรียญ…';
+    if (!amountNumber.value) return t('ui.tokenSaleBuyForm.hint.enterAmount');
+    if (belowMin.value) return t('ui.tokenSaleBuyForm.hint.min', { amount: formatMoney(minUsd.value) });
+    if (isLoadingPreview.value || !preview.value) return t('ui.tokenSaleBuyForm.hint.calculating');
     return '';
 });
 
@@ -173,8 +178,9 @@ async function switchToReceiveChain() {
     error.value = null;
     try {
         await walletStore.switchChain(receiveChainId.value);
-    } catch (e) {
-        error.value = e?.message || 'สลับเครือข่ายไม่สำเร็จ กรุณาสลับในแอปกระเป๋าเอง';
+    } catch {
+        // ใช้ข้อความที่ store แปลไว้แล้ว — e.message เป็นรหัสดิบ (NO_WALLET_PROVIDER ฯลฯ) หรือ error อังกฤษของกระเป๋า
+        error.value = walletStore.error || t('ui.tokenSaleBuyForm.err.switchNetwork');
     }
 }
 
@@ -255,10 +261,10 @@ async function withVerifiedWallet(request) {
     try {
         const signed = await walletStore.verifyOwnership();
         if (!signed) {
-            return { ok: false, message: 'กรุณาปลดล็อกกระเป๋า แล้วกดซื้ออีกครั้ง' };
+            return { ok: false, message: t('ui.tokenSaleBuyForm.err.unlockWallet') };
         }
     } catch {
-        return { ok: false, message: 'ต้องเซ็นยืนยันว่าเป็นเจ้าของกระเป๋าก่อนซื้อ (ไม่เสียค่าแก๊ส) — กดซื้ออีกครั้งแล้วกดยืนยันในกระเป๋า' };
+        return { ok: false, message: t('ui.tokenSaleBuyForm.err.signRequired') };
     }
 
     return request();
@@ -388,15 +394,15 @@ function walletErrorMessage(e, order) {
     const code = e?.code ?? e?.info?.error?.code;
     const msg = String(e?.shortMessage || e?.reason || e?.message || '').toLowerCase();
 
-    if (e?.message === 'SWITCH_FAILED') return `สลับไปเครือข่าย ${order.chain_name} ไม่สำเร็จ กรุณาสลับในแอปกระเป๋าเอง`;
+    if (e?.message === 'SWITCH_FAILED') return t('ui.tokenSaleBuyForm.err.switchChainFailed', { chain: order.chain_name });
     if (code === 4001 || code === 'ACTION_REJECTED' || msg.includes('user rejected') || msg.includes('user denied')) {
-        return 'ยกเลิกการโอนในกระเป๋าแล้ว — ยังไม่มีเงินออก';
+        return t('ui.tokenSaleBuyForm.err.rejected');
     }
     if (msg.includes('insufficient') || msg.includes('exceeds balance')) {
-        return `ยอด USDT หรือค่าแก๊ส (${order.native_symbol || 'เหรียญหลักของเครือข่าย'}) ไม่พอ`;
+        return t('ui.tokenSaleBuyForm.err.insufficient', { symbol: order.native_symbol || t('ui.tokenSaleBuyForm.err.nativeCoin') });
     }
 
-    return 'ส่งธุรกรรมไม่สำเร็จ — ยังไม่มีเงินออก ลองใหม่หรือโอนเองตามยอดด้านบน';
+    return t('ui.tokenSaleBuyForm.err.sendFailed');
 }
 
 function resetCryptoOrder() {
@@ -445,9 +451,9 @@ function formatNumber(n) {
 
 <template>
     <div class="buy-form glass-dark p-6 rounded-xl border border-white/10">
-        <h3 class="text-xl font-bold text-white mb-1">ซื้อเหรียญ TPIX</h3>
+        <h3 class="text-xl font-bold text-white mb-1">{{ t('ui.tokenSaleBuyForm.title') }}</h3>
         <p class="text-sm text-gray-400 mb-6">
-            ราคาปัจจุบัน <span class="text-primary-400 font-semibold">${{ currentPrice }}</span> ต่อ TPIX
+            {{ t('ui.tokenSaleBuyForm.currentPrice') }} <span class="text-primary-400 font-semibold">${{ currentPrice }}</span> {{ t('ui.tokenSaleBuyForm.perTpix') }}
         </p>
 
         <!-- ยังไม่เชื่อมกระเป๋า -->
@@ -459,15 +465,15 @@ function formatNumber(n) {
                 </svg>
             </div>
             <div>
-                <p class="text-white font-semibold mb-1">เชื่อมต่อกระเป๋าเพื่อซื้อ TPIX</p>
-                <p class="text-gray-400 text-xs">กระเป๋านี้คือที่ที่เหรียญจะถูกส่งไป ยังไม่มีก็สร้างได้เลย</p>
+                <p class="text-white font-semibold mb-1">{{ t('ui.tokenSaleBuyForm.connect.title') }}</p>
+                <p class="text-gray-400 text-xs">{{ t('ui.tokenSaleBuyForm.connect.desc') }}</p>
             </div>
 
             <button
                 @click="walletStore.openConnectModal()"
                 class="w-full py-3 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-primary-500/20 transition-all"
             >
-                เชื่อมต่อกระเป๋า / สร้างกระเป๋า
+                {{ t('ui.tokenSaleBuyForm.connect.button') }}
             </button>
 
             <button
@@ -475,7 +481,7 @@ function formatNumber(n) {
                 @click="downloadTpixApp"
                 class="w-full py-2.5 rounded-xl font-medium text-sm bg-accent-500/10 border border-accent-500/20 text-accent-300 hover:bg-accent-500/20 transition-all"
             >
-                ดาวน์โหลดแอป TPIX
+                {{ t('ui.tokenSaleBuyForm.connect.downloadApp') }}
             </button>
         </div>
 
@@ -486,19 +492,19 @@ function formatNumber(n) {
         <div v-else-if="cryptoOrder" class="space-y-4" data-testid="crypto-order">
             <!-- ได้รับเงินแล้ว -->
             <div v-if="cryptoOrder.status === 'paid'" class="p-4 rounded-xl bg-trading-green/10 border border-trading-green/30" data-testid="crypto-paid">
-                <p class="text-trading-green font-semibold mb-1">ได้รับเงินแล้ว — ซื้อสำเร็จ</p>
+                <p class="text-trading-green font-semibold mb-1">{{ t('ui.tokenSaleBuyForm.crypto.paidTitle') }}</p>
                 <p class="text-sm text-gray-300">
                     <span class="text-white font-semibold">{{ formatNumber(cryptoOrder.tpix_amount) }} TPIX</span>
-                    เป็นของกระเป๋า {{ walletStore.shortAddress }} บน TPIX Chain แล้ว — เคลมส่วนที่ปลดล็อกได้ในแผงด้านล่างตามตารางของเฟสนี้
+                    {{ t('ui.tokenSaleBuyForm.crypto.paidDesc', { wallet: walletStore.shortAddress }) }}
                 </p>
             </div>
 
             <!-- เงินเข้าแต่ออกเหรียญเองไม่ได้ -->
             <div v-else-if="cryptoOrder.status === 'needs_review'" class="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30" data-testid="crypto-review">
-                <p class="text-yellow-300 font-semibold mb-1">ได้รับเงินแล้ว แต่ยอดหรือเวลาไม่ตรงกับคำสั่งซื้อ</p>
+                <p class="text-yellow-300 font-semibold mb-1">{{ t('ui.tokenSaleBuyForm.crypto.reviewTitle') }}</p>
                 <p class="text-sm text-gray-300">
-                    เงินของคุณถูกบันทึกไว้แล้ว ไม่หาย — ทีมงานจะตรวจแล้วออกเหรียญตามยอดที่ได้รับหรือคืนเงินให้
-                    แจ้งรหัส <code class="text-primary-300">{{ cryptoOrder.reference }}</code> เมื่อติดต่อทีมงาน
+                    {{ t('ui.tokenSaleBuyForm.crypto.reviewDesc') }}
+                    {{ t('ui.tokenSaleBuyForm.crypto.reviewRefBefore') }} <code class="text-primary-300">{{ cryptoOrder.reference }}</code> {{ t('ui.tokenSaleBuyForm.crypto.reviewRefAfter') }}
                 </p>
             </div>
 
@@ -506,8 +512,8 @@ function formatNumber(n) {
                 <div class="p-4 rounded-xl bg-white/5 border border-white/10">
                     <div class="flex items-center justify-between gap-3 mb-2">
                         <p class="text-sm text-gray-300">
-                            โอน <span class="text-white font-semibold">USDT</span> บนเครือข่าย
-                            <span class="text-white font-semibold">{{ cryptoOrder.chain_name }}</span> ยอดนี้เป๊ะ
+                            {{ t('ui.tokenSaleBuyForm.crypto.transferPrefix') }} <span class="text-white font-semibold">USDT</span> {{ t('ui.tokenSaleBuyForm.crypto.transferOnNetwork') }}
+                            <span class="text-white font-semibold">{{ cryptoOrder.chain_name }}</span> {{ t('ui.tokenSaleBuyForm.crypto.transferExact') }}
                         </p>
                         <span v-if="cryptoOrder.status === 'awaiting_payment' && secondsLeft > 0" class="text-xs font-mono px-2 py-1 rounded bg-primary-500/15 text-primary-300" data-testid="crypto-countdown">
                             {{ countdown }}
@@ -516,23 +522,23 @@ function formatNumber(n) {
                     <div class="flex items-center justify-between gap-3">
                         <code class="text-2xl font-bold text-primary-300 break-all" data-testid="crypto-amount">{{ cryptoOrder.pay_amount }} USDT</code>
                         <button class="text-xs px-3 py-1.5 rounded-lg bg-white/10 text-gray-200 hover:bg-white/20 shrink-0"
-                            @click="copyText(cryptoOrder.pay_amount)">คัดลอกยอด</button>
+                            @click="copyText(cryptoOrder.pay_amount)">{{ t('ui.tokenSaleBuyForm.crypto.copyAmount') }}</button>
                     </div>
                     <p class="text-xs text-yellow-400/80 mt-2">
-                        ต้องตรงทุกหลัก (เศษท้ายคือรหัสของคำสั่งซื้อนี้) · ถ้าโอนจากกระดานเทรด ให้ยอดที่ "ได้รับ" ตรงกับยอดนี้หลังหักค่าธรรมเนียมแล้ว
+                        {{ t('ui.tokenSaleBuyForm.crypto.exactNote') }}
                     </p>
                 </div>
 
                 <div class="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2 text-sm">
-                    <p class="text-xs text-gray-400">โอนเข้ากระเป๋ารับเงินของรอบขาย</p>
+                    <p class="text-xs text-gray-400">{{ t('ui.tokenSaleBuyForm.crypto.payToLabel') }}</p>
                     <div class="flex items-center justify-between gap-3">
                         <span class="font-mono text-white text-xs break-all" data-testid="crypto-pay-to">{{ cryptoOrder.pay_to_address }}</span>
                         <button class="text-xs px-2 py-1 rounded bg-white/10 text-gray-200 hover:bg-white/20 shrink-0"
-                            @click="copyText(cryptoOrder.pay_to_address)">คัดลอก</button>
+                            @click="copyText(cryptoOrder.pay_to_address)">{{ t('ui.tokenSaleBuyForm.copy') }}</button>
                     </div>
                     <p class="text-xs text-gray-500 pt-2 border-t border-white/5">
-                        รับเฉพาะ USDT บน {{ cryptoOrder.chain_name }} — ห้ามส่งเหรียญอื่นหรือข้ามเครือข่าย ·
-                        ราคาที่ล็อกไว้ ${{ cryptoOrder.price_per_tpix }} ต่อ TPIX = {{ formatNumber(cryptoOrder.tpix_amount) }} TPIX
+                        {{ t('ui.tokenSaleBuyForm.crypto.onlyUsdt', { chain: cryptoOrder.chain_name }) }}
+                        {{ t('ui.tokenSaleBuyForm.crypto.lockedPrice', { price: cryptoOrder.price_per_tpix, amount: formatNumber(cryptoOrder.tpix_amount) }) }}
                     </p>
                 </div>
 
@@ -543,20 +549,20 @@ function formatNumber(n) {
                     data-testid="crypto-pay-wallet"
                     @click="payFromWallet"
                 >
-                    <span v-if="isPaying">ยืนยันการโอนในกระเป๋า…</span>
-                    <span v-else-if="sentTxHash">ส่งแล้ว — รอยืนยันบนเชน</span>
-                    <span v-else>จ่ายจากกระเป๋าที่เชื่อมอยู่ ({{ cryptoOrder.chain_short || cryptoOrder.chain_name }})</span>
+                    <span v-if="isPaying">{{ t('ui.tokenSaleBuyForm.crypto.confirming') }}</span>
+                    <span v-else-if="sentTxHash">{{ t('ui.tokenSaleBuyForm.crypto.sent') }}</span>
+                    <span v-else>{{ t('ui.tokenSaleBuyForm.crypto.payFromWallet', { chain: cryptoOrder.chain_short || cryptoOrder.chain_name }) }}</span>
                 </button>
 
                 <p v-if="sentTxHash" class="text-xs text-center text-gray-400" data-testid="crypto-sent">
-                    ระบบจะเห็นเงินเข้าเองเมื่อบล็อกยืนยันแล้ว (ปกติไม่กี่นาที) — ปิดหน้านี้ได้ เหรียญไม่หาย
-                    <a v-if="cryptoOrder.explorer" :href="`${cryptoOrder.explorer}/tx/${sentTxHash}`" target="_blank" rel="noopener" class="text-primary-300 hover:underline">ดูธุรกรรม</a>
+                    {{ t('ui.tokenSaleBuyForm.crypto.sentNote') }}
+                    <a v-if="cryptoOrder.explorer" :href="`${cryptoOrder.explorer}/tx/${sentTxHash}`" target="_blank" rel="noopener" class="text-primary-300 hover:underline">{{ t('ui.tokenSaleBuyForm.crypto.viewTx') }}</a>
                 </p>
                 <p v-else-if="cryptoOrder.status === 'expired' || secondsLeft <= 0" class="text-xs text-center text-yellow-400/90" data-testid="crypto-expired">
-                    ราคาที่ล็อกไว้หมดเวลาแล้ว — ถ้าโอนไปก่อนหมดเวลา ระบบยังออกเหรียญให้ตามปกติ ถ้ายังไม่ได้โอน กรุณาสั่งซื้อใหม่
+                    {{ t('ui.tokenSaleBuyForm.crypto.expiredNote') }}
                 </p>
                 <p v-else class="text-xs text-center text-gray-500">
-                    ไม่ต้องส่งหลักฐานใด ๆ — ระบบตรวจเงินเข้าจากเชนเองแล้วอัปเดตหน้านี้ให้
+                    {{ t('ui.tokenSaleBuyForm.crypto.noProof') }}
                 </p>
             </template>
 
@@ -564,7 +570,7 @@ function formatNumber(n) {
 
             <button class="w-full py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10"
                 data-testid="crypto-new-order" @click="resetCryptoOrder">
-                สั่งซื้อรายการใหม่
+                {{ t('ui.tokenSaleBuyForm.newOrder') }}
             </button>
         </div>
 
@@ -577,21 +583,20 @@ function formatNumber(n) {
                 <BrandLogo variant="icon" alt="TPIX Chain" class="w-9 h-9" />
             </div>
             <div>
-                <p class="text-white font-semibold mb-1">สลับไปเครือข่าย TPIX Chain ก่อน</p>
+                <p class="text-white font-semibold mb-1">{{ t('ui.tokenSaleBuyForm.chainGate.title') }}</p>
                 <p class="text-gray-400 text-xs max-w-sm mx-auto">
-                    TPIX เป็นเหรียญหลักของเครือข่ายนี้ ต้องต่อกระเป๋าอยู่บน TPIX Chain
-                    จึงจะเห็นเหรียญที่ซื้อ — ถ้ายังไม่มีเครือข่ายนี้ ระบบจะเพิ่มให้อัตโนมัติ
+                    {{ t('ui.tokenSaleBuyForm.chainGate.desc') }}
                 </p>
             </div>
             <button class="btn-primary px-6 py-2.5" @click="switchToReceiveChain">
-                สลับไป TPIX Chain
+                {{ t('ui.tokenSaleBuyForm.chainGate.button') }}
             </button>
             <p v-if="error" class="text-sm text-trading-red">{{ error }}</p>
         </div>
 
         <!-- ไม่มีเฟสที่เปิดขาย -->
         <div v-else-if="!currentPhase" class="text-center py-8 text-gray-400">
-            <p>ยังไม่มีรอบขายที่เปิดอยู่ในขณะนี้</p>
+            <p>{{ t('ui.tokenSaleBuyForm.noPhase') }}</p>
             <p v-if="phaseClosedReason" class="mt-2 text-sm text-yellow-400">{{ phaseClosedReason }}</p>
         </div>
 
@@ -603,54 +608,54 @@ function formatNumber(n) {
                         d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
             </div>
-            <p class="text-yellow-400 font-semibold mb-1">ขายหมดรอบนี้แล้ว</p>
-            <p class="text-gray-400 text-sm">โควตาของเฟสนี้ถูกจองครบแล้ว</p>
+            <p class="text-yellow-400 font-semibold mb-1">{{ t('ui.tokenSaleBuyForm.soldOut.title') }}</p>
+            <p class="text-gray-400 text-sm">{{ t('ui.tokenSaleBuyForm.soldOut.desc') }}</p>
         </div>
 
         <!-- ผลลัพธ์คำสั่งซื้อทางโอนเงิน -->
         <div v-else-if="bankOrder" class="space-y-4">
             <div class="p-4 rounded-xl bg-trading-green/10 border border-trading-green/30">
-                <p class="text-trading-green font-semibold mb-1">สร้างคำสั่งซื้อแล้ว</p>
+                <p class="text-trading-green font-semibold mb-1">{{ t('ui.tokenSaleBuyForm.bank.createdTitle') }}</p>
                 <p class="text-sm text-gray-300">
-                    โอนเงิน <span class="text-white font-semibold">${{ formatNumber(bankOrder.amount_usd) }}</span>
-                    แล้วทีมงานจะยืนยันและส่ง
+                    {{ t('ui.tokenSaleBuyForm.bank.transferPrefix') }} <span class="text-white font-semibold">${{ formatNumber(bankOrder.amount_usd) }}</span>
+                    {{ t('ui.tokenSaleBuyForm.bank.thenTeam') }}
                     <span class="text-white font-semibold">{{ formatNumber(bankOrder.tpix_amount) }} TPIX</span>
-                    ให้ที่กระเป๋าของคุณบน TPIX Chain
+                    {{ t('ui.tokenSaleBuyForm.bank.toWallet') }}
                 </p>
             </div>
 
             <!-- รหัสอ้างอิง — สำคัญที่สุด ต้องใส่ตอนโอน -->
             <div class="p-4 rounded-xl bg-white/5 border border-white/10">
-                <p class="text-xs text-gray-400 mb-1">รหัสอ้างอิง (ใส่ในหมายเหตุตอนโอน)</p>
+                <p class="text-xs text-gray-400 mb-1">{{ t('ui.tokenSaleBuyForm.bank.refLabel') }}</p>
                 <div class="flex items-center justify-between gap-3">
                     <code class="text-lg font-bold text-primary-300 tracking-wider">{{ bankOrder.reference }}</code>
                     <button class="text-xs px-3 py-1.5 rounded-lg bg-white/10 text-gray-200 hover:bg-white/20"
-                        @click="copyText(bankOrder.reference)">คัดลอก</button>
+                        @click="copyText(bankOrder.reference)">{{ t('ui.tokenSaleBuyForm.copy') }}</button>
                 </div>
                 <p class="text-xs text-yellow-400/80 mt-2">
-                    ไม่ใส่รหัสนี้ ทีมงานจะจับคู่รายการโอนของคุณไม่ได้
+                    {{ t('ui.tokenSaleBuyForm.bank.refWarning') }}
                 </p>
                 <p v-if="bankExpiresAt" class="text-xs text-yellow-400/80 mt-1" data-testid="bank-expiry-note">
-                    โอนภายใน {{ bankExpiresAt }} หลังจากนี้ราคาอาจเปลี่ยนและต้องสั่งซื้อใหม่
+                    {{ t('ui.tokenSaleBuyForm.bank.expiry', { time: bankExpiresAt }) }}
                 </p>
             </div>
 
             <!-- บัญชีปลายทาง -->
             <div class="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2 text-sm">
                 <div class="flex justify-between gap-3">
-                    <span class="text-gray-400">ธนาคาร</span>
+                    <span class="text-gray-400">{{ t('ui.tokenSaleBuyForm.bank.bankName') }}</span>
                     <span class="text-white">{{ bankOrder.bank.bank_name || '—' }}</span>
                 </div>
                 <div class="flex justify-between gap-3">
-                    <span class="text-gray-400">ชื่อบัญชี</span>
+                    <span class="text-gray-400">{{ t('ui.tokenSaleBuyForm.bank.accountName') }}</span>
                     <span class="text-white">{{ bankOrder.bank.account_name || '—' }}</span>
                 </div>
                 <div class="flex justify-between gap-3 items-center">
-                    <span class="text-gray-400">เลขบัญชี</span>
+                    <span class="text-gray-400">{{ t('ui.tokenSaleBuyForm.bank.accountNo') }}</span>
                     <span class="flex items-center gap-2">
                         <span class="text-white font-mono">{{ bankOrder.bank.account_no }}</span>
                         <button class="text-xs px-2 py-1 rounded bg-white/10 text-gray-200 hover:bg-white/20"
-                            @click="copyText(bankOrder.bank.account_no)">คัดลอก</button>
+                            @click="copyText(bankOrder.bank.account_no)">{{ t('ui.tokenSaleBuyForm.copy') }}</button>
                     </span>
                 </div>
                 <p v-if="bankOrder.bank.note" class="text-xs text-gray-400 pt-2 border-t border-white/5">
@@ -660,7 +665,7 @@ function formatNumber(n) {
 
             <button class="w-full py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10"
                 @click="resetBankOrder">
-                สั่งซื้อรายการใหม่
+                {{ t('ui.tokenSaleBuyForm.newOrder') }}
             </button>
         </div>
 
@@ -668,14 +673,14 @@ function formatNumber(n) {
         <div v-else>
             <!-- ยังไม่เปิดช่องทางชำระเงินสักทาง -->
             <div v-if="!hasAnyMethod" class="p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-sm text-yellow-300">
-                ยังไม่เปิดช่องทางชำระเงิน กรุณาติดต่อทีมงาน
+                {{ t('ui.tokenSaleBuyForm.form.noMethods') }}
             </div>
 
             <template v-else>
                 <!-- ① เลือกวิธีชำระเงิน -->
                 <div class="mb-5">
                     <p class="flex items-center gap-2 text-sm text-gray-300 mb-2">
-                        <span class="step-dot">1</span> เลือกวิธีชำระเงิน
+                        <span class="step-dot">1</span> {{ t('ui.tokenSaleBuyForm.form.step1') }}
                     </p>
                     <div class="grid gap-2" :class="methodCount > 1 ? 'sm:grid-cols-2' : ''">
                         <button
@@ -688,8 +693,8 @@ function formatNumber(n) {
                         >
                             <span class="flex items-center justify-between gap-3 w-full">
                                 <span class="text-left">
-                                    <span class="block text-white font-semibold">บัตรเครดิต / เดบิต</span>
-                                    <span class="block text-xs text-gray-400 mt-0.5">จ่ายทันที รับเหรียญอัตโนมัติ</span>
+                                    <span class="block text-white font-semibold">{{ t('ui.tokenSaleBuyForm.form.cardTitle') }}</span>
+                                    <span class="block text-xs text-gray-400 mt-0.5">{{ t('ui.tokenSaleBuyForm.form.cardDesc') }}</span>
                                 </span>
                                 <span class="radio-dot" :class="method === 'card' ? 'radio-dot--on' : ''"></span>
                             </span>
@@ -731,8 +736,8 @@ function formatNumber(n) {
                         >
                             <span class="flex items-center justify-between gap-3 w-full">
                                 <span class="text-left">
-                                    <span class="block text-white font-semibold">โอนเงินเข้าบัญชี</span>
-                                    <span class="block text-xs text-gray-400 mt-0.5">ไม่มีค่าบริการ · ทีมงานยืนยันแล้วส่งเหรียญ</span>
+                                    <span class="block text-white font-semibold">{{ t('ui.tokenSaleBuyForm.form.bankTitle') }}</span>
+                                    <span class="block text-xs text-gray-400 mt-0.5">{{ t('ui.tokenSaleBuyForm.form.bankDesc') }}</span>
                                 </span>
                                 <span class="radio-dot" :class="method === 'bank' ? 'radio-dot--on' : ''"></span>
                             </span>
@@ -747,8 +752,8 @@ function formatNumber(n) {
                         >
                             <span class="flex items-center justify-between gap-3 w-full">
                                 <span class="text-left">
-                                    <span class="block text-white font-semibold">USDT (คริปโต)</span>
-                                    <span class="block text-xs text-gray-400 mt-0.5">ไม่มีค่าบริการ · ระบบเห็นเงินเข้าแล้วส่งเหรียญเอง</span>
+                                    <span class="block text-white font-semibold">{{ t('ui.tokenSaleBuyForm.form.cryptoTitle') }}</span>
+                                    <span class="block text-xs text-gray-400 mt-0.5">{{ t('ui.tokenSaleBuyForm.form.cryptoDesc') }}</span>
                                 </span>
                                 <span class="radio-dot" :class="method === 'crypto' ? 'radio-dot--on' : ''"></span>
                             </span>
@@ -757,7 +762,7 @@ function formatNumber(n) {
 
                     <!-- เครือข่ายที่จะโอน USDT -->
                     <div v-if="method === 'crypto' && cryptoChains.length" class="mt-3" data-testid="crypto-chains">
-                        <p class="text-xs text-gray-400 mb-1.5">โอน USDT จากเครือข่าย</p>
+                        <p class="text-xs text-gray-400 mb-1.5">{{ t('ui.tokenSaleBuyForm.form.cryptoNetwork') }}</p>
                         <div class="flex flex-wrap gap-2">
                             <button
                                 v-for="c in cryptoChains"
@@ -777,7 +782,7 @@ function formatNumber(n) {
                 <!-- ② จำนวนเงิน -->
                 <div class="mb-5">
                     <p class="flex items-center gap-2 text-sm text-gray-300 mb-2">
-                        <span class="step-dot">2</span> ใส่จำนวนเงินที่ต้องการซื้อ (USD)
+                        <span class="step-dot">2</span> {{ t('ui.tokenSaleBuyForm.form.step2') }}
                     </p>
                     <div class="flex flex-wrap gap-2 mb-2">
                         <button
@@ -806,46 +811,46 @@ function formatNumber(n) {
                         <span class="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-400">USD</span>
                     </div>
                     <p class="mt-1.5 text-xs" :class="belowMin ? 'text-yellow-400' : 'text-gray-500'">
-                        ขั้นต่ำ ${{ formatMoney(minUsd) }}
-                        <template v-if="currentPhase"> · ราคา ${{ currentPrice }} ต่อ TPIX</template>
+                        {{ t('ui.tokenSaleBuyForm.form.min', { amount: formatMoney(minUsd) }) }}
+                        <template v-if="currentPhase">{{ t('ui.tokenSaleBuyForm.form.pricePer', { price: currentPrice }) }}</template>
                     </p>
                 </div>
 
                 <!-- สรุปยอด -->
                 <div v-if="preview && !belowMin" class="mb-4 p-4 rounded-xl bg-white/5 border border-white/10 space-y-1.5 text-sm" data-testid="order-summary">
                     <div class="flex justify-between">
-                        <span class="text-gray-400">คุณจะได้รับ</span>
+                        <span class="text-gray-400">{{ t('ui.tokenSaleBuyForm.summary.receive') }}</span>
                         <span class="text-white font-bold text-base">{{ formatNumber(preview.tpix_amount) }} TPIX</span>
                     </div>
                     <div class="flex justify-between">
-                        <span class="text-gray-400">ค่าเหรียญ</span>
+                        <span class="text-gray-400">{{ t('ui.tokenSaleBuyForm.summary.coinCost') }}</span>
                         <span class="text-gray-200">${{ formatMoney(amountNumber) }}</span>
                     </div>
                     <div v-if="method === 'crypto'" class="flex justify-between" data-testid="crypto-fee-row">
-                        <span class="text-gray-400">ค่าบริการ</span>
-                        <span class="text-gray-200">ไม่มี (จ่ายค่าแก๊สของเครือข่ายเอง)</span>
+                        <span class="text-gray-400">{{ t('ui.tokenSaleBuyForm.summary.serviceFee') }}</span>
+                        <span class="text-gray-200">{{ t('ui.tokenSaleBuyForm.summary.noFeeGas') }}</span>
                     </div>
                     <div v-if="feeUsd > 0" class="flex justify-between" data-testid="fee-row">
-                        <span class="text-gray-400">ค่าบริการชำระด้วยบัตร ({{ formatMoney(cardFeePercent) }}%)</span>
+                        <span class="text-gray-400">{{ t('ui.tokenSaleBuyForm.summary.cardFee', { percent: formatMoney(cardFeePercent) }) }}</span>
                         <span class="text-gray-200">${{ formatMoney(feeUsd) }}</span>
                     </div>
                     <div class="flex justify-between pt-2 mt-1 border-t border-white/10">
-                        <span class="text-white font-semibold">ยอดชำระทั้งหมด</span>
+                        <span class="text-white font-semibold">{{ t('ui.tokenSaleBuyForm.summary.total') }}</span>
                         <span class="text-primary-300 font-bold text-base" data-testid="total-usd">${{ formatMoney(totalUsd) }}</span>
                     </div>
                     <div class="flex justify-between text-xs text-gray-500 pt-1">
-                        <span>ส่งเหรียญไปที่</span>
+                        <span>{{ t('ui.tokenSaleBuyForm.summary.sendTo') }}</span>
                         <span class="font-mono">{{ walletStore.shortAddress }} · TPIX Chain</span>
                     </div>
                     <p v-if="method === 'card' && cardHoldDays > 0" class="text-xs text-yellow-400/80 pt-1" data-testid="card-hold-note">
-                        ซื้อด้วยบัตรเริ่ม claim ได้หลังชำระ {{ cardHoldDays }} วัน เพราะการชำระด้วยบัตรยังถูกเรียกคืนได้ในช่วงนี้
+                        {{ t('ui.tokenSaleBuyForm.summary.cardHold', { days: cardHoldDays }) }}
                     </p>
                 </div>
 
-                <div v-else-if="isLoadingPreview" class="mb-4 text-sm text-gray-400">กำลังคำนวณ…</div>
+                <div v-else-if="isLoadingPreview" class="mb-4 text-sm text-gray-400">{{ t('ui.tokenSaleBuyForm.form.calculating') }}</div>
 
                 <p v-if="exceedsRemaining" class="mb-3 text-sm text-yellow-400">
-                    จำนวนนี้เกินโควตาที่เหลือของเฟสนี้
+                    {{ t('ui.tokenSaleBuyForm.form.exceeds') }}
                 </p>
 
                 <p v-if="error" class="mb-3 text-sm text-trading-red">{{ error }}</p>
@@ -854,10 +859,10 @@ function formatNumber(n) {
                 <p class="flex items-center gap-2 text-sm text-gray-300 mb-2">
                     <span class="step-dot">3</span>
                     {{ method === 'card'
-                        ? 'กดปุ่มด้านล่าง แล้วกรอกเลขบัตรในหน้าชำระเงินที่ปลอดภัย'
+                        ? t('ui.tokenSaleBuyForm.form.step3Card')
                         : method === 'crypto'
-                            ? 'กดปุ่มด้านล่างเพื่อรับยอดโอน USDT (ล็อกราคาไว้ให้ชั่วคราว)'
-                            : 'กดปุ่มด้านล่างเพื่อรับเลขบัญชีและรหัสอ้างอิง' }}
+                            ? t('ui.tokenSaleBuyForm.form.step3Crypto')
+                            : t('ui.tokenSaleBuyForm.form.step3Bank') }}
                 </p>
                 <button
                     type="button"
@@ -869,12 +874,12 @@ function formatNumber(n) {
                     <svg v-if="method === 'card' && !isSubmittingOrder" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                     </svg>
-                    <span v-if="isSubmittingOrder">{{ method === 'crypto' ? 'กำลังล็อกราคา…' : 'กำลังเปิดหน้าชำระเงิน…' }}</span>
+                    <span v-if="isSubmittingOrder">{{ method === 'crypto' ? t('ui.tokenSaleBuyForm.form.submittingCrypto') : t('ui.tokenSaleBuyForm.form.submittingCard') }}</span>
                     <span v-else-if="method === 'card'">
-                        ไปกรอกบัตร<template v-if="canSubmit"> · ชำระ ${{ formatMoney(totalUsd) }}</template>
+                        {{ t('ui.tokenSaleBuyForm.form.submitCard') }}<template v-if="canSubmit">{{ t('ui.tokenSaleBuyForm.form.submitCardPay', { amount: formatMoney(totalUsd) }) }}</template>
                     </span>
-                    <span v-else-if="method === 'crypto'">รับยอดโอน USDT</span>
-                    <span v-else>รับเลขบัญชีเพื่อโอนเงิน</span>
+                    <span v-else-if="method === 'crypto'">{{ t('ui.tokenSaleBuyForm.form.submitCrypto') }}</span>
+                    <span v-else>{{ t('ui.tokenSaleBuyForm.form.submitBank') }}</span>
                 </button>
 
                 <p v-if="!canSubmit && submitHint" class="mt-2 text-xs text-center text-yellow-400/90" data-testid="submit-hint">
@@ -885,11 +890,11 @@ function formatNumber(n) {
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
                     </svg>
-                    ชำระผ่าน Stripe · เราไม่เห็นและไม่เก็บเลขบัตรของคุณ
+                    {{ t('ui.tokenSaleBuyForm.form.stripeNote') }}
                 </p>
 
                 <p class="mt-2 text-xs text-gray-500 text-center">
-                    เหรียญจะถูกส่งเป็น TPIX เนทีฟบน TPIX Chain ตามตารางปลดล็อกของเฟสนี้
+                    {{ t('ui.tokenSaleBuyForm.form.deliveryNote') }}
                 </p>
             </template>
         </div>

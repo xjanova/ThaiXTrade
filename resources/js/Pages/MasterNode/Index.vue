@@ -26,8 +26,13 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import AwaitingDeployNotice from '@/Components/AwaitingDeployNotice.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
+import { useTranslation } from '@/Composables/useTranslation';
 
 const walletStore = useWalletStore();
+const { t, locale } = useTranslation();
+
+/** locale สำหรับจัดรูปแบบวันที่บนจอ — ตามภาษาที่ผู้ใช้เลือก */
+const dateLocale = computed(() => (locale.value === 'th' ? 'th-TH' : 'en-US'));
 
 const props = defineProps({
     stats: { type: Object, default: () => ({}) },
@@ -54,7 +59,7 @@ const TIER_SKIN = {
     3: {
         name: 'Validator Node', short: 'Validator',
         apyHint: '15-20%', hardware: '16 CPU · 32GB · 1TB SSD',
-        desc: 'ผู้ปิดบล็อก IBFT2 ตัวจริง มีสิทธิ์โหวตธรรมาภิบาล — ต้องผ่าน KYC นิติบุคคล',
+        descKey: 'page.masterNode.tier.validatorDesc',
         gradient: 'from-red-500/30 via-rose-500/20 to-pink-500/10',
         border: 'border-red-500/30', glow: 'shadow-[0_0_40px_rgba(239,68,68,0.15)]',
         badge: 'bg-red-500/20 text-red-300 border-red-500/40', accent: 'text-red-400',
@@ -63,7 +68,7 @@ const TIER_SKIN = {
     0: {
         name: 'Guardian Node', short: 'Guardian',
         apyHint: '10-12%', hardware: '8 CPU · 16GB · 500GB SSD',
-        desc: 'โหนดระดับพรีเมียม ส่วนแบ่งรางวัลสูงสุดในระบบ',
+        descKey: 'page.masterNode.tier.guardianDesc',
         gradient: 'from-yellow-500/30 via-amber-500/20 to-orange-500/10',
         border: 'border-yellow-500/30', glow: 'shadow-[0_0_40px_rgba(245,158,11,0.15)]',
         badge: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40', accent: 'text-yellow-400',
@@ -72,7 +77,7 @@ const TIER_SKIN = {
     1: {
         name: 'Sentinel Node', short: 'Sentinel',
         apyHint: '7-9%', hardware: '4 CPU · 8GB · 200GB SSD',
-        desc: 'โหนดมาตรฐานสำหรับดูแลความสมบูรณ์ของเครือข่าย',
+        descKey: 'page.masterNode.tier.sentinelDesc',
         gradient: 'from-purple-500/30 via-violet-500/20 to-fuchsia-500/10',
         border: 'border-purple-500/30', glow: 'shadow-[0_0_40px_rgba(139,92,246,0.15)]',
         badge: 'bg-purple-500/20 text-purple-300 border-purple-500/40', accent: 'text-purple-400',
@@ -81,7 +86,7 @@ const TIER_SKIN = {
     2: {
         name: 'Light Node', short: 'Light',
         apyHint: '4-6%', hardware: '2 CPU · 4GB · 100GB SSD',
-        desc: 'เริ่มง่ายที่สุด ช่วยค้ำเครือข่ายแล้วรับรางวัล',
+        descKey: 'page.masterNode.tier.lightDesc',
         gradient: 'from-cyan-500/30 via-blue-500/20 to-teal-500/10',
         border: 'border-cyan-500/30', glow: 'shadow-[0_0_40px_rgba(6,182,212,0.15)]',
         badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40', accent: 'text-cyan-400',
@@ -94,14 +99,18 @@ const DISPLAY_ORDER = [3, 0, 1, 2];
 
 const WEI_PER_TPIX = 10n ** 18n;
 
-/** ชื่อรายการภาษาคน — ใช้ในการ์ด "รอการยืนยัน" และข้อความหลังสลับกระเป๋า */
-const TX_LABEL = {
-    stake: 'ลงทะเบียนโหนด',
-    claim: 'รับรางวัล',
-    deregister: 'ปิดโหนดและถอนเงินต้น',
-    withdraw: 'ถอนเงินต้นที่เหลือ',
-    consent: 'ให้ความยินยอม KYC',
+/** ชื่อรายการภาษาคน — ใช้ในการ์ด "รอการยืนยัน" และข้อความหลังสลับกระเป๋า (เก็บเป็นคีย์แปล) */
+const TX_LABEL_KEY = {
+    stake: 'page.masterNode.tx.stake',
+    claim: 'page.masterNode.tx.claim',
+    deregister: 'page.masterNode.tx.deregister',
+    withdraw: 'page.masterNode.tx.withdraw',
+    consent: 'page.masterNode.tx.consent',
 };
+
+function txLabel(kind) {
+    return TX_LABEL_KEY[kind] ? t(TX_LABEL_KEY[kind]) : t('page.masterNode.tx.generic');
+}
 
 /** รอผล tx ที่ส่งไปแล้วแต่ wait() ล้ม — ทุก 5 วิ นานสุด 10 นาที แล้วให้ไปดูบนเอ็กซ์พลอเรอร์เอง */
 const RECEIPT_POLL_MS = 5000;
@@ -212,20 +221,17 @@ const KYC_ABI = [
 ];
 
 /** enum KYCStatus { None, ConsentGiven, Submitted, Approved, Rejected, Revoked } */
-const KYC_STATUS = {
-    0: { label: 'ยังไม่เริ่ม', hint: 'กดให้ความยินยอมเพื่อเริ่มขั้นตอน KYC' },
-    1: { label: 'ให้ความยินยอมแล้ว', hint: 'ส่งเอกสารให้ทีมงานตรวจ แล้วรอทีมงานบันทึกเข้าระบบ' },
-    2: { label: 'ทีมงานรับเรื่องแล้ว', hint: 'อยู่ระหว่างตรวจสอบ' },
-    3: { label: 'อนุมัติแล้ว', hint: 'ลงทะเบียนชั้น Validator ได้เลย' },
-    4: { label: 'ไม่ผ่าน', hint: 'ติดต่อทีมงานเพื่อยื่นใหม่' },
-    5: { label: 'ถอนความยินยอมแล้ว', hint: 'กดให้ความยินยอมใหม่เพื่อเริ่มอีกครั้ง' },
-};
+const KYC_STATUS_IDS = [0, 1, 2, 3, 4, 5];
+
+/** คีย์แปลของสถานะ KYC — ไม่รู้จักค่า = ถือเป็น "ยังไม่เริ่ม" */
+function kycStatusKey(id) {
+    return `page.masterNode.kyc.status.s${KYC_STATUS_IDS.includes(id) ? id : 0}`;
+}
 
 /** enum NodeStatus { Inactive, Active, Slashed, Exited, SlashedWithdrawable } */
-const STATUS_LABEL = {
-    0: 'ยังไม่ลงทะเบียน', 1: 'ทำงานอยู่', 2: 'ถูกปรับ (slashed)',
-    3: 'ออกจากระบบแล้ว', 4: 'ถูกปรับ — ถอนเงินต้นได้',
-};
+function nodeStatusLabel(id) {
+    return [0, 1, 2, 3, 4].includes(id) ? t(`page.masterNode.nodeStatus.s${id}`) : '';
+}
 
 // ============================================================
 //  ตัวช่วยเรื่องจำนวนเงิน — wei เป็น BigInt ตลอดทาง
@@ -271,7 +277,7 @@ function numOrNull(v) {
 /** basis points → "12%" / "6.25%" */
 function fmtBps(bps) {
     if (bps === null || bps === undefined) return '—';
-    return `${Number((Number(bps) / 100).toFixed(2)).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+    return `${Number((Number(bps) / 100).toFixed(2)).toLocaleString(dateLocale.value, { maximumFractionDigits: 2 })}%`;
 }
 
 function codeError(code) {
@@ -562,10 +568,10 @@ const tierCards = computed(() => {
         let projectedTone = 'muted';
         if (projectedAprBps !== null && !isFull) {
             if (poolState.value === 'unfunded') {
-                projectedText = 'จ่ายได้ 0 — พูลยังไม่เติมเงิน';
+                projectedText = t('page.masterNode.tierCard.projectedUnfunded');
                 projectedTone = 'warn';
             } else {
-                projectedText = `${fmtBps(projectedAprBps)} ต่อปี`;
+                projectedText = t('page.masterNode.tierCard.perYear', { v: fmtBps(projectedAprBps) });
                 // อ่านยอดพูลไม่ได้ = ไม่เน้นสีเขียว (ยังไม่รู้ว่าจ่ายได้จริงหรือเปล่า)
                 projectedTone = poolState.value === 'funded' ? 'good' : 'muted';
             }
@@ -574,6 +580,7 @@ const tierCards = computed(() => {
         return {
             id: idx,
             ...skin,
+            desc: t(skin.descKey),
             minStake,
             minStakeWei,
             lockDays: Number(chain.lock_days ?? 0),
@@ -589,10 +596,12 @@ const tierCards = computed(() => {
             projectedText,
             projectedTone,
             // ป้ายหัวการ์ด: เพดานจริงจากเชน > ค่าเริ่มต้นของสัญญา (ติดป้าย) > ช่วงประมาณการ (ติดป้าย)
-            apyBadge: aprCapBps !== null ? `สูงสุด ${fmtBps(aprCapBps)} ต่อปี` : `${skin.apyHint} ต่อปี`,
+            apyBadge: aprCapBps !== null
+                ? t('page.masterNode.tierCard.apyMax', { v: fmtBps(aprCapBps) })
+                : t('page.masterNode.tierCard.perYear', { v: skin.apyHint }),
             apyNote: fromChain && aprCapBps !== null
                 ? ''
-                : (aprCapBps !== null ? 'ค่าตั้งต้นของสัญญา — ยังไม่ได้อ่านจากเชน' : 'ประมาณการ — ยังไม่ได้อ่านจากเชน'),
+                : (aprCapBps !== null ? t('page.masterNode.tierCard.apyNoteDefault') : t('page.masterNode.tierCard.apyNoteEstimate')),
             isFull,
             needsKyc,
             canAfford: minStakeWei !== null && minStakeWei > 0n
@@ -635,35 +644,35 @@ const txAwaiting = computed(() => !!pendingTx.value && !pendingTx.value.gaveUp);
 
 /** ปุ่มซื้อกดได้ไหม + ถ้ากดไม่ได้ เพราะอะไร (ตอบเป็นภาษาคน ไม่ใช่ revert string) */
 function blockReason(tier) {
-    if (!props.registryLive && props.registryUnknown) return 'อ่านสถานะสัญญาจากเชนไม่ได้ชั่วคราว — รีเฟรชหน้าอีกครั้งในอีกสักครู่';
-    if (!props.registryLive) return 'สัญญายังไม่ได้ติดตั้งบนเชน — เปิดขายเมื่อระบบพร้อม';
+    if (!props.registryLive && props.registryUnknown) return t('page.masterNode.block.registryUnknown');
+    if (!props.registryLive) return t('page.masterNode.block.notDeployed');
     if (isRegistrationPaused.value) {
-        return 'ผู้ดูแลระบบปิดรับลงทะเบียนโหนดใหม่ชั่วคราว — โหนดที่มีอยู่ยังรับรางวัล ปิดโหนด และถอนเงินต้นได้ตามปกติ';
+        return t('page.masterNode.block.paused');
     }
-    if (chainReadError.value) return 'อ่านข้อมูลจากเชนไม่ได้ — กด "ลองใหม่" ก่อน (ยังไม่รู้ว่ากระเป๋านี้มีโหนดอยู่แล้วหรือไม่)';
-    if (walletStore.isConnected && !nodeLoaded.value) return 'กำลังอ่านสถานะโหนดของคุณจากเชน...';
-    if (txAwaiting.value) return 'มีรายการก่อนหน้ารอการยืนยันบนเชนอยู่ — รอให้จบก่อน';
-    if (myNode.value && myNode.value.statusId === 1) return 'คุณมีโหนดที่ทำงานอยู่แล้ว 1 ตัวต่อ 1 กระเป๋า';
+    if (chainReadError.value) return t('page.masterNode.block.chainReadError');
+    if (walletStore.isConnected && !nodeLoaded.value) return t('page.masterNode.block.loadingNode');
+    if (txAwaiting.value) return t('page.masterNode.block.txAwaiting');
+    if (myNode.value && myNode.value.statusId === 1) return t('page.masterNode.block.hasActiveNode');
     // สัญญาบังคับ status == Inactive เท่านั้น — โหนดที่ถูกปรับ (2/4) หรือออกไปแล้ว (3)
     // ยังไม่ใช่ Inactive ต้องถอนเงินต้นที่เหลือให้จบก่อน ไม่งั้น registerNode revert "Already registered"
     if (myNode.value && myNode.value.statusId !== 0 && myNode.value.statusId !== 1) {
-        return 'ต้องถอนเงินต้นที่เหลือของโหนดเดิมให้จบก่อนจึงลงทะเบียนใหม่ได้';
+        return t('page.masterNode.block.withdrawRemainingFirst');
     }
-    if (myNode.value && myNode.value.pendingUnclaimed > 0) return 'ต้องกดรับรางวัลค้างให้หมดก่อนลงทะเบียนใหม่';
-    if (tier.isFull) return `ชั้นนี้เต็มแล้ว (${tier.activeNodes}/${tier.maxNodes})`;
-    if (tier.minStakeWei === null || tier.minStakeWei <= 0n) return 'ยังไม่ทราบจำนวนวางค้ำของชั้นนี้จากเชน';
+    if (myNode.value && myNode.value.pendingUnclaimed > 0) return t('page.masterNode.block.claimPendingFirst');
+    if (tier.isFull) return t('page.masterNode.block.tierFull', { active: tier.activeNodes, max: tier.maxNodes });
+    if (tier.minStakeWei === null || tier.minStakeWei <= 0n) return t('page.masterNode.block.minStakeUnknown');
     if (tpixBalanceWei.value === null) {
-        return balanceError.value ? 'อ่านยอด TPIX ของคุณไม่ได้ — กดลองใหม่อีกครั้ง' : 'กำลังอ่านยอด TPIX ของคุณ...';
+        return balanceError.value ? t('page.masterNode.block.balanceError') : t('page.masterNode.block.loadingBalance');
     }
     // เทียบเป็น wei (BigInt) — ส่วนต่างปัดขึ้นเป็น TPIX เต็ม ให้เติมครั้งเดียวพอ
     if (tpixBalanceWei.value < tier.minStakeWei) {
         const shortWei = tier.minStakeWei - tpixBalanceWei.value;
         const shortTpix = (shortWei + WEI_PER_TPIX - 1n) / WEI_PER_TPIX;
-        return `ต้องมีอีก ${fmtNum(Number(shortTpix))} TPIX`;
+        return t('page.masterNode.block.needMore', { amount: fmtNum(Number(shortTpix)) });
     }
-    if (tier.needsKyc && !props.kycContract) return 'ชั้น Validator ยังไม่เปิด — ผู้ดูแลยังไม่ผูกสัญญา KYC';
-    if (tier.needsKyc && kycApproved.value === false) return 'ชั้น Validator ต้องผ่าน KYC ก่อน';
-    if (!endpointValid.value) return 'กรอกที่อยู่โหนด (IP:port) ให้ถูกต้องก่อน';
+    if (tier.needsKyc && !props.kycContract) return t('page.masterNode.revert.kycNotConfigured');
+    if (tier.needsKyc && kycApproved.value === false) return t('page.masterNode.revert.kycNotApproved');
+    if (!endpointValid.value) return t('page.masterNode.block.endpointInvalid');
     return null;
 }
 
@@ -685,67 +694,66 @@ const endpointValid = computed(() => {
 const endpointError = computed(() => {
     if (!endpointTouched.value || endpointValid.value) return '';
     const v = endpoint.value.trim();
-    if (!v) return 'ต้องกรอกที่อยู่โหนด เช่น 203.0.113.10:8545';
-    if (v.length > MAX_ENDPOINT_LEN) return `ยาวเกิน ${MAX_ENDPOINT_LEN} ตัวอักษร`;
-    return 'รูปแบบต้องเป็น IP:port หรือ domain:port เช่น 203.0.113.10:8545';
+    if (!v) return t('page.masterNode.endpoint.required');
+    if (v.length > MAX_ENDPOINT_LEN) return t('page.masterNode.endpoint.tooLong', { n: MAX_ENDPOINT_LEN });
+    return t('page.masterNode.endpoint.format');
 });
 
 // ============================================================
 //  แปลง error จากเชน/กระเป๋า ให้เป็นข้อความที่ผู้ใช้อ่านรู้เรื่อง
 //  ห้ามโยน e.message ดิบขึ้นจอ — ethers คืนมาเป็นก้อน JSON ยาวเป็นหน้า
 // ============================================================
+// คีย์ซ้าย = ข้อความ revert จากสัญญา (ใช้จับคู่ ห้ามแปล) — ค่าขวา = คีย์แปลที่โชว์ผู้ใช้
 const REVERT_MAP = {
-    'Already registered': 'กระเป๋านี้มีโหนดที่ทำงานอยู่แล้ว',
-    'Claim pending rewards first': 'ต้องกดรับรางวัลค้างให้หมดก่อนลงทะเบียนใหม่',
-    'Registration paused': 'ผู้ดูแลระบบปิดรับลงทะเบียนโหนดใหม่ชั่วคราว — ยังไม่มีการโอนเงิน',
+    'Already registered': 'page.masterNode.revert.alreadyRegistered',
+    'Claim pending rewards first': 'page.masterNode.block.claimPendingFirst',
+    'Registration paused': 'page.masterNode.revert.registrationPaused',
     // สองข้อความนี้มาจากกติกา msg.value == minStake เป๊ะ (ส่งเกิน / ส่งขาด)
-    'Stake must equal tier minimum': 'ต้องวางค้ำเท่ากับขั้นต่ำของชั้นนี้พอดี (รางวัลแบ่งเท่ากันทุกโหนด วางเกินไม่ได้อะไรเพิ่ม) — ระบบโหลดขั้นต่ำล่าสุดให้แล้ว ลองอีกครั้ง',
-    'Registration expired': 'การยืนยันหมดอายุ กรุณาโหลดข้อมูลและยืนยันสมัครใหม่',
-    'Lock terms changed': 'ระยะเวลาล็อกเปลี่ยนไป กรุณาโหลดข้อมูลและตรวจเงื่อนไขใหม่',
-    'Slash terms changed': 'เพดานค่าปรับเปลี่ยนไป กรุณาโหลดข้อมูลและตรวจเงื่อนไขใหม่',
-    'Insufficient stake': 'จำนวน TPIX ที่ส่งไปน้อยกว่าขั้นต่ำของชั้นนี้ — ระบบโหลดขั้นต่ำล่าสุดให้แล้ว ลองอีกครั้ง',
-    'Endpoint required': 'ต้องกรอกที่อยู่โหนด',
-    'Endpoint too long': `ที่อยู่โหนดยาวเกิน ${MAX_ENDPOINT_LEN} ตัวอักษร`,
-    'Tier full': 'ชั้นนี้เต็มโควตาแล้ว',
-    'KYC contract not configured': 'ชั้น Validator ยังไม่เปิด — ผู้ดูแลยังไม่ผูกสัญญา KYC',
-    'KYC not approved': 'ชั้น Validator ต้องผ่าน KYC ก่อน',
-    'Consent already active': 'ให้ความยินยอมไว้แล้ว',
-    'Not active': 'โหนดนี้ไม่ได้อยู่ในสถานะทำงาน',
-    'Still locked': 'ยังไม่พ้นระยะล็อก ถอนเงินต้นไม่ได้',
-    'Not slashed': 'โหนดนี้ไม่ได้อยู่ในสถานะถูกปรับ',
-    'Nothing to withdraw': 'ไม่มีเงินต้นเหลือให้ถอน',
-    'Transfer failed': 'โอนเงินไม่สำเร็จ — สัญญามีเงินไม่พอในตอนนี้',
+    'Stake must equal tier minimum': 'page.masterNode.revert.stakeMustEqual',
+    'Registration expired': 'page.masterNode.revert.registrationExpired',
+    'Lock terms changed': 'page.masterNode.revert.lockTermsChanged',
+    'Slash terms changed': 'page.masterNode.revert.slashTermsChanged',
+    'Insufficient stake': 'page.masterNode.revert.insufficientStake',
+    'Endpoint required': 'page.masterNode.revert.endpointRequired',
+    'Endpoint too long': 'page.masterNode.revert.endpointTooLong',
+    'Tier full': 'page.masterNode.revert.tierFull',
+    'KYC contract not configured': 'page.masterNode.revert.kycNotConfigured',
+    'KYC not approved': 'page.masterNode.revert.kycNotApproved',
+    'Consent already active': 'page.masterNode.revert.consentActive',
+    'Not active': 'page.masterNode.revert.notActive',
+    'Still locked': 'page.masterNode.revert.stillLocked',
+    'Not slashed': 'page.masterNode.revert.notSlashed',
+    'Nothing to withdraw': 'page.masterNode.revert.nothingToWithdraw',
+    'Transfer failed': 'page.masterNode.revert.transferFailed',
 };
 
 const CODE_MESSAGE = {
-    WRONG_CHAIN: 'กระเป๋ายังไม่ได้อยู่บน TPIX Chain — สลับเครือข่ายแล้วลองใหม่',
-    NO_SIGNER: 'ไม่พบตัวเซ็นในกระเป๋า — เชื่อมกระเป๋าใหม่อีกครั้ง',
-    TX_CANCELLED: 'รายการถูกยกเลิกในกระเป๋า — ไม่มีเงินออกจากกระเป๋า',
-    NO_WALLET_PROVIDER: 'ไม่พบกระเป๋าที่เชื่อมอยู่ — เชื่อมกระเป๋าก่อนทำรายการ',
+    WRONG_CHAIN: 'page.masterNode.code.wrongChain',
+    NO_SIGNER: 'page.masterNode.code.noSigner',
+    TX_CANCELLED: 'page.masterNode.code.txCancelled',
+    NO_WALLET_PROVIDER: 'page.masterNode.code.noWalletProvider',
 };
 
-const POOL_EMPTY_MSG = 'ตอนนี้ยังไม่มีรางวัลที่กดรับได้ — ถ้าพูลรางวัลยังไม่ถูกเติมเงิน รางวัลของคุณไม่หาย สะสมรอไว้เคลมเมื่อพูลมีเงิน';
-
 function humanError(e) {
-    if (!e) return 'ทำรายการไม่สำเร็จ';
+    if (!e) return t('page.masterNode.err.failed');
     if (e.code === 'WALLET_SWITCHED') {
-        return `คุณสลับกระเป๋าระหว่างทำรายการ — หยุดไว้ก่อนและยังไม่ได้ส่งรายการใด ๆ (รายการนี้เริ่มจาก ${shortAddr(e.owner)}) ตรวจสอบแล้วกดใหม่อีกครั้ง`;
+        return t('page.masterNode.err.walletSwitched', { addr: shortAddr(e.owner) });
     }
-    if (isUserRejection(e)) return 'คุณยกเลิกการเซ็นในกระเป๋า — ยังไม่มีการโอนเงินใด ๆ';
-    if (CODE_MESSAGE[e.code]) return CODE_MESSAGE[e.code];
-    if (e.code === 'INSUFFICIENT_FUNDS') return 'ยอด TPIX ในกระเป๋าไม่พอ';
+    if (isUserRejection(e)) return t('page.masterNode.err.userRejected');
+    if (CODE_MESSAGE[e.code]) return t(CODE_MESSAGE[e.code]);
+    if (e.code === 'INSUFFICIENT_FUNDS') return t('page.masterNode.err.insufficientFunds');
 
     const blob = [e.reason, e.shortMessage, e.info?.error?.message, e.data?.message, e.message]
         .filter(Boolean).join(' | ');
 
     for (const [key, msg] of Object.entries(REVERT_MAP)) {
-        if (blob.includes(key)) return msg;
+        if (blob.includes(key)) return t(msg, { n: MAX_ENDPOINT_LEN });
     }
-    if (/user rejected|User denied/i.test(blob)) return 'คุณยกเลิกการเซ็นในกระเป๋า — ยังไม่มีการโอนเงินใด ๆ';
-    if (/network|timeout|could not detect|failed to fetch/i.test(blob)) return 'ต่อกับเชนไม่ได้ — ลองใหม่อีกครั้ง';
+    if (/user rejected|User denied/i.test(blob)) return t('page.masterNode.err.userRejected');
+    if (/network|timeout|could not detect|failed to fetch/i.test(blob)) return t('page.masterNode.err.network');
 
     // reason คือข้อความ revert สั้น ๆ จากสัญญา (ไม่ใช่ก้อน JSON) — ส่วนที่เหลือไม่โชว์ดิบ
-    return e.reason ? `ทำรายการไม่สำเร็จ: ${e.reason}` : 'ทำรายการไม่สำเร็จ — ลองใหม่อีกครั้ง';
+    return e.reason ? t('page.masterNode.err.failedReason', { reason: e.reason }) : t('page.masterNode.err.failedRetry');
 }
 
 /** สลับกระเป๋ากลางรายการ → ข้อความระดับหน้า (การ์ดโหนดของกระเป๋าเดิมถูกซ่อนไปแล้ว) */
@@ -829,8 +837,8 @@ async function checkPendingTx() {
             await afterConfirmed({ owner: p.owner }, p.kind, p.hash);
         } else {
             // ข้อความระดับหน้า — การ์ดเดิมของรายการนี้อาจถูกซ่อนไปแล้ว (เช่น สลับกระเป๋า)
-            const who = sameAddress(p.owner, walletStore.address) ? '' : `ของกระเป๋า ${shortAddr(p.owner)} `;
-            flowNotice.value = `${TX_LABEL[p.kind] || 'รายการ'}${who}ไม่สำเร็จบนเชน — ไม่มีเงินออกจากกระเป๋า`;
+            const who = sameAddress(p.owner, walletStore.address) ? '' : t('page.masterNode.notice.ofWallet', { addr: shortAddr(p.owner) });
+            flowNotice.value = t('page.masterNode.notice.txFailedOnChain', { label: txLabel(p.kind), who });
         }
     } catch { /* RPC ยังล่ม — รอบหน้าลองใหม่ */ } finally {
         checkingReceipt = false;
@@ -840,11 +848,11 @@ async function checkPendingTx() {
 /** หลังเชนยืนยัน — ถ้าผู้ใช้สลับกระเป๋าไปแล้ว ห้ามแสดงผลเป็นของกระเป๋าใหม่ */
 async function afterConfirmed(guard, kind, hash) {
     if (!sameAddress(guard.owner, walletStore.address)) {
-        flowNotice.value = `${TX_LABEL[kind] || 'รายการ'}ของกระเป๋า ${shortAddr(guard.owner)} สำเร็จบนเชนแล้ว — ตอนนี้หน้าจอแสดงกระเป๋าที่คุณสลับมา`;
+        flowNotice.value = t('page.masterNode.notice.confirmedOtherWallet', { label: txLabel(kind), addr: shortAddr(guard.owner) });
         return;
     }
     if (kind === 'stake') { stakeTxHash.value = hash; activeTab.value = 'setup'; }
-    if (kind === 'claim') { claimIsError.value = false; claimMessage.value = 'รับรางวัลเรียบร้อย'; }
+    if (kind === 'claim') { claimIsError.value = false; claimMessage.value = t('page.masterNode.claim.success'); }
 
     const jobs = kind === 'consent'
         ? [fetchKycStatus()]
@@ -911,7 +919,7 @@ async function claimRewards() {
     // พูลยังไม่ถูกเติม = เคลมได้ 0 → ไม่ปล่อยให้เซ็น tx ที่ได้ศูนย์
     if (!(Number(myNode.value.claimable) > 0)) {
         claimIsError.value = true;
-        claimMessage.value = POOL_EMPTY_MSG;
+        claimMessage.value = t('page.masterNode.err.poolEmpty');
         return;
     }
 
@@ -934,14 +942,14 @@ async function deregisterNode() {
     if (!walletStore.isConnected || !props.registryAddress || !myNode.value) return;
     if (busy.value || txAwaiting.value) return;
     if (myNode.value.isLocked) {
-        stakeError.value = `ยังไม่พ้นระยะล็อก — ถอนได้ ${unlockDateText.value}`;
+        stakeError.value = t('page.masterNode.deregister.stillLocked', { date: unlockDateText.value });
         return;
     }
     const guard = walletGuard();
     const warn = myNode.value.pending > myNode.value.claimable
-        ? '\n\nหมายเหตุ: รางวัลที่พูลจ่ายได้ตอนนี้น้อยกว่าที่คุณสะสมไว้ ส่วนที่เหลือจะค้างไว้เคลมทีหลังได้'
+        ? `\n\n${t('page.masterNode.deregister.partialWarn')}`
         : '';
-    if (!confirm(`ยืนยันปิดโหนดและถอนเงินต้น ${fmtNum(myNode.value.stake)} TPIX?${warn}`)) return;
+    if (!confirm(`${t('page.masterNode.deregister.confirm', { amount: fmtNum(myNode.value.stake) })}${warn}`)) return;
     if (busy.value || txAwaiting.value) return;
 
     isDeregistering.value = true; stakeError.value = ''; flowNotice.value = '';
@@ -1005,7 +1013,7 @@ const myTierSkin = computed(() => (myNode.value ? TIER_SKIN[myNode.value.tierId]
 
 const unlockDateText = computed(() => {
     if (!myNode.value?.unlockAt) return '-';
-    return new Date(myNode.value.unlockAt * 1000).toLocaleDateString('th-TH', {
+    return new Date(myNode.value.unlockAt * 1000).toLocaleDateString(dateLocale.value, {
         year: 'numeric', month: 'short', day: 'numeric',
     });
 });
@@ -1015,7 +1023,7 @@ const unlockCountdown = computed(() => {
     if (s <= 0) return '';
     const d = Math.floor(s / 86400);
     const h = Math.floor((s % 86400) / 3600);
-    return d > 0 ? `อีก ${d} วัน ${h} ชม.` : `อีก ${h} ชม.`;
+    return d > 0 ? t('page.masterNode.countdown.daysHours', { d, h }) : t('page.masterNode.countdown.hours', { h });
 });
 
 /** พูลรางวัลยังไม่ถูกเติมเงิน = กดเคลมได้ 0 ต้องบอกล่วงหน้าไม่ใช่ให้เสียเที่ยว */
@@ -1028,12 +1036,12 @@ const claimHint = computed(() => {
     const n = myNode.value;
     // pending > claimable มีคำอธิบายของตัวเองอยู่แล้วใต้ยอด — ไม่พูดซ้ำ
     if (!n || Number(n.claimable) > 0 || Number(n.pending) > Number(n.claimable)) return '';
-    return poolUnfunded.value ? 'พูลรางวัลยังไม่ถูกเติมเงิน — รางวัลที่สะสมได้จะไม่หาย กดรับได้เมื่อพูลมีเงิน' : '';
+    return poolUnfunded.value ? t('page.masterNode.claim.hintUnfunded') : '';
 });
 
 const heartbeatText = computed(() => {
     const ts = heartbeat.value?.lastHeartbeat;
-    return ts ? new Date(ts * 1000).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    return ts ? new Date(ts * 1000).toLocaleString(dateLocale.value, { dateStyle: 'medium', timeStyle: 'short' }) : '';
 });
 
 /**
@@ -1047,14 +1055,14 @@ const deployIssues = computed(() => {
 
     const out = [];
     if (!props.registryAddress) {
-        out.push('ยังไม่ได้ลงทะเบียนที่อยู่สัญญา NodeRegistry — สคริปต์ deploy จะลงทะเบียนให้เองเมื่อรันเสร็จ');
+        out.push(t('page.masterNode.deploy.noAddress'));
     } else if (props.registryUnknown) {
-        out.push(`ตั้งที่อยู่ไว้ที่ ${props.registryAddress} แต่ตรวจโค้ดสัญญาไม่ได้ (RPC ไม่ตอบ) — ยังไม่รู้ว่ามีสัญญาหรือไม่`);
+        out.push(t('page.masterNode.deploy.unknown', { addr: props.registryAddress }));
     } else {
-        out.push(`ตั้งที่อยู่ไว้ที่ ${props.registryAddress} แต่ไม่พบโค้ดสัญญาที่ที่อยู่นั้น`);
+        out.push(t('page.masterNode.deploy.noCode', { addr: props.registryAddress }));
     }
     if (!networkStats.value.rpc_connected) {
-        out.push('เชื่อมต่อ RPC ของเชน TPIX ไม่ได้');
+        out.push(t('page.masterNode.deploy.rpcDown'));
     }
     return out;
 });
@@ -1120,7 +1128,7 @@ onUnmounted(() => {
 function fmtNum(n) {
     const v = Number(n);
     if (!isFinite(v)) return '0';
-    return v.toLocaleString(undefined, { maximumFractionDigits: v < 1 ? 6 : 2 });
+    return v.toLocaleString(dateLocale.value, { maximumFractionDigits: v < 1 ? 6 : 2 });
 }
 </script>
 
@@ -1151,21 +1159,18 @@ function fmtNum(n) {
                 <!-- อ่านสถานะสัญญาไม่ได้ ≠ ยังไม่ติดตั้ง — อาจมีคนวางค้ำอยู่แล้ว ห้ามบอกว่า "รอติดตั้ง" -->
                 <div v-if="!registryLive && registryUnknown" data-test="registry-unknown"
                      class="glass rounded-2xl p-5 border-l-4 border-yellow-500">
-                    <div class="text-yellow-400 font-bold text-sm">อ่านสถานะสัญญามาสเตอร์โหนดจากเชนไม่ได้ชั่วคราว</div>
+                    <div class="text-yellow-400 font-bold text-sm">{{ t('page.masterNode.registryUnknown.title') }}</div>
                     <div class="text-xs text-gray-400 mt-1">
-                        ปิดปุ่มวางค้ำไว้ก่อนจนกว่าจะอ่านเชนได้ — เงินที่วางค้ำไว้แล้วอยู่ในสัญญาบนเชนตามเดิม รีเฟรชหน้าอีกครั้งในอีกสักครู่
+                        {{ t('page.masterNode.registryUnknown.body') }}
                     </div>
                 </div>
 
                 <!-- สัญญาเปิดแล้วแต่พูลรางวัลยังไม่มีเงิน — ต้องบอกก่อนที่ผู้ใช้จะเห็นตัวเลข % ใด ๆ -->
                 <div v-if="registryLive && poolUnfunded" data-test="pool-unfunded"
                      class="glass rounded-2xl p-5 border-l-4 border-yellow-500">
-                    <div class="text-yellow-400 font-bold text-sm">พูลรางวัลยังไม่ถูกเติมเงิน — ตอนนี้ยังไม่มีรางวัลให้รับ</div>
+                    <div class="text-yellow-400 font-bold text-sm">{{ t('page.masterNode.poolUnfunded.title') }}</div>
                     <div class="text-xs text-gray-400 mt-1 leading-relaxed">
-                        สัญญาจ่ายรางวัลได้เท่าที่พูลมีเงินจริงเท่านั้น ตอนนี้จ่ายได้ 0 TPIX
-                        ตัวเลข % บนหน้านี้คือเพดานตามสัญญา ไม่ใช่ผลตอบแทนที่รับประกัน
-                        รางวัลที่สะสมระหว่างนี้จะกดรับได้เมื่อพูลมีเงิน
-                        ส่วนเงินต้นที่วางค้ำถูกกันไว้ต่างหากและถอนคืนได้เมื่อพ้นระยะล็อก
+                        {{ t('page.masterNode.poolUnfunded.body') }}
                     </div>
                 </div>
 
@@ -1189,35 +1194,35 @@ function fmtNum(n) {
                             <span class="text-gradient-brand">Master Node</span>
                         </h1>
                         <p class="text-lg text-gray-300 mb-2 max-w-xl mx-auto">
-                            ค้ำเครือข่าย TPIX แล้วรับรางวัล
+                            {{ t('page.masterNode.hero.tagline') }}
                         </p>
                         <p class="text-sm text-gray-500 mb-8 max-w-md mx-auto">
-                            เชื่อมกระเป๋า เลือกชั้น กรอกที่อยู่เครื่อง แล้วลงทะเบียนได้เลย
+                            {{ t('page.masterNode.hero.subtitle') }}
                         </p>
 
                         <div class="grid grid-cols-3 gap-3 sm:gap-4 max-w-md mx-auto mb-8">
                             <!-- พูลยังว่าง = ไม่โชว์ % สีเขียวเป็นตัวชูโรง (จะอ่านเป็นผลตอบแทนที่ได้แน่) -->
                             <div v-if="poolUnfunded" class="glass-sm rounded-xl p-3" data-test="hero-pool-unfunded">
-                                <div class="text-xs text-gray-400">พูลรางวัล</div>
-                                <div class="text-base font-black text-yellow-400 leading-7">ยังไม่เติมเงิน</div>
+                                <div class="text-xs text-gray-400">{{ t('page.masterNode.pool.title') }}</div>
+                                <div class="text-base font-black text-yellow-400 leading-7">{{ t('page.masterNode.hero.notFunded') }}</div>
                             </div>
                             <div v-else class="glass-sm rounded-xl p-3">
-                                <div class="text-xs text-gray-400">เพดานต่อปี</div>
+                                <div class="text-xs text-gray-400">{{ t('page.masterNode.hero.aprCap') }}</div>
                                 <div class="text-xl font-black" :class="poolState === 'funded' ? 'text-trading-green' : 'text-gray-300'">{{ heroMaxApr }}</div>
                             </div>
                             <div class="glass-sm rounded-xl p-3">
-                                <div class="text-xs text-gray-400">โหนดที่ทำงานอยู่</div>
+                                <div class="text-xs text-gray-400">{{ t('page.masterNode.hero.activeNodes') }}</div>
                                 <div class="text-xl font-black text-gradient">{{ statNum(networkStats.total_nodes) }}</div>
                             </div>
                             <div class="glass-sm rounded-xl p-3">
-                                <div class="text-xs text-gray-400">ขั้นต่ำ</div>
+                                <div class="text-xs text-gray-400">{{ t('page.masterNode.hero.minimum') }}</div>
                                 <div class="text-xl font-black text-cyan-400">{{ minEntryText }}</div>
                             </div>
                         </div>
 
                         <button @click="connectWallet"
                                 class="btn-brand px-10 py-4 text-lg font-bold rounded-2xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300">
-                            เชื่อมกระเป๋า
+                            {{ t('page.masterNode.hero.connect') }}
                         </button>
                         <p class="text-xs text-gray-500 mt-4">
                             MetaMask · Trust Wallet · Coinbase · OKX · TPIX Wallet
@@ -1226,11 +1231,11 @@ function fmtNum(n) {
                         <div class="flex items-center justify-center gap-4 mt-6 flex-wrap">
                             <Link href="/masternode/guide"
                                 class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 transition">
-                                📖 คู่มือการตั้งค่า
+                                📖 {{ t('page.masterNode.links.guide') }}
                             </Link>
                             <a href="/api/v1/app/chain-download?type=masternode"
                                 class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-white/10 text-gray-400 hover:bg-white/5 transition">
-                                📥 ดาวน์โหลดโปรแกรม PC
+                                📥 {{ t('page.masterNode.links.downloadPc') }}
                             </a>
                         </div>
                     </div>
@@ -1258,18 +1263,18 @@ function fmtNum(n) {
                                         </span>
                                         <span v-else class="text-yellow-400 flex items-center gap-1">
                                             <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-                                            อยู่ผิดเครือข่าย
-                                            <button @click="switchNetwork" class="underline hover:text-yellow-300 ml-1">สลับ</button>
+                                            {{ t('page.masterNode.wallet.wrongNetwork') }}
+                                            <button @click="switchNetwork" class="underline hover:text-yellow-300 ml-1">{{ t('page.masterNode.wallet.switch') }}</button>
                                         </span>
                                     </div>
                                 </div>
                             </div>
 
                             <div class="text-right">
-                                <div class="text-[10px] text-gray-400 uppercase tracking-widest">TPIX ของคุณ</div>
+                                <div class="text-[10px] text-gray-400 uppercase tracking-widest">{{ t('page.masterNode.wallet.yourTpix') }}</div>
                                 <div class="text-3xl font-black leading-tight" :class="tpixBalance > 0 ? 'text-gradient' : 'text-gray-600'">
                                     <span v-if="tpixBalanceWei === null && isLoadingBalance" class="animate-pulse text-gray-500">···</span>
-                                    <span v-else-if="tpixBalanceWei === null" class="text-gray-600" :title="balanceError ? 'อ่านยอดไม่ได้' : ''">—</span>
+                                    <span v-else-if="tpixBalanceWei === null" class="text-gray-600" :title="balanceError ? t('page.masterNode.wallet.balanceReadError') : ''">—</span>
                                     <span v-else>{{ fmtNum(Math.floor(tpixBalance)) }}</span>
                                 </div>
                             </div>
@@ -1279,11 +1284,11 @@ function fmtNum(n) {
                     <div class="flex items-center justify-center gap-4 flex-wrap">
                         <Link href="/masternode/guide"
                             class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 transition">
-                            📖 คู่มือการตั้งค่า
+                            📖 {{ t('page.masterNode.links.guide') }}
                         </Link>
                         <a href="/api/v1/app/chain-download?type=masternode"
                             class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-white/10 text-gray-400 hover:bg-white/5 transition">
-                            📥 ดาวน์โหลดโปรแกรม PC
+                            📥 {{ t('page.masterNode.links.downloadPc') }}
                         </a>
                     </div>
 
@@ -1291,17 +1296,17 @@ function fmtNum(n) {
                          class="glass rounded-2xl p-5 border-l-4 border-yellow-500 flex items-center gap-4">
                         <div class="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center text-2xl shrink-0">⚡</div>
                         <div class="flex-1">
-                            <div class="text-yellow-400 font-bold">สลับไป TPIX Chain</div>
-                            <div class="text-xs text-gray-400">ถ้ายังไม่มีในกระเป๋า ระบบจะเพิ่มให้อัตโนมัติ</div>
+                            <div class="text-yellow-400 font-bold">{{ t('page.masterNode.switchChain.title') }}</div>
+                            <div class="text-xs text-gray-400">{{ t('page.masterNode.switchChain.desc') }}</div>
                         </div>
                         <button @click="switchNetwork" class="btn-primary px-6 py-2.5 rounded-xl font-bold shrink-0">
-                            สลับเครือข่าย
+                            {{ t('page.masterNode.switchChain.button') }}
                         </button>
                     </div>
 
                     <!-- Tabs -->
                     <div class="flex gap-1 p-1 glass-sm rounded-xl">
-                        <button v-for="tab in [{id:'setup',label:'โหนดของฉัน',icon:'🚀'},{id:'network',label:'เครือข่าย',icon:'🌐'}]" :key="tab.id"
+                        <button v-for="tab in [{id:'setup',label:t('page.masterNode.tabs.setup'),icon:'🚀'},{id:'network',label:t('page.masterNode.tabs.network'),icon:'🌐'}]" :key="tab.id"
                                 @click="activeTab = tab.id"
                                 :class="['flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all',
                                          activeTab === tab.id ? 'glass text-white shadow-lg' : 'text-gray-400 hover:text-white']">
@@ -1318,7 +1323,7 @@ function fmtNum(n) {
                         <div v-if="flowNotice" data-test="flow-notice"
                              class="glass rounded-2xl p-4 border-l-4 border-yellow-500 flex items-start gap-3">
                             <div class="flex-1 text-sm text-yellow-300">{{ flowNotice }}</div>
-                            <button @click="flowNotice = ''" class="text-xs text-gray-500 hover:text-white shrink-0">ปิด</button>
+                            <button @click="flowNotice = ''" class="text-xs text-gray-500 hover:text-white shrink-0">{{ t('page.masterNode.common.close') }}</button>
                         </div>
 
                         <!-- ส่ง tx แล้วแต่ยังไม่รู้ผล — ห้ามบอกว่าล้มเหลว เพราะอาจผ่านไปแล้ว -->
@@ -1326,24 +1331,24 @@ function fmtNum(n) {
                              class="glass rounded-2xl p-5 border-l-4 border-cyan-500 space-y-2">
                             <div class="flex items-center gap-2 text-cyan-300 font-bold text-sm">
                                 <span v-if="!pendingTx.gaveUp" class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                                {{ TX_LABEL[pendingTx.kind] || 'รายการ' }} — {{ pendingTx.gaveUp ? 'ยังไม่พบผลบนเชน' : 'รอการยืนยัน' }}
+                                {{ txLabel(pendingTx.kind) }} — {{ pendingTx.gaveUp ? t('page.masterNode.pending.notFound') : t('page.masterNode.pending.awaiting') }}
                             </div>
                             <p class="text-xs text-gray-400">
                                 <template v-if="pendingTx.gaveUp">
-                                    ตรวจซ้ำครบ 10 นาทีแล้วยังไม่พบผล — ดูสถานะจริงบนเอ็กซ์พลอเรอร์ หรือกดตรวจอีกครั้ง
+                                    {{ t('page.masterNode.pending.gaveUpBody') }}
                                 </template>
                                 <template v-else>
-                                    ส่งรายการเข้าเชนแล้วแต่ยังเชื่อมต่อเพื่อรอผลไม่ได้ ระบบกำลังตรวจซ้ำให้อัตโนมัติ — ไม่ต้องกดส่งใหม่
+                                    {{ t('page.masterNode.pending.pollingBody') }}
                                 </template>
                                 <span v-if="!sameAddress(pendingTx.owner, walletStore.address)" class="block mt-1">
-                                    รายการนี้เป็นของกระเป๋า {{ shortAddr(pendingTx.owner) }}
+                                    {{ t('page.masterNode.pending.otherWallet', { addr: shortAddr(pendingTx.owner) }) }}
                                 </span>
                             </p>
                             <div class="flex items-center gap-3 flex-wrap">
                                 <a :href="`${explorerUrl}/tx/${pendingTx.hash}`" target="_blank" rel="noopener"
                                    class="text-xs text-cyan-400 hover:text-cyan-300 font-mono break-all">{{ pendingTx.hash }}</a>
-                                <button @click="checkPendingTx" class="text-xs font-semibold text-white underline">ตรวจอีกครั้ง</button>
-                                <button v-if="pendingTx.gaveUp" @click="pendingTx = null" class="text-xs text-gray-500 hover:text-white">ซ่อน</button>
+                                <button @click="checkPendingTx" class="text-xs font-semibold text-white underline">{{ t('page.masterNode.pending.recheck') }}</button>
+                                <button v-if="pendingTx.gaveUp" @click="pendingTx = null" class="text-xs text-gray-500 hover:text-white">{{ t('page.masterNode.pending.hide') }}</button>
                             </div>
                         </div>
 
@@ -1351,24 +1356,23 @@ function fmtNum(n) {
                         <div v-if="chainReadError" data-test="chain-read-error"
                              class="glass rounded-2xl p-5 border-l-4 border-yellow-500 flex flex-wrap items-center gap-4">
                             <div class="flex-1 min-w-[200px]">
-                                <div class="text-yellow-400 font-bold">อ่านข้อมูลจากเชนไม่ได้</div>
+                                <div class="text-yellow-400 font-bold">{{ t('page.masterNode.chainError.title') }}</div>
                                 <div class="text-xs text-gray-400 mt-0.5">
-                                    ยังไม่รู้ว่ากระเป๋านี้มีโหนดอยู่แล้วหรือไม่ จึงปิดปุ่มลงทะเบียนไว้ก่อน
-                                    — ข้อมูลที่เห็นด้านล่างอาจไม่เป็นปัจจุบัน
+                                    {{ t('page.masterNode.chainError.body') }}
                                 </div>
                             </div>
                             <button @click="retryChainRead" :disabled="isLoadingNode" data-test="retry-chain-read"
                                     class="btn-primary px-6 py-2.5 rounded-xl font-bold shrink-0 disabled:opacity-50">
-                                {{ isLoadingNode ? 'กำลังลองใหม่...' : 'ลองใหม่' }}
+                                {{ isLoadingNode ? t('page.masterNode.chainError.retrying') : t('page.masterNode.chainError.retry') }}
                             </button>
                         </div>
 
                         <!-- แอดมินปิดรับลงทะเบียนใหม่ — เงินของคนที่อยู่ในระบบแล้วยังออกได้เสมอ -->
                         <div v-if="registryLive && isRegistrationPaused" data-test="registration-paused"
                              class="glass rounded-2xl p-5 border-l-4 border-red-500/60">
-                            <div class="text-red-300 font-bold text-sm">ปิดรับลงทะเบียนโหนดใหม่ชั่วคราว</div>
+                            <div class="text-red-300 font-bold text-sm">{{ t('page.masterNode.paused.title') }}</div>
                             <div class="text-xs text-gray-400 mt-1">
-                                โหนดที่ลงทะเบียนไว้แล้วยังรับรางวัล ปิดโหนด และถอนเงินต้นได้ตามปกติ
+                                {{ t('page.masterNode.paused.body') }}
                             </div>
                         </div>
 
@@ -1384,11 +1388,11 @@ function fmtNum(n) {
                                             <div class="flex items-center gap-2 flex-wrap">
                                                 <h3 class="text-xl font-bold text-white">{{ myTierSkin?.name }}</h3>
                                                 <span :class="['px-2.5 py-0.5 rounded-full text-[10px] font-black border', myTierSkin?.badge]">
-                                                    {{ STATUS_LABEL[myNode.statusId] }}
+                                                    {{ nodeStatusLabel(myNode.statusId) }}
                                                 </span>
                                             </div>
                                             <div class="text-sm text-gray-400 mt-0.5">
-                                                วางค้ำ <span class="text-white font-bold">{{ fmtNum(myNode.stake) }} TPIX</span>
+                                                {{ t('page.masterNode.node.staked') }} <span class="text-white font-bold">{{ fmtNum(myNode.stake) }} TPIX</span>
                                             </div>
                                         </div>
                                     </div>
@@ -1403,24 +1407,24 @@ function fmtNum(n) {
                                 <!-- รายละเอียดบนเชน -->
                                 <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
                                     <div class="glass-sm rounded-xl p-3">
-                                        <div class="text-[10px] text-gray-500 uppercase">ที่อยู่โหนด</div>
+                                        <div class="text-[10px] text-gray-500 uppercase">{{ t('page.masterNode.node.endpoint') }}</div>
                                         <div class="text-sm text-white font-mono break-all">{{ myNode.endpoint || '—' }}</div>
                                     </div>
                                     <div class="glass-sm rounded-xl p-3">
-                                        <div class="text-[10px] text-gray-500 uppercase">ลงทะเบียนเมื่อ</div>
+                                        <div class="text-[10px] text-gray-500 uppercase">{{ t('page.masterNode.node.registeredAt') }}</div>
                                         <div class="text-sm text-white">
-                                            {{ new Date(myNode.registeredAt * 1000).toLocaleDateString('th-TH') }}
+                                            {{ new Date(myNode.registeredAt * 1000).toLocaleDateString(dateLocale) }}
                                         </div>
                                     </div>
                                     <div class="glass-sm rounded-xl p-3">
-                                        <div class="text-[10px] text-gray-500 uppercase">ปลดล็อกเงินต้น</div>
+                                        <div class="text-[10px] text-gray-500 uppercase">{{ t('page.masterNode.node.unlock') }}</div>
                                         <div class="text-sm" :class="myNode.isLocked ? 'text-yellow-400' : 'text-trading-green'">
                                             {{ unlockDateText }}
                                             <span v-if="myNode.isLocked" class="block text-[10px] text-gray-500">{{ unlockCountdown }}</span>
                                         </div>
                                     </div>
                                     <div class="glass-sm rounded-xl p-3">
-                                        <div class="text-[10px] text-gray-500 uppercase">รับไปแล้วทั้งหมด</div>
+                                        <div class="text-[10px] text-gray-500 uppercase">{{ t('page.masterNode.node.totalRewards') }}</div>
                                         <div class="text-sm text-white">{{ fmtNum(myNode.totalRewards) }} TPIX</div>
                                     </div>
                                 </div>
@@ -1430,13 +1434,13 @@ function fmtNum(n) {
                                     <span :class="['w-2 h-2 rounded-full mt-1 shrink-0', heartbeat.isActive ? 'bg-trading-green animate-pulse' : 'bg-gray-500']" />
                                     <div>
                                         <span v-if="heartbeat.exists && heartbeat.lastHeartbeat" class="text-gray-300">
-                                            โปรแกรม Master Node ส่งสัญญาณล่าสุด {{ heartbeatText }}
+                                            {{ t('page.masterNode.heartbeat.last', { time: heartbeatText }) }}
                                         </span>
                                         <span v-else class="text-yellow-400/90">
-                                            ยังไม่ได้รับสัญญาณจากโปรแกรม — เปิดโปรแกรม TPIX Master Node เวอร์ชันล่าสุดด้วยกระเป๋าเดียวกัน
+                                            {{ t('page.masterNode.heartbeat.none') }}
                                         </span>
                                         <span class="block text-gray-500">
-                                            คะแนน uptime บนเชนทีมงานเป็นผู้บันทึก ไม่ได้อัปเดตอัตโนมัติจากสัญญาณนี้
+                                            {{ t('page.masterNode.heartbeat.uptimeNote') }}
                                         </span>
                                     </div>
                                 </div>
@@ -1445,11 +1449,11 @@ function fmtNum(n) {
                                 <div class="p-4 rounded-xl bg-trading-green/5 border border-trading-green/20 space-y-3">
                                     <div class="flex flex-wrap items-center justify-between gap-3">
                                         <div>
-                                            <div class="text-xs text-gray-400">รางวัลสะสม</div>
+                                            <div class="text-xs text-gray-400">{{ t('page.masterNode.reward.accrued') }}</div>
                                             <div class="text-lg font-black text-trading-green">{{ fmtNum(myNode.pending) }} TPIX</div>
                                         </div>
                                         <div>
-                                            <div class="text-xs text-gray-400">กดรับได้ตอนนี้</div>
+                                            <div class="text-xs text-gray-400">{{ t('page.masterNode.reward.claimable') }}</div>
                                             <div class="text-lg font-black" :class="myNode.claimable > 0 ? 'text-white' : 'text-gray-600'">
                                                 {{ fmtNum(myNode.claimable) }} TPIX
                                             </div>
@@ -1457,15 +1461,14 @@ function fmtNum(n) {
                                         <button
                                             @click="claimRewards"
                                             :disabled="busy || txAwaiting || !(myNode.claimable > 0)"
-                                            :title="myNode.claimable > 0 ? '' : 'ยังไม่มีรางวัลที่กดรับได้ตอนนี้'"
+                                            :title="myNode.claimable > 0 ? '' : t('page.masterNode.reward.nothingClaimable')"
                                             class="px-5 py-2.5 rounded-xl text-sm font-bold transition-all bg-trading-green/20 text-trading-green border border-trading-green/30 hover:bg-trading-green/30 disabled:opacity-40 disabled:cursor-not-allowed"
                                         >
-                                            {{ isClaiming ? 'กำลังรับ...' : 'รับรางวัล' }}
+                                            {{ isClaiming ? t('page.masterNode.reward.claiming') : t('page.masterNode.reward.claim') }}
                                         </button>
                                     </div>
                                     <p v-if="myNode.pending > myNode.claimable" class="text-[11px] text-yellow-400/90">
-                                        พูลรางวัลมีเงินไม่พอจ่ายเต็มจำนวนในตอนนี้ ส่วนที่เหลือไม่หาย — ค้างไว้เคลมได้เมื่อพูลถูกเติม
-                                        (เงินต้นของผู้วางค้ำถูกกันไว้ ไม่ถูกนำมาจ่ายรางวัล)
+                                        {{ t('page.masterNode.reward.partialPool') }}
                                     </p>
                                     <p v-if="claimHint" class="text-[11px] text-yellow-400/90">{{ claimHint }}</p>
                                 </div>
@@ -1479,11 +1482,11 @@ function fmtNum(n) {
                                 <div v-if="myNode.statusId === 2 || myNode.statusId === 4"
                                      class="p-4 rounded-xl bg-trading-red/5 border border-trading-red/20 flex flex-wrap items-center justify-between gap-3">
                                     <div class="text-xs text-trading-red">
-                                        โหนดนี้ถูกปรับจากการทำงานผิดกติกา — ถอนเงินต้นส่วนที่เหลือได้
+                                        {{ t('page.masterNode.slashed.body') }}
                                     </div>
                                     <button @click="withdrawSlashedStake" :disabled="busy || txAwaiting"
                                             class="px-5 py-2 rounded-xl text-sm font-bold bg-trading-red/20 text-trading-red border border-trading-red/30 hover:bg-trading-red/30 disabled:opacity-40">
-                                        {{ isWithdrawing ? 'กำลังถอน...' : 'ถอนเงินต้นที่เหลือ' }}
+                                        {{ isWithdrawing ? t('page.masterNode.slashed.withdrawing') : t('page.masterNode.tx.withdraw') }}
                                     </button>
                                 </div>
 
@@ -1492,30 +1495,30 @@ function fmtNum(n) {
                                     v-if="myNode.statusId === 1"
                                     @click="deregisterNode"
                                     :disabled="busy || txAwaiting || myNode.isLocked"
-                                    :title="myNode.isLocked ? `ถอนได้ ${unlockDateText}` : ''"
+                                    :title="myNode.isLocked ? t('page.masterNode.deregister.availableOn', { date: unlockDateText }) : ''"
                                     class="w-full py-2.5 rounded-xl text-xs font-medium border transition-all
                                            text-gray-500 border-white/5 hover:text-trading-red hover:border-trading-red/30
                                            disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gray-500 disabled:hover:border-white/5"
                                 >
-                                    <template v-if="isDeregistering">กำลังดำเนินการ...</template>
-                                    <template v-else-if="myNode.isLocked">ปิดโหนดได้เมื่อพ้นล็อก · {{ unlockCountdown }}</template>
-                                    <template v-else>ปิดโหนดและถอนเงินต้น</template>
+                                    <template v-if="isDeregistering">{{ t('page.masterNode.deregister.processing') }}</template>
+                                    <template v-else-if="myNode.isLocked">{{ t('page.masterNode.deregister.lockedUntil') }} · {{ unlockCountdown }}</template>
+                                    <template v-else>{{ t('page.masterNode.tx.deregister') }}</template>
                                 </button>
 
                                 <!-- ขั้นตอนต่อไปหลังซื้อ — ไม่ใช่จบแค่จ่ายเงิน -->
                                 <div class="glass-sm rounded-xl p-4 space-y-2">
-                                    <div class="text-xs font-bold text-white">ขั้นตอนต่อไป — เปิดเครื่องให้โหนดทำงานจริง</div>
+                                    <div class="text-xs font-bold text-white">{{ t('page.masterNode.nextSteps.title') }}</div>
                                     <ol class="text-[11px] text-gray-400 space-y-1 list-decimal list-inside">
-                                        <li>ดาวน์โหลดโปรแกรม TPIX Master Node แล้วติดตั้งบนเครื่องที่ IP ตรงกับ <span class="font-mono text-cyan-400">{{ myNode.endpoint || '—' }}</span></li>
-                                        <li>ในโปรแกรม ใส่กระเป๋า <span class="font-mono text-cyan-400">{{ walletStore.shortAddress }}</span> เพื่อผูกกับโหนดที่ลงทะเบียนไว้</li>
-                                        <li>ปล่อยให้โปรแกรมส่งสัญญาณชีพต่อเนื่อง — คะแนน uptime มีผลกับรางวัลโดยตรง (ทีมงานเป็นผู้บันทึกขึ้นเชน)</li>
+                                        <li>{{ t('page.masterNode.nextSteps.step1') }} <span class="font-mono text-cyan-400">{{ myNode.endpoint || '—' }}</span></li>
+                                        <li>{{ t('page.masterNode.nextSteps.step2Before') }} <span class="font-mono text-cyan-400">{{ walletStore.shortAddress }}</span> {{ t('page.masterNode.nextSteps.step2After') }}</li>
+                                        <li>{{ t('page.masterNode.nextSteps.step3') }}</li>
                                     </ol>
                                     <div class="flex gap-3 pt-1 flex-wrap">
                                         <a href="/api/v1/app/chain-download?type=masternode"
-                                           class="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 underline">ดาวน์โหลดโปรแกรม</a>
-                                        <Link href="/masternode/guide" class="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 underline">อ่านคู่มือ</Link>
+                                           class="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 underline">{{ t('page.masterNode.links.download') }}</a>
+                                        <Link href="/masternode/guide" class="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 underline">{{ t('page.masterNode.links.readGuide') }}</Link>
                                         <a :href="`${explorerUrl}/address/${myNode.operator}`" target="_blank" rel="noopener"
-                                           class="text-[11px] font-semibold text-gray-400 hover:text-white underline">ดูบนเอ็กซ์พลอเรอร์</a>
+                                           class="text-[11px] font-semibold text-gray-400 hover:text-white underline">{{ t('page.masterNode.links.explorer') }}</a>
                                     </div>
                                 </div>
                             </div>
@@ -1524,25 +1527,23 @@ function fmtNum(n) {
                         <!-- ─── ฟอร์มลงทะเบียนใหม่ ─── -->
                         <template v-if="canRegister">
                             <div class="text-center">
-                                <h2 class="text-2xl font-bold text-white">เลือกชั้นของโหนด</h2>
+                                <h2 class="text-2xl font-bold text-white">{{ t('page.masterNode.register.title') }}</h2>
                                 <p class="text-sm text-gray-400 mt-1">
-                                    คุณมี <span class="text-gradient font-bold">{{ tpixBalanceWei === null ? '—' : fmtNum(Math.floor(tpixBalance)) }} TPIX</span>
+                                    {{ t('page.masterNode.register.youHave') }} <span class="text-gradient font-bold">{{ tpixBalanceWei === null ? '—' : fmtNum(Math.floor(tpixBalance)) }} TPIX</span>
                                 </p>
                                 <p class="text-[11px] text-gray-500 mt-2 max-w-2xl mx-auto">
-                                    วางค้ำเท่ากับขั้นต่ำของชั้นพอดี (รางวัลแบ่งเท่ากันทุกโหนด วางเกินไม่ได้อะไรเพิ่ม)
-                                    · "คาดการณ์ถ้าเข้าตอนนี้" คิดที่ uptime 100% และพูลมีเงินพอจ่าย
-                                    ถ้ามีโหนดเข้ามาเพิ่ม ส่วนแบ่งต่อโหนดจะลดลง แต่ไม่เกินเพดานของชั้นเสมอ
+                                    {{ t('page.masterNode.register.note') }}
                                 </p>
                             </div>
 
                             <!-- ที่อยู่โหนด: สัญญาบังคับ ต้องกรอกก่อนถึงจะกดซื้อได้ -->
                             <div class="glass rounded-2xl p-5 space-y-2">
                                 <label for="mn-endpoint" class="block text-sm font-bold text-white">
-                                    ที่อยู่เครื่องที่จะรันโหนด <span class="text-trading-red">*</span>
+                                    {{ t('page.masterNode.register.endpointLabel') }} <span class="text-trading-red">*</span>
                                 </label>
                                 <p class="text-xs text-gray-400">
-                                    ที่อยู่นี้ถูกบันทึกลงเชนถาวรและใช้ให้เครือข่ายติดต่อโหนดของคุณ
-                                    กรอกเป็น <span class="font-mono text-cyan-400">IP:port</span> หรือ
+                                    {{ t('page.masterNode.register.endpointHelp') }}
+                                    <span class="font-mono text-cyan-400">IP:port</span> {{ t('page.masterNode.register.or') }}
                                     <span class="font-mono text-cyan-400">domain:port</span>
                                 </p>
                                 <input
@@ -1572,23 +1573,23 @@ function fmtNum(n) {
                                     <div class="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center text-xl shrink-0">🪪</div>
                                     <div class="flex-1">
                                         <div class="text-white font-bold text-sm">
-                                            ชั้น Validator — ต้องผ่าน KYC ก่อน
+                                            {{ t('page.masterNode.kyc.title') }}
                                         </div>
                                         <p class="text-xs text-gray-400 mt-1">
-                                            สถานะปัจจุบัน:
-                                            <span class="text-white font-semibold">{{ (KYC_STATUS[kycStatusId] || KYC_STATUS[0]).label }}</span>
-                                            — {{ (KYC_STATUS[kycStatusId] || KYC_STATUS[0]).hint }}
+                                            {{ t('page.masterNode.kyc.currentStatus') }}
+                                            <span class="text-white font-semibold">{{ t(`${kycStatusKey(kycStatusId)}.label`) }}</span>
+                                            — {{ t(`${kycStatusKey(kycStatusId)}.hint`) }}
                                         </p>
                                         <p v-if="kycRejectReason" class="text-xs text-trading-red mt-1">
-                                            เหตุผลที่ไม่ผ่าน: {{ kycRejectReason }}
+                                            {{ t('page.masterNode.kyc.rejectReason', { reason: kycRejectReason }) }}
                                         </p>
                                     </div>
                                 </div>
 
                                 <ol class="text-[11px] text-gray-400 space-y-1 list-decimal list-inside pl-1">
-                                    <li>ให้ความยินยอม PDPA บนเชนด้วยกระเป๋าของคุณเอง</li>
-                                    <li>ส่งเอกสารนิติบุคคลให้ทีมงานตรวจ</li>
-                                    <li>ทีมงานบันทึกและอนุมัติ แล้วปุ่มลงทะเบียน Validator จะเปิด</li>
+                                    <li>{{ t('page.masterNode.kyc.step1') }}</li>
+                                    <li>{{ t('page.masterNode.kyc.step2') }}</li>
+                                    <li>{{ t('page.masterNode.kyc.step3') }}</li>
                                 </ol>
 
                                 <div class="flex items-center gap-3 flex-wrap">
@@ -1597,14 +1598,14 @@ function fmtNum(n) {
                                         @click="giveKycConsent"
                                         :disabled="busy || txAwaiting"
                                         class="px-5 py-2.5 rounded-xl text-sm font-bold bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30 disabled:opacity-40">
-                                        {{ isGivingConsent ? 'กำลังเซ็น...' : 'ให้ความยินยอม PDPA' }}
+                                        {{ isGivingConsent ? t('page.masterNode.kyc.signing') : t('page.masterNode.kyc.giveConsent') }}
                                     </button>
                                     <span v-else-if="kycStatusId === 1 || kycStatusId === 2" class="text-xs text-yellow-400">
-                                        ✓ ให้ความยินยอมแล้ว — รอทีมงานตรวจเอกสาร
+                                        ✓ {{ t('page.masterNode.kyc.consentGiven') }}
                                     </span>
                                     <Link href="/validators/apply"
                                           class="text-xs font-semibold text-cyan-400 hover:text-cyan-300 underline">
-                                        ส่งเอกสารสมัคร Validator
+                                        {{ t('page.masterNode.kyc.submitDocs') }}
                                     </Link>
                                 </div>
 
@@ -1639,22 +1640,22 @@ function fmtNum(n) {
 
                                         <div class="space-y-3 mb-5 flex-1">
                                             <div class="flex justify-between items-center">
-                                                <span class="text-xs text-gray-500">วางค้ำขั้นต่ำ</span>
+                                                <span class="text-xs text-gray-500">{{ t('page.masterNode.tierCard.minStake') }}</span>
                                                 <span :class="['text-sm font-bold', tier.accent]">{{ fmtNum(tier.minStake) }} TPIX</span>
                                             </div>
                                             <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                             <div class="flex justify-between items-center">
-                                                <span class="text-xs text-gray-500">ระยะล็อก</span>
-                                                <span class="text-sm text-gray-300">{{ tier.lockDays }} วัน</span>
+                                                <span class="text-xs text-gray-500">{{ t('page.masterNode.tierCard.lock') }}</span>
+                                                <span class="text-sm text-gray-300">{{ t('page.masterNode.tierCard.days', { n: tier.lockDays }) }}</span>
                                             </div>
                                             <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                             <div class="flex justify-between items-center">
-                                                <span class="text-xs text-gray-500">ส่วนแบ่งรางวัล</span>
+                                                <span class="text-xs text-gray-500">{{ t('page.masterNode.tierCard.rewardShare') }}</span>
                                                 <span class="text-sm text-gray-300">{{ tier.rewardShare }}</span>
                                             </div>
                                             <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                             <div class="flex justify-between items-center">
-                                                <span class="text-xs text-gray-500">คาดการณ์ถ้าเข้าตอนนี้</span>
+                                                <span class="text-xs text-gray-500">{{ t('page.masterNode.tierCard.projected') }}</span>
                                                 <span class="text-sm text-right" data-test="tier-projection"
                                                       :class="{
                                                           'text-trading-green font-bold': tier.projectedTone === 'good',
@@ -1666,9 +1667,9 @@ function fmtNum(n) {
                                             </div>
                                             <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                             <div class="flex justify-between items-center">
-                                                <span class="text-xs text-gray-500">โควตาที่เหลือ</span>
+                                                <span class="text-xs text-gray-500">{{ t('page.masterNode.tierCard.slotsLeft') }}</span>
                                                 <span class="text-sm" :class="tier.isFull ? 'text-trading-red' : 'text-gray-300'">
-                                                    {{ tier.maxNodes > 0 ? `${tier.slotsLeft} / ${tier.maxNodes}` : 'ไม่จำกัด' }}
+                                                    {{ tier.maxNodes > 0 ? `${tier.slotsLeft} / ${tier.maxNodes}` : t('page.masterNode.tierCard.unlimited') }}
                                                 </span>
                                             </div>
                                         </div>
@@ -1680,7 +1681,7 @@ function fmtNum(n) {
                                         <div v-else class="mb-4 p-2.5 rounded-xl bg-green-500/10 border border-green-500/20">
                                             <div class="flex items-center gap-2 text-xs text-green-400 font-semibold">
                                                 <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                                                พร้อมลงทะเบียน
+                                                {{ t('page.masterNode.tierCard.ready') }}
                                             </div>
                                         </div>
 
@@ -1694,9 +1695,9 @@ function fmtNum(n) {
                                                 ]">
                                             <span v-if="isStaking && selectedTier === tier.id" class="flex items-center justify-center gap-2">
                                                 <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.42" stroke-dashoffset="10"/></svg>
-                                                กำลังลงทะเบียน...
+                                                {{ t('page.masterNode.tierCard.registering') }}
                                             </span>
-                                            <span v-else>วางค้ำ {{ fmtNum(tier.minStake) }} TPIX</span>
+                                            <span v-else>{{ t('page.masterNode.tierCard.stakeButton', { amount: fmtNum(tier.minStake) }) }}</span>
                                         </button>
 
                                         <div class="text-[10px] text-gray-600 mt-3 text-center">{{ tier.hardware }}</div>
@@ -1710,7 +1711,7 @@ function fmtNum(n) {
                             <div class="flex items-start gap-3">
                                 <div class="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center text-xl shrink-0">✅</div>
                                 <div>
-                                    <div class="text-green-400 font-bold mb-1">ลงทะเบียนโหนดเรียบร้อย</div>
+                                    <div class="text-green-400 font-bold mb-1">{{ t('page.masterNode.register.success') }}</div>
                                     <a :href="`${explorerUrl}/tx/${stakeTxHash}`" target="_blank" rel="noopener"
                                        class="text-xs text-cyan-400 hover:text-cyan-300 font-mono break-all">
                                         {{ stakeTxHash }}
@@ -1731,12 +1732,12 @@ function fmtNum(n) {
 
                         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                             <div v-for="stat in [
-                                { label: 'โหนดทั้งหมด', value: statNum(networkStats.total_nodes), color: 'text-white' },
+                                { label: t('page.masterNode.network.totalNodes'), value: statNum(networkStats.total_nodes), color: 'text-white' },
                                 { label: 'Validator', value: statNum(networkStats.validator_nodes), color: 'text-red-400' },
                                 { label: 'Guardian', value: statNum(networkStats.guardian_nodes), color: 'text-yellow-400' },
                                 { label: 'Sentinel', value: statNum(networkStats.sentinel_nodes), color: 'text-purple-400' },
                                 { label: 'Light', value: statNum(networkStats.light_nodes), color: 'text-cyan-400' },
-                                { label: 'บล็อกล่าสุด', value: networkStats.rpc_connected ? fmtNum(networkStats.block_height || 0) : '—', color: 'text-white' },
+                                { label: t('page.masterNode.network.latestBlock'), value: networkStats.rpc_connected ? fmtNum(networkStats.block_height || 0) : '—', color: 'text-white' },
                             ]" :key="stat.label"
                                class="glass-card rounded-xl p-4 text-center group hover:scale-105 transition-transform">
                                 <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{{ stat.label }}</div>
@@ -1749,35 +1750,34 @@ function fmtNum(n) {
                             <div class="flex items-center gap-3 flex-wrap">
                                 <BrandLogo variant="icon" alt="TPIX" class="w-8 h-8 rounded-full ring-1 ring-white/10" />
                                 <div>
-                                    <h3 class="text-sm font-bold text-white">พูลรางวัล</h3>
-                                    <p class="text-xs text-gray-400">เพดานปล่อยรางวัลตามตาราง 1,400,000,000 TPIX ใน 3 ปี</p>
+                                    <h3 class="text-sm font-bold text-white">{{ t('page.masterNode.pool.title') }}</h3>
+                                    <p class="text-xs text-gray-400">{{ t('page.masterNode.pool.schedule') }}</p>
                                 </div>
                                 <span class="ml-auto text-sm font-bold text-cyan-400">
-                                    {{ networkStats.reward_year_ended ? 'จบโครงการแล้ว' : `ปีที่ ${networkStats.current_year || 1}` }}
+                                    {{ networkStats.reward_year_ended ? t('page.masterNode.pool.ended') : t('page.masterNode.pool.year', { n: networkStats.current_year || 1 }) }}
                                 </span>
                             </div>
 
                             <div class="grid sm:grid-cols-3 gap-3">
                                 <div class="glass-sm rounded-xl p-3">
-                                    <div class="text-[10px] text-gray-500 uppercase">เติมเข้าพูลแล้ว</div>
+                                    <div class="text-[10px] text-gray-500 uppercase">{{ t('page.masterNode.pool.funded') }}</div>
                                     <div class="text-lg font-bold text-white">{{ statNum(networkStats.reward_pool_funded) }}</div>
                                 </div>
                                 <div class="glass-sm rounded-xl p-3">
-                                    <div class="text-[10px] text-gray-500 uppercase">จ่ายได้จริงตอนนี้</div>
+                                    <div class="text-[10px] text-gray-500 uppercase">{{ t('page.masterNode.pool.available') }}</div>
                                     <div class="text-lg font-bold"
                                          :class="poolState === 'funded' ? 'text-trading-green' : (poolUnfunded ? 'text-yellow-400' : 'text-gray-400')">
                                         {{ poolState === 'unknown' ? '—' : fmtNum(networkStats.reward_pool_available || 0) }}
                                     </div>
                                 </div>
                                 <div class="glass-sm rounded-xl p-3">
-                                    <div class="text-[10px] text-gray-500 uppercase">จ่ายออกไปแล้ว</div>
+                                    <div class="text-[10px] text-gray-500 uppercase">{{ t('page.masterNode.pool.distributed') }}</div>
                                     <div class="text-lg font-bold text-white">{{ statNum(networkStats.total_rewards_distributed) }}</div>
                                 </div>
                             </div>
 
                             <p v-if="poolUnfunded" class="text-xs text-yellow-400/90">
-                                พูลรางวัลยังไม่ถูกเติมเงิน — รางวัลจะสะสมต่อไปเรื่อย ๆ แต่ยังกดรับไม่ได้จนกว่าพูลจะมีเงิน
-                                เงินต้นของผู้วางค้ำถูกกันไว้ต่างหากและถอนคืนได้เสมอเมื่อพ้นล็อก
+                                {{ t('page.masterNode.pool.unfundedNote') }}
                             </p>
 
                             <!-- ตารางปล่อยรางวัล — ตัวเลขตรงกับ yearlyEmission ในสัญญา -->
@@ -1794,7 +1794,7 @@ function fmtNum(n) {
                                              : 'glass-sm border-white/5 opacity-60'
                                      ]">
                                     <div :class="['text-xs font-black', networkStats.current_year === em.y ? 'text-cyan-400' : 'text-gray-500']">
-                                        ปีที่ {{ em.y }}
+                                        {{ t('page.masterNode.pool.year', { n: em.y }) }}
                                     </div>
                                     <div class="text-lg font-bold mt-1 text-white">{{ em.amt }}</div>
                                     <div class="text-[10px] text-gray-600">{{ em.pct }}</div>
@@ -1804,7 +1804,7 @@ function fmtNum(n) {
 
                         <!-- สัดส่วนรางวัลต่อชั้น -->
                         <div class="glass rounded-2xl p-6">
-                            <h3 class="text-sm font-bold text-white mb-4">สัดส่วนรางวัลต่อชั้น</h3>
+                            <h3 class="text-sm font-bold text-white mb-4">{{ t('page.masterNode.share.title') }}</h3>
                             <!-- สัดส่วน emission ต่อชั้นตาม reward_share บนเชน (ไม่ใช่ตัวเลขเขียนตายตัว) -->
                             <div class="flex rounded-xl overflow-hidden h-8 sm:h-10 mb-3">
                                 <div v-for="seg in shareBar" :key="seg.id"
@@ -1814,13 +1814,10 @@ function fmtNum(n) {
                                 </div>
                             </div>
                             <p class="text-xs text-gray-400 leading-relaxed" data-test="reward-explainer">
-                                รางวัลของแต่ละชั้นแบ่ง <span class="text-white">เท่ากันทุกโหนด</span> ในชั้นนั้น
-                                (ทุกโหนดวางค้ำเท่ากับขั้นต่ำพอดี จึงได้ส่วนเท่ากัน)
-                                แต่หนึ่งโหนดได้ <span class="text-white">ไม่เกินเพดาน APR ของชั้น</span>
-                                เช่น Light สูงสุด {{ lightCapText }} ต่อปีของเงินวางค้ำ — กันไม่ให้โหนดชุดแรกไม่กี่ตัวดึงพูลรางวัลไปจนหมด
-                                ส่วนที่เกินเพดานไม่ถูกจ่ายออก
-                                จากนั้นคูณด้วย <span class="text-white">คะแนน uptime</span> ของโหนดคุณ
-                                และจ่ายได้เท่าที่พูลรางวัลมีเงินจริงเท่านั้น
+                                {{ t('page.masterNode.share.p1') }} <span class="text-white">{{ t('page.masterNode.share.s1') }}</span>
+                                {{ t('page.masterNode.share.p2') }} <span class="text-white">{{ t('page.masterNode.share.s2') }}</span>
+                                {{ t('page.masterNode.share.p3', { cap: lightCapText }) }} <span class="text-white">{{ t('page.masterNode.share.s3') }}</span>
+                                {{ t('page.masterNode.share.p4') }}
                             </p>
                         </div>
 
@@ -1828,15 +1825,15 @@ function fmtNum(n) {
                             <div class="absolute -inset-1 bg-gradient-to-r from-accent-500/20 via-primary-500/20 to-warm-500/20 rounded-3xl blur-xl opacity-60 group-hover:opacity-100 transition-opacity" />
                             <div class="glass-brand relative rounded-2xl p-8 text-center">
                                 <BrandLogo variant="mark" alt="TPIX" class="w-16 h-16 mx-auto mb-4 rounded-full ring-2 ring-white/10" />
-                                <h3 class="text-xl font-bold text-white mb-2">รันโหนดของคุณเอง</h3>
-                                <p class="text-sm text-gray-400 mb-5">ดาวน์โหลดโปรแกรม TPIX Master Node สำหรับ Windows</p>
+                                <h3 class="text-xl font-bold text-white mb-2">{{ t('page.masterNode.cta.title') }}</h3>
+                                <p class="text-sm text-gray-400 mb-5">{{ t('page.masterNode.cta.desc') }}</p>
                                 <div class="flex justify-center gap-3 flex-wrap">
                                     <a href="/api/v1/app/chain-download?type=masternode"
                                        class="btn-brand px-6 py-2.5 rounded-xl font-bold text-sm hover:scale-105 transition-transform">
-                                        ดาวน์โหลดโปรแกรม
+                                        {{ t('page.masterNode.links.download') }}
                                     </a>
                                     <Link href="/masternode/guide" class="btn-secondary px-6 py-2.5 rounded-xl font-bold text-sm">
-                                        อ่านคู่มือ
+                                        {{ t('page.masterNode.links.readGuide') }}
                                     </Link>
                                 </div>
                             </div>

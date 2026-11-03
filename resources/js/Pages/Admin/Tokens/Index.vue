@@ -11,6 +11,9 @@ import AdminLayout from '@/Layouts/AdminLayout.vue';
 import DataTable from '@/Components/Admin/DataTable.vue';
 import Modal from '@/Components/Admin/Modal.vue';
 import ConfirmDialog from '@/Components/Admin/ConfirmDialog.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     tokens: {
@@ -37,25 +40,25 @@ const props = defineProps({
 });
 
 const isChainView = computed(() => !!props.chain);
-const pageTitle = computed(() => isChainView.value ? `${props.chain.name} Tokens` : 'All Tokens');
+const pageTitle = computed(() => isChainView.value ? t('admin.tokens.chainTitle', { chain: props.chain.name }) : t('admin.tokens.allTitle'));
 
 const columns = computed(() => {
     const cols = [
-        { key: 'symbol', label: 'Symbol', sortable: true },
-        { key: 'name', label: 'Name', sortable: true },
+        { key: 'symbol', label: t('admin.tokens.columns.symbol'), sortable: true },
+        { key: 'name', label: t('admin.tokens.columns.name'), sortable: true },
     ];
     if (!isChainView.value) {
-        cols.push({ key: 'chain', label: 'Chain' });
+        cols.push({ key: 'chain', label: t('admin.tokens.columns.chain') });
     }
     cols.push(
-        { key: 'contract_address', label: 'Contract Address' },
-        { key: 'decimals', label: 'Decimals', align: 'center' },
-        { key: 'coingecko_id', label: 'CoinGecko ID' },
-        { key: 'is_active', label: 'Active', align: 'center' },
-        { key: 'is_verified', label: 'Token list', align: 'center' },
+        { key: 'contract_address', label: t('admin.tokens.columns.contractAddress') },
+        { key: 'decimals', label: t('admin.tokens.columns.decimals'), align: 'center' },
+        { key: 'coingecko_id', label: t('admin.tokens.columns.coingeckoId') },
+        { key: 'is_active', label: t('admin.tokens.columns.active'), align: 'center' },
+        { key: 'is_verified', label: t('admin.tokens.columns.tokenList'), align: 'center' },
     );
     if (props.canManage) {
-        cols.push({ key: 'actions', label: 'Actions', align: 'right' });
+        cols.push({ key: 'actions', label: t('admin.tokens.columns.actions'), align: 'right' });
     }
     return cols;
 });
@@ -68,7 +71,7 @@ const filterChainId = ref('');
 
 const filteredTokens = computed(() => {
     if (!filterChainId.value) return props.tokens;
-    return props.tokens.filter(t => String(t.chain_id) === String(filterChainId.value));
+    return props.tokens.filter(tok => String(tok.chain_id) === String(filterChainId.value));
 });
 
 const form = useForm({
@@ -87,7 +90,8 @@ const form = useForm({
 });
 
 // ตรวจไฟล์ฝั่งหน้าเว็บก่อนส่ง (เซิร์ฟเวอร์ตรวจซ้ำเสมอ) — บอกผู้ใช้ทันทีแทนการรอ 422
-const logoFileError = ref('');
+// เก็บเป็น { key, params } แล้วแปลตอน render — สลับภาษาแล้วข้อความเปลี่ยนตาม
+const logoFileError = ref(null);
 
 // URL ของ logo ที่ preview ตอน edit (รวม logo เก่าถ้ามี + file ที่เพิ่ง pick)
 const logoPreviewUrl = ref(null);
@@ -104,15 +108,15 @@ const handleLogoFileChange = async (e) => {
     e.target.value = ''; // เลือกไฟล์เดิมซ้ำได้หลังแก้ไฟล์
     if (!file) return;
 
-    logoFileError.value = '';
+    logoFileError.value = null;
     const { max_kb: maxKb, min_px: minPx } = props.logoRules;
 
     if (!['image/png', 'image/webp'].includes(file.type)) {
-        logoFileError.value = 'โลโก้ต้องเป็นไฟล์ PNG หรือ WebP เท่านั้น';
+        logoFileError.value = { key: 'admin.tokens.logo.errorType', params: {} };
         return;
     }
     if (file.size > maxKb * 1024) {
-        logoFileError.value = `โลโก้ต้องมีขนาดไม่เกิน ${maxKb} KB`;
+        logoFileError.value = { key: 'admin.tokens.logo.errorSize', params: { kb: maxKb } };
         return;
     }
 
@@ -120,7 +124,7 @@ const handleLogoFileChange = async (e) => {
     const size = await readImageSize(url);
     if (!size || size.width !== size.height || size.width < minPx) {
         URL.revokeObjectURL(url);
-        logoFileError.value = `โลโก้ต้องเป็นสี่เหลี่ยมจัตุรัส ขนาดอย่างน้อย ${minPx}×${minPx} พิกเซล`;
+        logoFileError.value = { key: 'admin.tokens.logo.errorDimensions', params: { px: minPx } };
         return;
     }
 
@@ -134,7 +138,7 @@ const clearLogoFile = () => {
     if (logoPreviewUrl.value) URL.revokeObjectURL(logoPreviewUrl.value);
     form.logo_file = null;
     logoPreviewUrl.value = null;
-    logoFileError.value = '';
+    logoFileError.value = null;
     // คงค่า form.logo URL เดิม (ถ้ามี)
 };
 
@@ -223,7 +227,7 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     <h2 class="text-xl font-semibold text-white">{{ pageTitle }}</h2>
                 </div>
                 <p class="text-sm text-dark-400 mt-1">
-                    {{ isChainView ? `Manage tokens on ${chain.name}` : 'Manage all cryptocurrency tokens' }}
+                    {{ isChainView ? t('admin.tokens.subtitleChain', { chain: chain.name }) : t('admin.tokens.subtitleAll') }}
                 </p>
             </div>
             <div class="flex items-center gap-3">
@@ -233,14 +237,14 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     v-model="filterChainId"
                     class="bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-primary-500"
                 >
-                    <option value="">All Chains</option>
+                    <option value="">{{ t('admin.tokens.allChains') }}</option>
                     <option v-for="c in chains" :key="c.id" :value="c.id">{{ c.name }}</option>
                 </select>
                 <button v-if="canManage" @click="openCreateModal" class="btn-primary px-4 py-2.5 text-sm">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                     </svg>
-                    Add Token
+                    {{ t('admin.tokens.addToken') }}
                 </button>
             </div>
         </div>
@@ -278,17 +282,17 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                 <span v-else class="w-2.5 h-2.5 rounded-full bg-dark-600 inline-block"></span>
             </template>
             <template #cell-is_verified="{ row }">
-                <span v-if="row.is_verified" class="text-xs text-blue-400" title="รับรองแล้ว — ขึ้น tokenlist.json ถ้าอยู่บนเชน TPIX">✓</span>
-                <span v-else class="text-xs text-dark-500" title="ยังไม่รับรอง — ไม่ขึ้น tokenlist.json">-</span>
+                <span v-if="row.is_verified" class="text-xs text-blue-400" :title="t('admin.tokens.verifiedTooltip')">✓</span>
+                <span v-else class="text-xs text-dark-500" :title="t('admin.tokens.unverifiedTooltip')">-</span>
             </template>
             <template #cell-actions="{ row }">
                 <div class="flex items-center justify-end gap-2" @click.stop>
-                    <button @click="openEditModal(row)" class="p-1.5 rounded-lg text-dark-400 hover:text-white hover:bg-white/5 transition-colors">
+                    <button @click="openEditModal(row)" :title="t('admin.tokens.edit')" :aria-label="t('admin.tokens.edit')" class="p-1.5 rounded-lg text-dark-400 hover:text-white hover:bg-white/5 transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                     </button>
-                    <button @click="confirmDelete(row)" class="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                    <button @click="confirmDelete(row)" :title="t('admin.tokens.delete')" :aria-label="t('admin.tokens.delete')" class="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
@@ -302,17 +306,17 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
             <svg class="w-12 h-12 text-dark-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p class="text-dark-400 text-sm">No tokens found</p>
-            <button v-if="canManage" @click="openCreateModal" class="mt-3 text-sm text-primary-400 hover:text-primary-300">Add your first token</button>
+            <p class="text-dark-400 text-sm">{{ t('admin.tokens.empty') }}</p>
+            <button v-if="canManage" @click="openCreateModal" class="mt-3 text-sm text-primary-400 hover:text-primary-300">{{ t('admin.tokens.addFirst') }}</button>
         </div>
 
         <!-- Create/Edit Modal -->
-        <Modal :show="showModal" :title="editingToken ? 'Edit Token' : 'Add Token'" max-width="xl" @close="showModal = false">
+        <Modal :show="showModal" :title="editingToken ? t('admin.tokens.editToken') : t('admin.tokens.addToken')" max-width="xl" @close="showModal = false">
             <form @submit.prevent="saveToken" class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-2">Chain</label>
+                    <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tokens.form.chain') }}</label>
                     <select v-model="form.chain_id" :class="inputClass" :disabled="isChainView">
-                        <option value="">Select Chain</option>
+                        <option value="">{{ t('admin.tokens.form.selectChain') }}</option>
                         <option v-for="c in chains" :key="c.id" :value="c.id">{{ c.name }}</option>
                     </select>
                     <p v-if="form.errors.chain_id" class="mt-1 text-sm text-red-400">{{ form.errors.chain_id }}</p>
@@ -320,41 +324,41 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Token Name</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tokens.form.tokenName') }}</label>
                         <input v-model="form.name" type="text" :class="inputClass" placeholder="Ethereum" />
                         <p v-if="form.errors.name" class="mt-1 text-sm text-red-400">{{ form.errors.name }}</p>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Symbol</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tokens.form.symbol') }}</label>
                         <input v-model="form.symbol" type="text" :class="inputClass" placeholder="ETH" />
                         <p v-if="form.errors.symbol" class="mt-1 text-sm text-red-400">{{ form.errors.symbol }}</p>
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-2">Contract Address</label>
+                    <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tokens.form.contractAddress') }}</label>
                     <input v-model="form.contract_address" type="text" :class="inputClass" placeholder="0x..." />
                     <p v-if="form.errors.contract_address" class="mt-1 text-sm text-red-400">{{ form.errors.contract_address }}</p>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Decimals</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tokens.form.decimals') }}</label>
                         <input v-model.number="form.decimals" type="number" min="0" max="36" :class="inputClass" placeholder="18" />
                         <p v-if="form.errors.decimals" class="mt-1 text-sm text-red-400">{{ form.errors.decimals }}</p>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Sort Order</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tokens.form.sortOrder') }}</label>
                         <input v-model.number="form.sort_order" type="number" min="0" :class="inputClass" placeholder="0" />
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-2">Logo</label>
+                    <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tokens.form.logo') }}</label>
                     <div class="flex items-center gap-4">
                         <!-- Preview circle -->
                         <div class="shrink-0 w-16 h-16 rounded-full bg-dark-800 border border-dark-600 overflow-hidden flex items-center justify-center">
-                            <img v-if="currentLogoSrc" :src="currentLogoSrc" :alt="form.symbol || 'logo'" class="w-full h-full object-cover" />
+                            <img v-if="currentLogoSrc" :src="currentLogoSrc" :alt="form.symbol || t('admin.tokens.form.logo')" class="w-full h-full object-cover" />
                             <span v-else class="text-dark-500 text-xs">{{ (form.symbol || '?').charAt(0) }}</span>
                         </div>
 
@@ -365,35 +369,35 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                                     </svg>
-                                    <span>{{ form.logo_file ? 'เปลี่ยนไฟล์' : 'อัปโหลดรูป' }}</span>
+                                    <span>{{ form.logo_file ? t('admin.tokens.logo.changeFile') : t('admin.tokens.logo.upload') }}</span>
                                     <input type="file" accept="image/png,image/webp" class="hidden" @change="handleLogoFileChange" />
                                 </label>
                                 <button v-if="form.logo_file" type="button" @click="clearLogoFile" class="text-xs text-red-400 hover:text-red-300">
-                                    ล้างไฟล์
+                                    {{ t('admin.tokens.logo.clearFile') }}
                                 </button>
                                 <span v-if="form.logo_file" class="text-xs text-dark-400 truncate max-w-[200px]">{{ form.logo_file.name }}</span>
                             </div>
 
                             <!-- URL fallback (ใช้เมื่อไม่ upload file) -->
-                            <input v-model="form.logo" type="text" :class="inputClass" placeholder="หรือใส่ URL: https://example.com/logo.webp" :disabled="!!form.logo_file" />
+                            <input v-model="form.logo" type="text" :class="inputClass" :placeholder="t('admin.tokens.logo.urlPlaceholder')" :disabled="!!form.logo_file" />
                         </div>
                     </div>
                     <p class="mt-2 text-xs text-dark-500">
-                        {{ logoRules.types }} สี่เหลี่ยมจัตุรัส อย่างน้อย {{ logoRules.min_px }}×{{ logoRules.min_px }} px (แนะนำ 256×256 ขึ้นไป) ไม่เกิน {{ logoRules.max_kb }} KB — หรือใส่ URL https ภายนอกก็ได้
+                        {{ t('admin.tokens.logo.rules', { types: logoRules.types, px: logoRules.min_px, kb: logoRules.max_kb }) }}
                     </p>
-                    <p v-if="logoFileError" class="mt-1 text-sm text-red-400" data-test="logo-file-error">{{ logoFileError }}</p>
+                    <p v-if="logoFileError" class="mt-1 text-sm text-red-400" data-test="logo-file-error">{{ t(logoFileError.key, logoFileError.params) }}</p>
                     <p v-if="form.errors.logo_file" class="mt-1 text-sm text-red-400">{{ form.errors.logo_file }}</p>
                     <p v-if="form.errors.logo" class="mt-1 text-sm text-red-400">{{ form.errors.logo }}</p>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-2">CoinGecko ID</label>
+                    <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tokens.columns.coingeckoId') }}</label>
                     <input v-model="form.coingecko_id" type="text" :class="inputClass" placeholder="ethereum" />
-                    <p class="mt-1 text-xs text-dark-500">Used for fetching logos and price data from CoinGecko.</p>
+                    <p class="mt-1 text-xs text-dark-500">{{ t('admin.tokens.form.coingeckoHint') }}</p>
                 </div>
 
                 <div class="flex items-center justify-between">
-                    <label class="text-sm font-medium text-dark-300">Active</label>
+                    <label class="text-sm font-medium text-dark-300">{{ t('admin.tokens.columns.active') }}</label>
                     <button type="button" @click="form.is_active = !form.is_active" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="form.is_active ? 'bg-primary-500' : 'bg-dark-600'">
                         <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" :class="form.is_active ? 'translate-x-6' : 'translate-x-1'"></span>
                     </button>
@@ -401,9 +405,9 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
 
                 <div class="flex items-start justify-between gap-4">
                     <div>
-                        <label class="text-sm font-medium text-dark-300">Verified (Token list)</label>
+                        <label class="text-sm font-medium text-dark-300">{{ t('admin.tokens.form.verified') }}</label>
                         <p class="mt-1 text-xs text-dark-500">
-                            รับรองว่าเป็นสัญญาจริงของเหรียญนี้ — เหรียญบนเชน TPIX จะขึ้น tokenlist.json ที่ explorer และ TPIX Wallet ถือเป็นรายการของจริง
+                            {{ t('admin.tokens.form.verifiedHint') }}
                         </p>
                     </div>
                     <button type="button" data-test="verified-toggle" @click="form.is_verified = !form.is_verified" class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors" :class="form.is_verified ? 'bg-primary-500' : 'bg-dark-600'">
@@ -414,9 +418,9 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
 
             <template #footer>
                 <div class="flex items-center justify-end gap-3">
-                    <button @click="showModal = false" class="px-4 py-2 rounded-xl text-sm text-dark-300 hover:text-white transition-colors">Cancel</button>
+                    <button @click="showModal = false" class="px-4 py-2 rounded-xl text-sm text-dark-300 hover:text-white transition-colors">{{ t('admin.tokens.cancel') }}</button>
                     <button @click="saveToken" :disabled="form.processing" class="btn-primary px-6 py-2.5 text-sm">
-                        {{ form.processing ? 'Saving...' : (editingToken ? 'Update' : 'Create') }}
+                        {{ form.processing ? t('admin.tokens.saving') : (editingToken ? t('admin.tokens.update') : t('admin.tokens.create')) }}
                     </button>
                 </div>
             </template>
@@ -425,9 +429,9 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
         <!-- Delete Confirmation -->
         <ConfirmDialog
             :show="showDeleteConfirm"
-            title="Delete Token"
-            :message="`Are you sure you want to delete '${deletingToken?.name} (${deletingToken?.symbol})'? This may affect existing trading pairs.`"
-            confirm-text="Delete"
+            :title="t('admin.tokens.deleteTitle')"
+            :message="t('admin.tokens.deleteMessage', { name: deletingToken?.name ?? '', symbol: deletingToken?.symbol ?? '' })"
+            :confirm-text="t('admin.tokens.delete')"
             :danger="true"
             @confirm="deleteToken"
             @cancel="showDeleteConfirm = false"

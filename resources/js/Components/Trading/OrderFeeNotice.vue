@@ -15,6 +15,9 @@
  * Developed by Xman Studio
  */
 import { computed } from 'vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     /** ผลจาก /api/v1/trading-fee/quote */
@@ -64,9 +67,9 @@ function fmt(value, maxDecimals = 8) {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
         </svg>
         <div class="min-w-0">
-            <p class="text-[11px] font-semibold text-trading-green leading-tight">ค่าวางไม้ 0 — รวมอยู่ในค่าเช่าบอทแล้ว</p>
+            <p class="text-[11px] font-semibold text-trading-green leading-tight">{{ t('ui.tradingOrderFeeNotice.waived.title') }}</p>
             <p class="text-[10px] text-dark-400 leading-tight mt-0.5">
-                วางไม้ได้ไม่จำกัดจำนวนครั้งตลอดอายุการเช่า คิดกำไรได้เต็มจำนวน
+                {{ t('ui.tradingOrderFeeNotice.waived.description') }}
             </p>
         </div>
     </div>
@@ -74,8 +77,8 @@ function fmt(value, maxDecimals = 8) {
     <!-- ปิดระบบค่าบริการ TPIX ไว้ = ไม่ต้องรบกวนผู้ใช้ด้วยตัวเลือกที่ยังไม่มี -->
     <div v-else-if="enabled" class="rounded-lg border border-white/10 bg-black/25 p-2.5 space-y-2">
         <div class="flex items-center justify-between gap-2">
-            <span class="text-[11px] text-dark-400">ค่าบริการวางไม้</span>
-            <span class="text-[10px] text-dark-500">เก็บตอนวางไม้</span>
+            <span class="text-[11px] text-dark-400">{{ t('ui.tradingOrderFeeNotice.title') }}</span>
+            <span class="text-[10px] text-dark-500">{{ t('ui.tradingOrderFeeNotice.chargedOnPlace') }}</span>
         </div>
 
         <!-- สองทางเลือก วางคู่กันให้เทียบได้ในสายตาเดียว -->
@@ -88,14 +91,14 @@ function fmt(value, maxDecimals = 8) {
                 @click="tpixUsable && emit('select-method', 'tpix_credit')"
             >
                 <span class="flex items-center justify-between gap-1">
-                    <span class="text-[10px] text-dark-400">จ่ายด้วย TPIX</span>
-                    <span v-if="tpixUsable && hasEnough" class="text-[8px] px-1 rounded bg-trading-green/20 text-trading-green">แนะนำ</span>
+                    <span class="text-[10px] text-dark-400">{{ t('ui.tradingOrderFeeNotice.payWithTpix') }}</span>
+                    <span v-if="tpixUsable && hasEnough" class="text-[8px] px-1 rounded bg-trading-green/20 text-trading-green">{{ t('ui.tradingOrderFeeNotice.recommended') }}</span>
                 </span>
                 <span class="block text-sm font-mono font-semibold text-white">
                     {{ tpixUsable ? fmt(tpix.fee_tpix) : '—' }}
                     <span class="text-[10px] text-primary-300">TPIX</span>
                 </span>
-                <span class="block text-[9px] text-trading-green leading-tight">คืนเต็มถ้ายกเลิก</span>
+                <span class="block text-[9px] text-trading-green leading-tight">{{ t('ui.tradingOrderFeeNotice.fullRefund') }}</span>
             </button>
 
             <button
@@ -103,40 +106,40 @@ function fmt(value, maxDecimals = 8) {
                 :class="['fee-option', method === 'onchain' && 'fee-option--on']"
                 @click="emit('select-method', 'onchain')"
             >
-                <span class="text-[10px] text-dark-400 block">จ่ายเป็นเหรียญ</span>
+                <span class="text-[10px] text-dark-400 block">{{ t('ui.tradingOrderFeeNotice.payOnchain') }}</span>
                 <span class="block text-sm font-mono font-semibold text-white">
                     {{ fmt(onchain?.fee_usd) }}
                     <span class="text-[10px] text-primary-300">{{ quoteSymbol }}</span>
                 </span>
-                <span class="block text-[9px] text-amber-300/90 leading-tight">คืนแล้วหักค่าแก๊ส</span>
+                <span class="block text-[9px] text-amber-300/90 leading-tight">{{ t('ui.tradingOrderFeeNotice.refundMinusGas') }}</span>
             </button>
         </div>
 
         <!-- เครดิตไม่พอ: บอกยอดที่ขาดให้ชัด แล้วพาไปเติมได้ในคลิกเดียว -->
         <div v-if="tpixUsable && !hasEnough" class="rounded-md bg-amber-500/10 border border-amber-500/20 px-2 py-1.5">
             <p class="text-[10px] text-amber-300 leading-relaxed">
-                เครดิตขาดอีก <span class="font-mono font-semibold">{{ fmt(tpix.shortfall) }} TPIX</span>
-                จึงจะจ่ายทางที่ถูกกว่าได้
+                {{ t('ui.tradingOrderFeeNotice.shortfall.before') }} <span class="font-mono font-semibold">{{ fmt(tpix.shortfall) }} TPIX</span>
+                {{ t('ui.tradingOrderFeeNotice.shortfall.after') }}
             </p>
             <button type="button" class="mt-1 text-[10px] text-primary-400 hover:text-primary-300 underline" @click="emit('topup')">
-                เติมเครดิต TPIX
+                {{ t('ui.tradingOrderFeeNotice.topup') }}
             </button>
         </div>
 
         <p v-else-if="!tpixUsable" class="text-[10px] text-dark-500 leading-relaxed">
-            {{ tpix?.reason || 'ยังใช้ค่าบริการแบบ TPIX ไม่ได้' }}
+            {{ tpix?.reason || t('ui.tradingOrderFeeNotice.tpixUnavailable') }}
         </p>
 
         <!-- ⚠️ ข้อความนี้คือสิ่งที่เจ้าของสั่งให้ "แจ้งให้ทราบ" — ห้ามตัดออก -->
         <p v-if="!compact" class="text-[9px] text-dark-500 leading-relaxed border-t border-white/5 pt-1.5">
             <template v-if="method === 'onchain'">
-                จ่ายก่อนวางไม้เพื่อยืนยันคำสั่ง · ยกเลิกไม้แล้วคืนให้
-                <span class="text-amber-300/90">โดยหักค่าแก๊สของธุรกรรมคืนออกก่อน</span> ·
-                ถือ TPIX ไว้จะถูกกว่าและคืนเต็มจำนวน
+                {{ t('ui.tradingOrderFeeNotice.note.onchain.before') }}
+                <span class="text-amber-300/90">{{ t('ui.tradingOrderFeeNotice.note.onchain.highlight') }}</span> ·
+                {{ t('ui.tradingOrderFeeNotice.note.onchain.after') }}
             </template>
             <template v-else>
-                หักจากคลัง TPIX ตอนวางไม้ · ยกเลิกไม้แล้ว
-                <span class="text-trading-green">คืนเข้าคลังเต็มจำนวน ไม่มีค่าแก๊ส</span>
+                {{ t('ui.tradingOrderFeeNotice.note.tpix.before') }}
+                <span class="text-trading-green">{{ t('ui.tradingOrderFeeNotice.note.tpix.highlight') }}</span>
             </template>
         </p>
     </div>

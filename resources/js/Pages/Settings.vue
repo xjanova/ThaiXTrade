@@ -122,9 +122,9 @@ onMounted(() => {
 
             <!-- ธีม -->
             <div class="glass-dark rounded-2xl p-6 mb-6">
-                <h2 class="text-lg font-semibold text-white mb-2">{{ locale === 'th' ? 'ธีม' : 'Theme' }}</h2>
+                <h2 class="text-lg font-semibold text-white mb-2">{{ t('page.settings.theme') }}</h2>
                 <p class="text-dark-400 text-sm mb-5">
-                    {{ locale === 'th' ? 'เปลี่ยนหน้าตาทั้งเว็บ จำไว้ในเครื่องนี้' : 'Changes the whole site. Remembered on this device.' }}
+                    {{ t('page.settings.themeHint') }}
                 </p>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -360,7 +360,7 @@ onMounted(() => {
                     </div>
                     <div class="flex-1 min-w-0">
                         <p class="font-semibold text-white">TPIX Wallet</p>
-                        <p class="text-xs text-dark-400 mt-0.5">TPIX Chain (4289) — Gasless</p>
+                        <p class="text-xs text-dark-400 mt-0.5">{{ t('page.settings.tpixWalletChain') }}</p>
                     </div>
                 </div>
 

@@ -12,6 +12,7 @@
  * Developed by Xman Studio.
  */
 import { ref, computed, nextTick } from 'vue';
+import { useTranslation } from '@/Composables/useTranslation';
 
 const props = defineProps({
     /** ชื่อไฟล์ใน /videos/whitepaper/ เช่น 'ep06-ai-trade.mp4' */
@@ -25,6 +26,8 @@ const props = defineProps({
     lang: { type: String, default: 'en' },
 });
 
+const { t } = useTranslation();
+
 const open = ref(false);
 const el = ref(null);
 
@@ -34,10 +37,8 @@ const mmss = (s) => {
 };
 
 const src = computed(() => `/videos/whitepaper/${props.file}#t=${props.start}`);
-const label = computed(() =>
-    props.lang === 'th' ? 'ดูวิดีโอบรรยายหัวข้อนี้' : 'Watch the narrated chapter');
-const hint = computed(() =>
-    props.lang === 'th' ? 'บรรยายอังกฤษ · ซับไทย' : 'English narration · Thai subtitles');
+const label = computed(() => t('ui.whitepaperSectionVideo.watch'));
+const hint = computed(() => t('ui.whitepaperSectionVideo.hint'));
 
 async function toggle() {
     open.value = !open.value;

@@ -14,14 +14,16 @@
 import { ref } from 'vue';
 import axios from 'axios';
 import { useWalletStore } from '@/Stores/walletStore';
+import { t } from '@/Composables/useTranslation';
 
 const VERIFY_CODES = ['WALLET_NOT_VERIFIED', 'WALLET_IP_MISMATCH'];
 
+// เก็บ key แปลภาษา — เรียก t() ตอนเกิด error เพื่อให้ได้ภาษาปัจจุบัน
 const MESSAGES = {
-    NOT_PRODUCER: 'ทำได้เฉพาะกระเป๋าผู้ผลิตของสินค้านี้',
-    WALLET_MISMATCH: 'กระเป๋าในคำขอไม่ตรงกับกระเป๋าที่ยืนยันตัวตน — ลองเชื่อมกระเป๋าใหม่',
-    NOT_FOUND: 'ไม่พบสินค้านี้',
-    MINT_FAILED: 'ต้องมีข้อมูล trace อย่างน้อย 2 จุดก่อน mint ใบรับรอง',
+    NOT_PRODUCER: 'fn.useFoodPassportWrite.notProducer',
+    WALLET_MISMATCH: 'fn.useFoodPassportWrite.walletMismatch',
+    NOT_FOUND: 'fn.useFoodPassportWrite.notFound',
+    MINT_FAILED: 'fn.useFoodPassportWrite.mintFailed',
 };
 
 export function useFoodPassportWrite() {
@@ -31,7 +33,7 @@ export function useFoodPassportWrite() {
 
     /**
      * POST ในนามกระเป๋า $address
-     * คืน { ok: true, data } หรือ { ok: false, message } — message เป็นภาษาไทยเสมอ ไม่ใช่ข้อความ exception
+     * คืน { ok: true, data } หรือ { ok: false, message } — message แปลตามภาษาที่เลือก ไม่ใช่ข้อความ exception
      * คืน { ok: false, stale: true } เมื่อสลับกระเป๋าระหว่างรอ (คำตอบนั้นเป็นของกระเป๋าเดิม ห้ามใช้)
      */
     async function post(url, address, body, fallback) {
@@ -49,13 +51,13 @@ export function useFoodPassportWrite() {
 
             if (status === 403 && VERIFY_CODES.includes(code)) {
                 needsVerification.value = true;
-                return { ok: false, message: 'ต้องเซ็นยืนยันกระเป๋าก่อน แล้วกดอีกครั้ง' };
+                return { ok: false, message: t('fn.useFoodPassportWrite.needsVerification') };
             }
-            if (MESSAGES[code]) return { ok: false, message: MESSAGES[code] };
-            if (status === 419) return { ok: false, message: 'หน้านี้เปิดค้างนานเกินไป — รีเฟรชหน้าแล้วลองใหม่' };
-            if (status === 422) return { ok: false, message: 'ข้อมูลไม่ครบหรือไม่ถูกต้อง — ตรวจสอบแล้วลองใหม่' };
-            if (status === 429) return { ok: false, message: 'ส่งคำขอถี่เกินไป — รอสักครู่แล้วลองใหม่' };
-            if (!e?.response) return { ok: false, message: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่' };
+            if (MESSAGES[code]) return { ok: false, message: t(MESSAGES[code]) };
+            if (status === 419) return { ok: false, message: t('fn.useFoodPassportWrite.sessionExpired') };
+            if (status === 422) return { ok: false, message: t('fn.useFoodPassportWrite.invalidData') };
+            if (status === 429) return { ok: false, message: t('fn.useFoodPassportWrite.rateLimited') };
+            if (!e?.response) return { ok: false, message: t('fn.useFoodPassportWrite.networkError') };
             return { ok: false, message: fallback };
         }
     }

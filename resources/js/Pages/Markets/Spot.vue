@@ -15,6 +15,9 @@ import PageArt from '@/Components/PageArt.vue';
 import Sparkline from '@/Components/Trading/Sparkline.vue';
 import { useMarketData } from '@/Composables/useMarketData';
 import { useSparklines } from '@/Composables/useSparklines';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const FAV_KEY = 'tpix.favPairs';
 
@@ -31,20 +34,21 @@ const { series, load: loadSparklines } = useSparklines();
 const pairLogos = ref({}); // base_asset → logo URL จาก admin DB
 
 const filters = [
-    { id: 'all', label: 'All' },
-    { id: 'favorites', label: '★ Favorites' },
-    { id: 'gainers', label: 'Gainers' },
-    { id: 'losers', label: 'Losers' },
+    { id: 'all', labelKey: 'page.marketsSpot.filters.all' },
+    { id: 'favorites', labelKey: 'page.marketsSpot.filters.favorites' },
+    { id: 'gainers', labelKey: 'page.marketsSpot.filters.gainers' },
+    { id: 'losers', labelKey: 'page.marketsSpot.filters.losers' },
 ];
 
+// เก็บ labelKey แล้วเรียก t() ใน template — สลับภาษาได้ทันที
 // sortable: false = คอลัมน์ประกอบ ไม่ต้องเรียง (คลิกแล้วไม่มีอะไรเกิดขึ้น)
 const columns = [
-    { key: 'pair', label: 'Pair', align: 'left', sortable: true },
-    { key: 'price', label: 'Last Price', align: 'right', sortable: true },
-    { key: 'change', label: '24h Change', align: 'right', sortable: true },
-    { key: 'high', label: '24h High', align: 'right', sortable: false, hide: 'hidden xl:table-cell' },
-    { key: 'low', label: '24h Low', align: 'right', sortable: false, hide: 'hidden xl:table-cell' },
-    { key: 'volume', label: 'Volume (24h)', align: 'right', sortable: true, hide: 'hidden md:table-cell' },
+    { key: 'pair', labelKey: 'page.marketsSpot.columns.pair', align: 'left', sortable: true },
+    { key: 'price', labelKey: 'page.marketsSpot.columns.price', align: 'right', sortable: true },
+    { key: 'change', labelKey: 'page.marketsSpot.columns.change', align: 'right', sortable: true },
+    { key: 'high', labelKey: 'page.marketsSpot.columns.high', align: 'right', sortable: false, hide: 'hidden xl:table-cell' },
+    { key: 'low', labelKey: 'page.marketsSpot.columns.low', align: 'right', sortable: false, hide: 'hidden xl:table-cell' },
+    { key: 'volume', labelKey: 'page.marketsSpot.columns.volume', align: 'right', sortable: true, hide: 'hidden md:table-cell' },
 ];
 
 async function fetchPairLogos() {
@@ -190,7 +194,7 @@ onMounted(async () => {
 </script>
 
 <template>
-    <Head title="Spot Markets" />
+    <Head :title="t('page.marketsSpot.headTitle')" />
 
     <AppLayout>
         <div class="max-w-6xl mx-auto">
@@ -200,14 +204,14 @@ onMounted(async () => {
                 <div class="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-6">
                 <div>
                     <div class="flex items-center gap-3 mb-2">
-                        <Link href="/markets" class="text-dark-400 hover:text-white transition-colors">Markets</Link>
+                        <Link href="/markets" class="text-dark-400 hover:text-white transition-colors">{{ t('page.marketsSpot.breadcrumb.markets') }}</Link>
                         <svg class="w-4 h-4 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                         </svg>
-                        <span class="text-white font-medium">Spot</span>
+                        <span class="text-white font-medium">{{ t('page.marketsSpot.breadcrumb.spot') }}</span>
                     </div>
-                    <h1 class="text-3xl font-bold text-white mb-2">Spot Markets</h1>
-                    <p class="text-dark-400">Trade crypto pairs with real-time pricing.</p>
+                    <h1 class="text-3xl font-bold text-white mb-2">{{ t('page.marketsSpot.title') }}</h1>
+                    <p class="text-dark-400">{{ t('page.marketsSpot.subtitle') }}</p>
                 </div>
 
                 <!-- Search -->
@@ -218,7 +222,7 @@ onMounted(async () => {
                     <input
                         v-model="searchQuery"
                         type="text"
-                        placeholder="Search pairs..."
+                        :placeholder="t('page.marketsSpot.searchPlaceholder')"
                         class="w-full md:w-72 pl-10 pr-4 py-3 rounded-xl glass-sm border border-white/10 bg-dark-900/60 text-white placeholder-dark-400 focus:outline-none focus:border-primary-500/50"
                     />
                 </div>
@@ -236,15 +240,15 @@ onMounted(async () => {
                             ? 'bg-primary-500/20 text-primary-300 border-primary-500/30'
                             : 'bg-white/5 text-dark-400 border-transparent hover:text-white']"
                 >
-                    {{ f.label }}
+                    {{ t(f.labelKey) }}
                 </button>
-                <span class="ml-auto text-xs text-dark-500 whitespace-nowrap">{{ filteredRows.length }} pairs</span>
+                <span class="ml-auto text-xs text-dark-500 whitespace-nowrap">{{ t('page.marketsSpot.pairsCount', { n: filteredRows.length }) }}</span>
             </div>
 
             <!-- Pairs Table -->
             <div class="glass-dark rounded-2xl overflow-hidden">
                 <div v-if="isLoading" class="py-12 text-center text-dark-400">
-                    <div class="animate-pulse">Loading live market data...</div>
+                    <div class="animate-pulse">{{ t('page.marketsSpot.loading') }}</div>
                 </div>
                 <div v-else class="overflow-x-auto">
                     <table class="w-full">
@@ -259,13 +263,13 @@ onMounted(async () => {
                                         col.align === 'right' ? 'text-right' : 'text-left', col.hide]"
                                     @click="col.sortable && toggleSort(col.key)"
                                 >
-                                    {{ col.label }}
+                                    {{ t(col.labelKey) }}
                                     <span v-if="col.sortable && sortKey === col.key" class="text-primary-400 ml-0.5">
                                         {{ sortDir === 'asc' ? '▲' : '▼' }}
                                     </span>
                                 </th>
-                                <th class="text-center p-4 hidden sm:table-cell">24h Chart</th>
-                                <th class="text-right p-4">Action</th>
+                                <th class="text-center p-4 hidden sm:table-cell">{{ t('page.marketsSpot.columns.chart') }}</th>
+                                <th class="text-right p-4">{{ t('page.marketsSpot.columns.action') }}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -279,7 +283,7 @@ onMounted(async () => {
                                         @click="toggleFavorite(row.pair)"
                                         :class="['text-base transition-colors',
                                             favorites.includes(row.pair) ? 'text-amber-400' : 'text-dark-600 hover:text-amber-400']"
-                                        :aria-label="favorites.includes(row.pair) ? 'Remove from favorites' : 'Add to favorites'"
+                                        :aria-label="favorites.includes(row.pair) ? t('page.marketsSpot.removeFavorite') : t('page.marketsSpot.addFavorite')"
                                     >
                                         {{ favorites.includes(row.pair) ? '★' : '☆' }}
                                     </button>
@@ -312,13 +316,13 @@ onMounted(async () => {
                                 </td>
                                 <td class="p-4 text-right">
                                     <Link :href="`/trade/${row.pair}`" class="btn-primary text-sm px-4 py-2">
-                                        Trade
+                                        {{ t('page.marketsSpot.trade') }}
                                     </Link>
                                 </td>
                             </tr>
                             <tr v-if="pagedRows.length === 0">
                                 <td colspan="9" class="py-12 text-center text-dark-500">
-                                    {{ activeFilter === 'favorites' ? 'No favorite pairs yet — tap ☆ to add one.' : 'No pairs match your search.' }}
+                                    {{ activeFilter === 'favorites' ? t('page.marketsSpot.emptyFavorites') : t('page.marketsSpot.emptySearch') }}
                                 </td>
                             </tr>
                         </tbody>
@@ -328,7 +332,7 @@ onMounted(async () => {
                 <!-- แบ่งหน้า -->
                 <div v-if="!isLoading" class="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 border-t border-white/5">
                     <div class="flex items-center gap-2 text-xs text-dark-500">
-                        <span>Rows</span>
+                        <span>{{ t('page.marketsSpot.rows') }}</span>
                         <select
                             v-model.number="perPage"
                             class="bg-dark-800 border border-white/10 rounded-lg px-2 py-1 text-white outline-none focus:border-primary-500/50"
@@ -368,7 +372,7 @@ onMounted(async () => {
                         </button>
                     </div>
 
-                    <p class="text-xs text-dark-500">Live from Binance · updates every 15s</p>
+                    <p class="text-xs text-dark-500">{{ t('page.marketsSpot.liveNote') }}</p>
                 </div>
             </div>
         </div>

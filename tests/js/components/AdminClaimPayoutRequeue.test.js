@@ -28,9 +28,11 @@ vi.mock('@/Layouts/AdminLayout.vue', () => ({ default: { template: '<div><slot /
 vi.mock('@/Components/Admin/SaleLaunchPanel.vue', () => ({ default: { template: '<div />' } }));
 
 import TokenSalesIndex from '@/Pages/Admin/TokenSales/Index.vue';
+import { t } from '@/Composables/useTranslation';
 
-const CLAIM_LABEL = 'เข้าคิว claim ใหม่';
-const BANK_LABEL = 'เข้าคิวจ่ายใหม่';
+const CLAIM_LABEL = t('admin.tokenSales.tx.requeueClaim');
+const BANK_LABEL = t('admin.tokenSales.tx.requeuePayout');
+const UUID = 'b2f3c1de-0000-4000-8000-000000000007';
 
 const order = (overrides = {}) => ({
     id: 7,
@@ -50,7 +52,7 @@ const order = (overrides = {}) => ({
 
 async function openTransactions(rows) {
     const wrapper = mount(TokenSalesIndex, { props: { transactions: { data: rows } } });
-    await wrapper.findAll('button').find((b) => b.text().includes('Transactions')).trigger('click');
+    await wrapper.findAll('button').find((b) => b.text().includes(t('admin.tokenSales.tabs.transactions'))).trigger('click');
 
     return wrapper;
 }
@@ -82,7 +84,9 @@ describe('Admin/TokenSales/Index — กู้ยอด claim', () => {
 
         expect(confirmSpy.mock.calls[0][0]).toContain('300 TPIX');
         expect(confirmSpy.mock.calls[0][0]).toContain('b2f3c1de-0000-4000-8000-000000000007');
-        expect(confirmSpy.mock.calls[0][0]).not.toContain('คืนเป็นสิทธิ์');
+        expect(confirmSpy.mock.calls[0][0]).toBe(
+            t('admin.tokenSales.confirm.requeueClaim', { amount: '300', ref: UUID, returned: '' }),
+        );
         expect(routerPost).toHaveBeenCalledTimes(1);
         expect(routerPost.mock.calls[0][0]).toBe('/admin/token-sales/claims/7/requeue');
     });
@@ -93,7 +97,8 @@ describe('Admin/TokenSales/Index — กู้ยอด claim', () => {
         await buttonLabelled(wrapper, CLAIM_LABEL).trigger('click');
 
         expect(confirmSpy.mock.calls[0][0]).toContain('120 TPIX');
-        expect(confirmSpy.mock.calls[0][0]).toContain('180 TPIX จะคืนเป็นสิทธิ์');
+        expect(confirmSpy.mock.calls[0][0]).toContain(t('admin.tokenSales.confirm.claimReturned', { amount: '180' }).trim());
+        expect(confirmSpy.mock.calls[0][0]).toContain('180 TPIX');
     });
 
     it('กดยกเลิกในกล่องยืนยันต้องไม่ส่งอะไร', async () => {

@@ -6,6 +6,7 @@
  */
 
 import { ref, getCurrentScope, onScopeDispose } from 'vue';
+import { t } from '@/Composables/useTranslation';
 
 const BINANCE_REST = 'https://api.binance.com/api/v3';
 const BINANCE_WS = 'wss://stream.binance.com:9443/stream';
@@ -428,7 +429,7 @@ export function useBinanceData(getBinanceSymbol) {
 
         try {
             if (!symbol) {
-                throw Object.assign(new Error('No trading pair'), { code: 'invalid-symbol' });
+                throw Object.assign(new Error(t('fn.useBinanceData.noPair')), { code: 'invalid-symbol' });
             }
             const snapshot = await loadSnapshot(symbol);
             if (disposed || seq !== fetchSeq) return;
@@ -446,7 +447,7 @@ export function useBinanceData(getBinanceSymbol) {
             if (code === 'invalid-symbol') invalidSymbol = symbol;
             fetchState = 'failed';
             errorCode.value = code;
-            error.value = err?.message || 'Failed to fetch market data';
+            error.value = err?.message || t('fn.useBinanceData.fetchFailed');
             // ข้อมูลที่ค้างอยู่ไม่ใช่ของคู่นี้แล้ว — โชว์ว่างดีกว่าโชว์ราคาผิดว่าเป็นของจริง
             resetData();
             loadedSymbol = null;

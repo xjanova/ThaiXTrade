@@ -95,10 +95,10 @@ function navigateTo(url) {
 
 // Quick actions — computed เพื่อให้สลับภาษาแล้วคำถามเปลี่ยนตาม
 const quickActions = computed(() => [
-    { label: t('chatbot.q1'), msg: locale.value === 'th' ? 'TPIX Chain คืออะไร' : 'What is TPIX Chain' },
-    { label: t('chatbot.q2'), msg: locale.value === 'th' ? 'ซื้อเหรียญ TPIX ได้อย่างไร' : 'How to buy TPIX tokens' },
-    { label: t('chatbot.q3'), msg: locale.value === 'th' ? 'สอนวิธีเทรดบน TPIX TRADE' : 'How to trade on TPIX TRADE' },
-    { label: t('chatbot.q4'), msg: locale.value === 'th' ? 'ระบบ Carbon Credit ทำงานอย่างไร' : 'How does Carbon Credit work' },
+    { label: t('chatbot.q1'), msg: t('ui.aIChatbot.quick.q1Msg') },
+    { label: t('chatbot.q2'), msg: t('ui.aIChatbot.quick.q2Msg') },
+    { label: t('chatbot.q3'), msg: t('ui.aIChatbot.quick.q3Msg') },
+    { label: t('chatbot.q4'), msg: t('ui.aIChatbot.quick.q4Msg') },
 ]);
 
 function sendQuick(msg) {
@@ -144,7 +144,7 @@ function sendQuick(msg) {
                 </div>
                 <div>
                     <p class="text-white text-sm font-semibold">{{ t('mascot.name') }}</p>
-                    <p class="text-trading-green text-[10px]">● Online · AI</p>
+                    <p class="text-trading-green text-[10px]">● {{ t('ui.aIChatbot.onlineStatus') }}</p>
                 </div>
             </div>
             <div class="flex items-center gap-1">

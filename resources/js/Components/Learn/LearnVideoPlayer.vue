@@ -8,6 +8,9 @@
  * Developed by Xman Studio.
  */
 import { ref, computed } from 'vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     /** { video, poster, duration, chapters: [{ t, label }] } จาก LearnCatalog::player() */
@@ -20,25 +23,24 @@ const el = ref(null);
 const current = ref(0);
 const failed = ref(false);
 
-const th = computed(() => props.lang === 'th');
 const chapters = computed(() => props.lesson.chapters || []);
 
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 function onTime() {
-    const t = el.value?.currentTime ?? 0;
+    const now = el.value?.currentTime ?? 0;
     let idx = 0;
-    chapters.value.forEach((c, i) => { if (c.t <= t + 0.25) idx = i; });
+    chapters.value.forEach((c, i) => { if (c.t <= now + 0.25) idx = i; });
     current.value = idx;
 }
 
 // ตั้ง currentTime ก่อน metadata มาถึงไม่มีผล — รอ loadedmetadata ก่อนเสมอ
-function seek(t, i) {
+function seek(time, i) {
     const v = el.value;
     if (!v || failed.value) return;
     current.value = i;
     const go = () => {
-        v.currentTime = t;
+        v.currentTime = time;
         v.play().catch(() => {});
     };
     if (v.readyState >= 1) go();
@@ -53,16 +55,16 @@ function seek(t, i) {
                 <video ref="el" :src="lesson.video" :poster="lesson.poster" controls playsinline preload="metadata"
                     class="w-full h-full object-contain" @timeupdate="onTime" @error="failed = true"></video>
                 <div v-if="failed" class="absolute inset-0 flex items-center justify-center p-6 bg-dark-900/90 text-center text-sm text-dark-300">
-                    {{ th ? 'เปิดวิดีโอไม่ได้ตอนนี้ ลองใหม่อีกครั้งภายหลังนะคะ' : 'The video could not be loaded. Please try again later.' }}
+                    {{ t('ui.learnLearnVideoPlayer.loadFailed') }}
                 </div>
             </div>
             <p class="mt-2 text-center text-xs text-dark-500">
-                {{ th ? 'บรรยายอังกฤษ · ซับไทย' : 'English narration · Thai subtitles' }} · {{ mmss(lesson.duration) }}
+                {{ t('ui.learnLearnVideoPlayer.narration') }} · {{ mmss(lesson.duration) }}
             </p>
         </div>
 
         <div v-if="showChapters && chapters.length" class="flex-1 min-w-0">
-            <h3 class="text-white font-semibold mb-3">{{ th ? 'บทในคลิป (แตะเพื่อข้ามไป)' : 'Chapters (tap to jump)' }}</h3>
+            <h3 class="text-white font-semibold mb-3">{{ t('ui.learnLearnVideoPlayer.chapters') }}</h3>
             <ol class="space-y-1">
                 <li v-for="(c, i) in chapters" :key="c.t">
                     <button type="button" @click="seek(c.t, i)"

@@ -9,6 +9,7 @@ import { ref, computed, watch } from 'vue';
 import { parseUnits } from 'ethers';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTokenSaleStore } from '@/Stores/tokenSaleStore';
+import { t } from '@/Composables/useTranslation';
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -142,19 +143,19 @@ export function useTokenSale() {
      * @returns {string} tx hash
      */
     async function sendPaymentTransaction() {
-        if (!walletStore.signer) throw new Error('กรุณาเชื่อมต่อ wallet ก่อน');
-        if (!walletStore.isBSC) throw new Error('กรุณาสลับไปยัง BSC Network');
+        if (!walletStore.signer) throw new Error(t('fn.useTokenSale.connectWallet'));
+        if (!walletStore.isBSC) throw new Error(t('fn.useTokenSale.switchToBsc'));
 
         // ดึง wallet address จาก API (เก็บใน tokenSaleStore)
         const SALE_WALLET = tokenSaleStore.sale?.sale_wallet_address || '';
 
         // ป้องกันส่งเงินไป zero address หรือ wallet ยังไม่ตั้งค่า
         if (!SALE_WALLET || SALE_WALLET === ZERO_ADDRESS || SALE_WALLET.length !== 42) {
-            throw new Error('ระบบยังไม่พร้อมรับชำระเงิน กรุณาติดต่อทีมงาน (Sale wallet not configured)');
+            throw new Error(t('fn.useTokenSale.saleWalletNotConfigured'));
         }
 
         const amount = parseFloat(paymentAmount.value);
-        if (!amount || amount <= 0) throw new Error('กรุณากรอกจำนวนเงิน');
+        if (!amount || amount <= 0) throw new Error(t('fn.useTokenSale.enterAmount'));
 
         isSendingTx.value = true;
         error.value = null;
@@ -184,11 +185,11 @@ export function useTokenSale() {
             return tx.hash;
         } catch (err) {
             if (err.code === 4001 || err.code === 'ACTION_REJECTED') {
-                error.value = 'ผู้ใช้ยกเลิก transaction';
+                error.value = t('fn.useTokenSale.txRejected');
             } else if (err.message?.includes('insufficient')) {
-                error.value = 'ยอดเงินไม่เพียงพอ';
+                error.value = t('fn.useTokenSale.insufficientFunds');
             } else {
-                error.value = err.reason || err.message || 'การส่ง transaction ล้มเหลว';
+                error.value = err.reason || err.message || t('fn.useTokenSale.txFailed');
             }
             throw err;
         } finally {
@@ -280,12 +281,12 @@ export function useTokenSale() {
                 return result;
             } else {
                 // API ล้มทั้ง 3 ครั้ง — แจ้งผู้ใช้พร้อม tx_hash
-                error.value = `การบันทึกล้มเหลว แต่เงินถูกส่งไปแล้ว! กรุณาบันทึก TX Hash: ${hash} แล้วติดต่อทีมงาน หรือรีเฟรชหน้าเว็บเพื่อลองใหม่`;
+                error.value = t('fn.useTokenSale.recordFailedPaid', { hash });
                 throw lastError;
             }
         } catch (err) {
             if (!error.value) {
-                error.value = err.message || 'การซื้อล้มเหลว';
+                error.value = err.message || t('fn.useTokenSale.purchaseFailed');
             }
             throw err;
         } finally {

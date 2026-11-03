@@ -12,6 +12,11 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import ConfirmDialog from '@/Components/Admin/ConfirmDialog.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
+const NS = 'admin.bridgeWtpix';
+const tt = (key, params) => t(`${NS}.${key}`, params);
 
 const props = defineProps({
     tab: { type: String, default: 'overview' },
@@ -26,7 +31,14 @@ const props = defineProps({
 });
 
 const activeTab = ref(props.tab);
+// notice เก็บคีย์ไว้ ไม่ใช่ข้อความที่แปลแล้ว — สลับภาษาระหว่างที่แถบยังค้างอยู่ก็เปลี่ยนตาม
+// { type, key?, params?, text?, suffix? } — text = ข้อความจากเซิร์ฟเวอร์ (แสดงตามที่ได้มา)
 const notice = ref(null);
+const noticeText = computed(() => {
+    const n = notice.value;
+    if (!n) return '';
+    return (n.key ? tt(n.key, n.params) : n.text ?? '') + (n.suffix ?? '');
+});
 const busy = ref(false);
 
 function go(params) {
@@ -45,6 +57,23 @@ const txUrl = (chainId, hash) => (props.explorers?.[chainId] && hash ? `${props.
 const chainName = (id) => (id === props.chains.tpix?.chain_id ? 'TPIX' : id === props.chains.bsc?.chain_id ? props.chains.bsc.name : `#${id ?? '?'}`);
 const directionLabel = { to_bsc: 'TPIX → wTPIX (BSC)', to_tpix: 'wTPIX (BSC) → TPIX' };
 
+// แปลรหัสจากเซิร์ฟเวอร์ — ไม่มีคำแปลก็โชว์รหัสดิบ (ดีกว่าโชว์ชื่อคีย์)
+function codeLabel(group, code) {
+    if (code === null || code === undefined || code === '') return code;
+    const key = `${NS}.${group}.${code}`;
+    const v = t(key);
+    return v === key ? code : v;
+}
+
+const displayLocale = computed(() => (locale.value === 'th' ? 'th-TH' : 'en-US'));
+const formatDateTime = (v) => (v ? new Date(v).toLocaleString(displayLocale.value) : '—');
+
+const tabs = computed(() => [
+    ['overview', tt('tabs.overview')],
+    ['transfers', props.counts?.needs_review ? tt('tabs.transfersPending', { n: props.counts.needs_review }) : tt('tabs.transfers')],
+    ['settings', tt('tabs.settings')],
+]);
+
 const statusStyle = {
     confirmed: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
     awaiting_liquidity: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
@@ -53,40 +82,6 @@ const statusStyle = {
     needs_review: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
     rejected: 'bg-gray-600/30 text-gray-400 border-gray-500/30',
     ignored: 'bg-gray-700/30 text-gray-500 border-gray-600/30',
-};
-
-const reasonLabel = {
-    dust: 'ยอดศูนย์',
-    internal_sender: 'โอนภายใน',
-    below_fee: 'ไม่เกินค่าธรรมเนียม',
-    below_minimum: 'ต่ำกว่าขั้นต่ำ',
-    sender_is_contract: 'ผู้ส่งเป็นสัญญา (อีกเชนอาจไม่มีใครคุมที่อยู่นี้)',
-    sender_mismatch: 'ผู้กดส่งไม่ใช่เจ้าของเหรียญ (burnFrom/bridgeBurn)',
-    kyc_required: 'ยังไม่ผ่าน KYC',
-    over_tx_limit: 'เกินวงเงินต่อครั้ง',
-    over_daily_address_limit: 'เกินวงเงินต่อกระเป๋าต่อวัน',
-    test_mode: 'โหมดทดสอบ — กระเป๋านี้ไม่อยู่ในรายชื่อทดสอบ',
-    exceeds_onchain_max: 'เกิน maxPerTx บนสัญญา',
-    mint_reverted: 'mint revert บน BSC',
-    release_reverted: 'release revert บนเชน TPIX',
-    mint_estimate_failed: 'BSC บอกว่า mint จะ revert',
-    release_estimate_failed: 'เชน TPIX บอกว่า release จะ revert',
-    nonce_consumed: 'nonce ถูกใช้โดยธุรกรรมอื่น',
-    minted_elsewhere: 'ถูก mint โดยธุรกรรมที่ระบบไม่ได้ส่ง — ตรวจผู้รับก่อนอนุมัติ',
-    released_elsewhere: 'ถูกปล่อยโดยธุรกรรมที่ระบบไม่ได้ส่ง — ตรวจผู้รับก่อนอนุมัติ',
-    config_changed: 'สัญญาต้นทางไม่ใช่ตัวที่ตั้งไว้แล้ว',
-};
-
-const checkLabel = {
-    installed: 'WTPIX_BRIDGE_ENABLED ใน .env', site_switch: 'สวิตช์หลังบ้าน', vault_address: 'ที่อยู่คลัง (ตรึงใน .env ตรงกับทะเบียน)',
-    vault_code: 'มีสัญญาคลังบนเชน 4289', wtpix_address: 'มีสัญญา wTPIX บน BSC', minter_address: 'มีสัญญา WTPIXBridgeMinter บน BSC',
-    bsc_chain: 'RPC ของ BSC ตรง chain id', minter_token: 'minter.token() = wTPIX', initial_minter_set: 'wTPIX.initialMinterSet()',
-    minter_is_minter: 'wTPIX.minters(minter) = true', relayer_keystore: 'keystore + passphrase ของ relayer',
-    minter_relayer_role: 'minter.relayers(relayer)', vault_relayer_role: 'vault.relayers(relayer)', relayer_bnb: 'BNB ค่าแก๊สของ relayer',
-    vault_not_paused: 'คลังไม่ถูก pause', minter_not_paused: 'minter ไม่ถูก pause', token_not_paused: 'wTPIX ไม่ถูก pause',
-    caps_aligned: 'vault.maxLock ≤ minter.maxPerTx', no_foreign_supply: 'wTPIX supply ≤ minter.totalMinted',
-    guardian_keystore: 'keystore ของ guardian', minter_guardian_role: 'minter.guardians(guardian)', vault_guardian_role: 'vault.guardians(guardian)',
-    guardian_bnb: 'BNB ของ guardian (ไว้ pause บน BSC)',
 };
 
 // ── สวิตช์ ──────────────────────────────────────────────────────────────
@@ -98,12 +93,17 @@ async function doToggle() {
     busy.value = true;
     try {
         const { data } = await axios.post('/admin/bridge/wtpix/toggle', { enabled: !props.state.site_switch, reason: toggleReason.value || null });
-        notice.value = { type: 'success', text: (data.data.enabled ? 'เปิดสะพานแล้ว' : 'ปิดสะพานแล้ว') + (data.data.warnings?.length ? ` · ${data.data.warnings.join(' · ')}` : '') };
+        notice.value = {
+            type: 'success',
+            key: data.data.enabled ? 'notices.bridgeEnabled' : 'notices.bridgeDisabled',
+            suffix: data.data.warnings?.length ? ` · ${data.data.warnings.join(' · ')}` : '',
+        };
         confirmToggle.value = false;
         toggleReason.value = '';
         router.reload({ only: ['state'] });
     } catch (e) {
-        notice.value = { type: 'error', text: e.response?.data?.message ?? 'เปลี่ยนสวิตช์ไม่สำเร็จ' };
+        const msg = e.response?.data?.message;
+        notice.value = msg ? { type: 'error', text: msg } : { type: 'error', key: 'notices.toggleFailed' };
     } finally {
         busy.value = false;
     }
@@ -115,8 +115,8 @@ const testWalletsErrors = ref([]);
 const confirmTestWallets = ref(false);
 const testWalletsDraft = computed(() => [...new Set(testWalletsText.value.split(/[\s,]+/).map((a) => a.trim().toLowerCase()).filter(Boolean))]);
 const testWalletsMessage = computed(() => (testWalletsDraft.value.length
-    ? `สะพานจะทำให้เองเฉพาะ ${testWalletsDraft.value.length} กระเป๋านี้ — กระเป๋าอื่นที่ล็อก/เผาจะถูกพักไว้รอตรวจ`
-    : 'รายชื่อว่าง = ปิดโหมดทดสอบ เปิดสะพานให้ทุกคนใช้ได้ทันที'));
+    ? tt('testMode.confirmSome', { n: testWalletsDraft.value.length })
+    : tt('testMode.confirmEmpty')));
 
 async function saveTestWallets() {
     if (busy.value) return;
@@ -125,12 +125,12 @@ async function saveTestWallets() {
     try {
         const { data } = await axios.put('/admin/bridge/wtpix/test-wallets', { wallets: testWalletsDraft.value });
         testWalletsText.value = (data.data.test_wallets ?? []).join('\n');
-        notice.value = { type: 'success', text: data.data.test_wallets?.length ? 'เปิดโหมดทดสอบแล้ว' : 'ปิดโหมดทดสอบแล้ว — ทุกคนใช้สะพานได้' };
+        notice.value = { type: 'success', key: data.data.test_wallets?.length ? 'notices.testModeOn' : 'notices.testModeOff' };
         router.reload({ only: ['settings', 'state'] });
     } catch (e) {
         testWalletsErrors.value = e.response?.data?.errors
             ? [...new Set(Object.values(e.response.data.errors).flat())]
-            : [e.response?.data?.message ?? 'บันทึกไม่สำเร็จ'];
+            : [e.response?.data?.message ?? tt('notices.saveFailed')];
     } finally {
         confirmTestWallets.value = false;
         busy.value = false;
@@ -148,7 +148,7 @@ async function measure() {
         const { data } = await axios.get('/admin/bridge/wtpix/measure');
         live.value = data.data;
     } catch (e) {
-        notice.value = { type: 'error', text: e.response?.status === 429 ? 'รีเฟรชถี่เกินไป รอสักครู่' : 'อ่านยอดไม่สำเร็จ' };
+        notice.value = { type: 'error', key: e.response?.status === 429 ? 'notices.tooFrequent' : 'notices.readFailed' };
     } finally {
         measuring.value = false;
     }
@@ -173,12 +173,12 @@ const confirmMessage = computed(() => {
     const toBsc = r.direction === 'to_bsc';
     if (p.action === 'approve') {
         return toBsc
-            ? `อนุมัติ mint ${r.receive_amount} wTPIX บน ${props.chains.bsc?.name} ให้ ${r.recipient}? ระบบจะตรวจบนเชนซ้ำก่อน mint จริง`
-            : `อนุมัติปล่อย ${r.receive_amount} TPIX จากคลังให้ ${r.recipient} บนเชน TPIX? TPIX จริงจะออกจากคลัง`;
+            ? tt('confirm.approveMint', { amount: r.receive_amount, chain: props.chains.bsc?.name ?? 'BSC', recipient: r.recipient })
+            : tt('confirm.approveRelease', { amount: r.receive_amount, recipient: r.recipient });
     }
     return toBsc
-        ? `ปฏิเสธ ${r.amount} TPIX ที่ ${r.from_address} ล็อกไว้? TPIX ค้างในคลัง (ไม่มีทางถอนนอกจาก release) — ต้องคืนด้วยมือผ่านกระบวนการของเจ้าของ`
-        : `ปฏิเสธการเผา ${r.amount} wTPIX ของ ${r.from_address}? ผู้ใช้เผาเหรียญไปแล้ว ต้องคืนด้วยมือ`;
+        ? tt('confirm.rejectLock', { amount: r.amount, from: r.from_address })
+        : tt('confirm.rejectBurn', { amount: r.amount, from: r.from_address });
 });
 
 async function runPending() {
@@ -189,12 +189,13 @@ async function runPending() {
     busy.value = true;
     try {
         const { data } = await axios.post(`/admin/bridge/wtpix/transfers/${p.row.id}/${p.action}`, p.action === 'reject' ? { reason: rejectReason.value.trim() } : {});
-        notice.value = { type: 'success', text: data.message ?? 'ดำเนินการแล้ว' };
+        notice.value = data.message ? { type: 'success', text: data.message } : { type: 'success', key: 'notices.actionDone' };
         pending.value = null;
         router.reload({ only: ['transfers', 'counts', 'state'] });
     } catch (e) {
         const errors = e.response?.data?.errors;
-        notice.value = { type: 'error', text: Array.isArray(errors) ? errors.join(' · ') : (e.response?.data?.message ?? 'ดำเนินการไม่สำเร็จ') };
+        const msg = Array.isArray(errors) ? errors.join(' · ') : e.response?.data?.message;
+        notice.value = msg ? { type: 'error', text: msg } : { type: 'error', key: 'notices.actionFailed' };
         pending.value = null;
         router.reload({ only: ['transfers', 'counts'] });
     } finally {
@@ -203,22 +204,15 @@ async function runPending() {
 }
 
 // ── วงเงิน ──────────────────────────────────────────────────────────────
-const limitLabels = {
-    min_lock: 'ล็อกขั้นต่ำ (TPIX → BSC)',
-    max_lock_per_tx: 'ล็อกสูงสุดต่อครั้ง (เกิน = รอตรวจ)',
-    max_lock_per_address_daily: 'ล็อกสูงสุดต่อกระเป๋าต่อ 24 ชม.',
-    lock_fee: 'ค่าธรรมเนียมล็อก ขั้นต่ำ (ค่าแก๊สจริงต่ำกว่านี้ = เก็บเท่านี้)',
-    lock_fee_max: 'ค่าธรรมเนียมล็อก สูงสุด (ตั้งเท่าขั้นต่ำ = ค่าคงที่)',
-    min_burn: 'เผาขั้นต่ำ (BSC → TPIX)',
-    max_burn_per_tx: 'เผาสูงสุดต่อครั้ง (เกิน = รอตรวจ)',
-    max_burn_per_address_daily: 'เผาสูงสุดต่อกระเป๋าต่อ 24 ชม.',
-    burn_fee: 'ค่าธรรมเนียมเผา',
-};
+// คีย์ของฟอร์ม (ตรงกับชื่อฟิลด์ที่ส่งเซิร์ฟเวอร์) — ป้ายแปลใน template ผ่าน limits.<key>
+const limitKeys = [
+    'min_lock', 'max_lock_per_tx', 'max_lock_per_address_daily', 'lock_fee', 'lock_fee_max',
+    'min_burn', 'max_burn_per_tx', 'max_burn_per_address_daily', 'burn_fee',
+];
 const limitsForm = ref({ ...props.settings.limits });
 const markupForm = ref(props.settings.fee_markup_pct ?? '10');
 const feeQuote = computed(() => props.settings.fee_quote ?? null);
 const feeLedger = computed(() => props.settings.fee_ledger ?? null);
-const feeSourceLabel = { market: 'จากตลาด', capped: 'ชนเพดาน (สะพานออกส่วนต่าง)', fallback: 'ไม่มีราคาตลาด → เพดาน' };
 const settingsErrors = ref([]);
 const confirmSettings = ref(false);
 
@@ -228,13 +222,13 @@ async function saveSettings() {
     settingsErrors.value = [];
     try {
         await axios.put('/admin/bridge/wtpix/settings', { limits: limitsForm.value, fee_markup_pct: String(markupForm.value ?? '').trim() });
-        notice.value = { type: 'success', text: 'บันทึกวงเงินแล้ว' };
+        notice.value = { type: 'success', key: 'notices.limitsSaved' };
         confirmSettings.value = false;
         router.reload({ only: ['settings', 'state'] });
     } catch (e) {
         settingsErrors.value = e.response?.data?.errors
             ? (Array.isArray(e.response.data.errors) ? e.response.data.errors : Object.values(e.response.data.errors).flat())
-            : [e.response?.data?.message ?? 'บันทึกไม่สำเร็จ'];
+            : [e.response?.data?.message ?? tt('notices.saveFailed')];
         confirmSettings.value = false;
     } finally {
         busy.value = false;
@@ -246,26 +240,26 @@ const blockingFailed = computed(() => (props.state.checks || []).filter((c) => !
 </script>
 
 <template>
-    <Head title="สะพาน TPIX⇄wTPIX — หลังบ้าน" />
+    <Head :title="tt('pageTitle')" />
     <AdminLayout>
         <div class="space-y-6">
             <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <h1 class="text-2xl font-bold text-white">สะพาน TPIX ⇄ wTPIX ({{ chains.bsc?.name }})</h1>
-                    <p class="text-sm text-gray-400 mt-1">ล็อก TPIX ในคลังบนเชน 4289 → mint wTPIX บน BSC · เผา wTPIX → ปล่อย TPIX จากคลัง · กระทบยอดทุก 5 นาที</p>
+                    <h1 class="text-2xl font-bold text-white">{{ tt('header.title', { chain: chains.bsc?.name ?? 'BSC' }) }}</h1>
+                    <p class="text-sm text-gray-400 mt-1">{{ tt('header.subtitle') }}</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <Link href="/admin/bridge" class="px-4 py-2 text-sm rounded-xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10">← สะพาน USDT</Link>
-                    <a href="/bridge/reserves?asset=tpix" target="_blank" class="px-4 py-2 text-sm rounded-xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10">Proof of Reserves ↗</a>
+                    <Link href="/admin/bridge" class="px-4 py-2 text-sm rounded-xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10">{{ tt('header.usdtBridge') }}</Link>
+                    <a href="/bridge/reserves?asset=tpix" target="_blank" class="px-4 py-2 text-sm rounded-xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10">{{ tt('header.proofOfReserves') }}</a>
                 </div>
             </div>
 
             <div v-if="notice" :class="['rounded-xl border p-4 text-sm', notice.type === 'success' ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-red-500/30 bg-red-500/5 text-red-300']">
-                {{ notice.text }}
+                {{ noticeText }}
             </div>
 
             <div class="flex flex-wrap gap-2">
-                <button v-for="tb in [['overview', 'ภาพรวม'], ['transfers', `รายการ${counts?.needs_review ? ` (${counts.needs_review} รอตรวจ)` : ''}`], ['settings', 'วงเงิน/ค่าธรรมเนียม']]"
+                <button v-for="tb in tabs"
                     :key="tb[0]" @click="goTab(tb[0])"
                     :class="['px-4 py-2 text-sm rounded-xl border transition-all', activeTab === tb[0] ? 'bg-primary-500/20 text-primary-300 border-primary-500/30' : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10']">
                     {{ tb[1] }}
@@ -277,52 +271,52 @@ const blockingFailed = computed(() => (props.state.checks || []).filter((c) => !
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div class="glass-card rounded-xl p-5 space-y-3">
                         <div class="flex items-center justify-between">
-                            <h3 class="font-semibold text-white">สวิตช์สะพาน</h3>
+                            <h3 class="font-semibold text-white">{{ tt('switch.title') }}</h3>
                             <span :class="['px-2 py-1 text-xs rounded-md border', state.operational ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-red-500/20 text-red-300 border-red-500/30']">
-                                {{ state.operational ? 'ทำงาน' : 'หยุด' }}
+                                {{ state.operational ? tt('switch.operational') : tt('switch.stopped') }}
                             </span>
                         </div>
                         <p class="text-xs text-gray-400">
-                            ติดตั้ง (.env): <b :class="state.installed ? 'text-emerald-300' : 'text-red-300'">{{ state.installed ? 'ใช่' : 'ยังไม่ได้ตั้ง WTPIX_BRIDGE_ENABLED' }}</b>
-                            · สวิตช์: <b>{{ state.site_switch ? 'เปิด' : 'ปิด' }}</b>
-                            · mint: <b :class="state.mint_ready ? 'text-emerald-300' : 'text-amber-300'">{{ state.mint_ready ? 'พร้อม' : 'ไม่พร้อม' }}</b>
-                            · ปล่อย: <b :class="state.release_ready ? 'text-emerald-300' : 'text-amber-300'">{{ state.release_ready ? 'พร้อม' : 'ไม่พร้อม' }}</b>
+                            {{ tt('switch.installed') }} <b :class="state.installed ? 'text-emerald-300' : 'text-red-300'">{{ state.installed ? t('common.yes') : tt('switch.notInstalled') }}</b>
+                            · {{ tt('switch.switchLabel') }} <b>{{ state.site_switch ? tt('switch.on') : tt('switch.off') }}</b>
+                            · mint: <b :class="state.mint_ready ? 'text-emerald-300' : 'text-amber-300'">{{ state.mint_ready ? tt('ready') : tt('notReady') }}</b>
+                            · {{ tt('switch.releaseLabel') }} <b :class="state.release_ready ? 'text-emerald-300' : 'text-amber-300'">{{ state.release_ready ? tt('ready') : tt('notReady') }}</b>
                         </p>
                         <p v-if="state.switch_reason" class="text-xs text-amber-300 break-words">{{ state.switch_reason }}</p>
-                        <p v-if="state.shared_key_with_usdt" class="text-xs text-amber-300">⚠️ relayer ใช้กุญแจใบเดียวกับสะพาน USDT — ทำงานได้ (ระบบรอคิว nonce ให้) แต่คีย์หลุดใบเดียวกระทบสองสะพาน แนะนำแยกกุญแจ</p>
+                        <p v-if="state.shared_key_with_usdt" class="text-xs text-amber-300">{{ tt('switch.sharedKeyWarning') }}</p>
                         <button @click="confirmToggle = true" :disabled="busy"
                             :class="['w-full py-2.5 rounded-xl text-sm font-semibold border transition-all disabled:opacity-40', state.site_switch ? 'bg-red-500/20 text-red-300 border-red-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30']">
-                            {{ state.site_switch ? 'หยุดสะพาน (mint + ปล่อย)' : 'เปิดสะพาน' }}
+                            {{ state.site_switch ? tt('switch.stopButton') : tt('switch.startButton') }}
                         </button>
-                        <p class="text-[11px] text-gray-500">หยุดแล้วตัวสแกนยังบันทึกรายการ และตัวเฝ้าเหตุ (mint/ปล่อยที่ระบบไม่ได้สั่ง · เพิ่ม minter) ยังเดิน · pause บนสัญญาปลดได้เฉพาะกระเป๋าเจ้าของ</p>
+                        <p class="text-[11px] text-gray-500">{{ tt('switch.note') }}</p>
 
                         <div class="pt-3 border-t border-white/10 space-y-2" data-test="test-wallets">
                             <div class="flex items-center justify-between">
-                                <h4 class="text-sm font-semibold text-white">โหมดทดสอบ</h4>
+                                <h4 class="text-sm font-semibold text-white">{{ tt('testMode.title') }}</h4>
                                 <span :class="['px-2 py-1 text-xs rounded-md border', state.test_mode ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-white/5 text-gray-400 border-white/10']">
-                                    {{ state.test_mode ? `เปิด · ${settings.test_wallets?.length ?? 0} กระเป๋า` : 'ปิด · ทุกคนใช้ได้' }}
+                                    {{ state.test_mode ? tt('testMode.onBadge', { n: settings.test_wallets?.length ?? 0 }) : tt('testMode.offBadge') }}
                                 </span>
                             </div>
-                            <p class="text-[11px] text-gray-500">มีรายชื่อ = สะพานทำให้เองเฉพาะกระเป๋าเหล่านี้ · กระเป๋าอื่นที่ล็อก/เผาตรงบนสัญญาถูกพักไว้ "รอตรวจ" ไม่หาย · ล้างให้ว่าง = เปิดให้ทุกคน</p>
-                            <textarea v-model="testWalletsText" rows="3" placeholder="0x… หนึ่งบรรทัดต่อหนึ่งกระเป๋า"
+                            <p class="text-[11px] text-gray-500">{{ tt('testMode.help') }}</p>
+                            <textarea v-model="testWalletsText" rows="3" :placeholder="tt('testMode.placeholder')"
                                 class="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-mono"></textarea>
                             <div v-if="testWalletsErrors.length" class="text-xs text-red-300">
                                 <div v-for="(e, i) in testWalletsErrors" :key="i">{{ e }}</div>
                             </div>
                             <button @click="confirmTestWallets = true" :disabled="busy"
                                 class="w-full py-2 rounded-xl text-sm font-semibold border bg-amber-500/10 text-amber-300 border-amber-500/30 disabled:opacity-40">
-                                บันทึกรายชื่อทดสอบ
+                                {{ tt('testMode.saveButton') }}
                             </button>
                         </div>
                     </div>
 
                     <div class="glass-card rounded-xl p-5">
-                        <h3 class="font-semibold text-white mb-1">ด่านความพร้อม</h3>
-                        <p class="text-[11px] text-gray-500 mb-3">{{ blockingFailed ? `ยังไม่ผ่าน ${blockingFailed} ข้อที่บังคับ` : 'ข้อบังคับผ่านครบ' }} · ข้อที่มี (แนะนำ) ไม่บล็อกการทำงาน</p>
+                        <h3 class="font-semibold text-white mb-1">{{ tt('readiness.title') }}</h3>
+                        <p class="text-[11px] text-gray-500 mb-3">{{ blockingFailed ? tt('readiness.failed', { n: blockingFailed }) : tt('readiness.allPassed') }} · {{ tt('readiness.note') }}</p>
                         <ul class="space-y-1.5 text-xs" data-test="readiness">
                             <li v-for="c in state.checks || []" :key="c.key" class="flex items-start gap-2">
                                 <span :class="c.ok ? 'text-emerald-400' : (c.optional ? 'text-amber-400' : 'text-red-400')">{{ c.ok ? '✓' : (c.optional ? '!' : '✗') }}</span>
-                                <span class="text-gray-300">{{ checkLabel[c.key] ?? c.key }}<span v-if="c.optional" class="text-gray-500"> (แนะนำ)</span></span>
+                                <span class="text-gray-300">{{ codeLabel('checks', c.key) }}<span v-if="c.optional" class="text-gray-500"> {{ tt('readiness.recommended') }}</span></span>
                                 <span v-if="!c.ok" class="text-gray-500 break-all">— {{ c.hint }}</span>
                             </li>
                         </ul>
@@ -331,61 +325,61 @@ const blockingFailed = computed(() => (props.state.checks || []).filter((c) => !
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div class="glass-card rounded-xl p-5 text-xs space-y-2">
-                        <h3 class="font-semibold text-white text-sm">กุญแจบนเซิร์ฟเวอร์</h3>
+                        <h3 class="font-semibold text-white text-sm">{{ tt('signers.title') }}</h3>
                         <div v-for="(s, role) in state.signers || {}" :key="role" class="space-y-0.5">
                             <div class="flex justify-between gap-2"><span class="text-gray-400">{{ role }}</span>
-                                <span :class="s.ready ? 'text-emerald-400' : 'text-amber-400'">{{ s.ready ? 'พร้อม' : (s.passphrase_set ? 'ขาดไฟล์' : 'ขาด passphrase') }}</span></div>
-                            <code class="font-mono text-white break-all block">{{ s.address ?? 'ยังไม่มีไฟล์ keystore' }}</code>
+                                <span :class="s.ready ? 'text-emerald-400' : 'text-amber-400'">{{ s.ready ? tt('ready') : (s.passphrase_set ? tt('signers.missingFile') : tt('signers.missingPassphrase')) }}</span></div>
+                            <code class="font-mono text-white break-all block">{{ s.address ?? tt('signers.noKeystore') }}</code>
                             <div class="text-gray-500">BNB: <span class="font-mono text-gray-300">{{ s.bnb ?? '—' }}</span></div>
                         </div>
                         <div class="pt-2 border-t border-white/5 space-y-1">
                             <div><span class="text-gray-400">vault (4289)</span> <code class="font-mono text-white break-all">{{ state.addresses?.vault ?? '—' }}</code></div>
-                            <div v-if="state.addresses?.vault_registry && state.addresses.vault_registry !== state.addresses.vault" class="text-red-300">ทะเบียน: {{ state.addresses.vault_registry }}</div>
+                            <div v-if="state.addresses?.vault_registry && state.addresses.vault_registry !== state.addresses.vault" class="text-red-300">{{ tt('signers.registry', { address: state.addresses.vault_registry }) }}</div>
                             <div><span class="text-gray-400">wTPIX</span> <code class="font-mono text-white break-all">{{ state.addresses?.wtpix ?? '—' }}</code></div>
                             <div><span class="text-gray-400">minter</span> <code class="font-mono text-white break-all">{{ state.addresses?.minter ?? '—' }}</code></div>
                         </div>
                     </div>
                     <div class="glass-card rounded-xl p-5 text-xs space-y-1.5">
-                        <h3 class="font-semibold text-white text-sm mb-1">คลัง TPIXBridgeVault (4289)</h3>
-                        <div class="flex justify-between"><span class="text-gray-400">paused</span><span :class="state.vault?.paused ? 'text-red-300' : 'text-white'">{{ state.vault?.paused == null ? '—' : (state.vault.paused ? 'ใช่' : 'ไม่') }}</span></div>
-                        <div class="flex justify-between"><span class="text-gray-400">TPIX ในคลัง</span><span class="text-white font-mono">{{ state.vault?.balance ?? '—' }}</span></div>
-                        <div class="flex justify-between"><span class="text-gray-400">ล็อก ต่ำสุด–สูงสุด</span><span class="text-white font-mono">{{ state.vault?.min_lock ?? '—' }} – {{ state.vault?.max_lock ?? '—' }}</span></div>
-                        <div class="flex justify-between"><span class="text-gray-400">ปล่อย maxPerTx / dailyCap</span><span class="text-white font-mono">{{ state.vault?.max_per_tx ?? '—' }} / {{ state.vault?.daily_cap ?? '—' }}</span></div>
-                        <div class="flex justify-between"><span class="text-gray-400">เหลือวันนี้ (UTC)</span><span class="text-white font-mono">{{ state.vault?.remaining_today ?? '—' }}</span></div>
+                        <h3 class="font-semibold text-white text-sm mb-1">{{ tt('vault.title') }}</h3>
+                        <div class="flex justify-between"><span class="text-gray-400">paused</span><span :class="state.vault?.paused ? 'text-red-300' : 'text-white'">{{ state.vault?.paused == null ? '—' : (state.vault.paused ? t('common.yes') : t('common.no')) }}</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">{{ tt('vault.balance') }}</span><span class="text-white font-mono">{{ state.vault?.balance ?? '—' }}</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">{{ tt('vault.lockRange') }}</span><span class="text-white font-mono">{{ state.vault?.min_lock ?? '—' }} – {{ state.vault?.max_lock ?? '—' }}</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">{{ tt('vault.releaseCaps') }}</span><span class="text-white font-mono">{{ state.vault?.max_per_tx ?? '—' }} / {{ state.vault?.daily_cap ?? '—' }}</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">{{ tt('remainingToday') }}</span><span class="text-white font-mono">{{ state.vault?.remaining_today ?? '—' }}</span></div>
                         <div class="flex justify-between"><span class="text-gray-400">totalLocked / totalReleased</span><span class="text-white font-mono">{{ state.vault?.total_locked ?? '—' }} / {{ state.vault?.total_released ?? '—' }}</span></div>
                     </div>
                     <div class="glass-card rounded-xl p-5 text-xs space-y-1.5">
                         <h3 class="font-semibold text-white text-sm mb-1">WTPIXBridgeMinter + wTPIX ({{ chains.bsc?.name }})</h3>
-                        <div class="flex justify-between"><span class="text-gray-400">minter paused</span><span :class="state.minter?.paused ? 'text-red-300' : 'text-white'">{{ state.minter?.paused == null ? '—' : (state.minter.paused ? 'ใช่' : 'ไม่') }}</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">minter paused</span><span :class="state.minter?.paused ? 'text-red-300' : 'text-white'">{{ state.minter?.paused == null ? '—' : (state.minter.paused ? t('common.yes') : t('common.no')) }}</span></div>
                         <div class="flex justify-between"><span class="text-gray-400">mint maxPerTx / dailyCap</span><span class="text-white font-mono">{{ state.minter?.max_per_tx ?? '—' }} / {{ state.minter?.daily_cap ?? '—' }}</span></div>
-                        <div class="flex justify-between"><span class="text-gray-400">เหลือวันนี้ (UTC)</span><span class="text-white font-mono">{{ state.minter?.remaining_today ?? '—' }}</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">{{ tt('remainingToday') }}</span><span class="text-white font-mono">{{ state.minter?.remaining_today ?? '—' }}</span></div>
                         <div class="flex justify-between"><span class="text-gray-400">totalMinted</span><span class="text-white font-mono">{{ state.minter?.total_minted ?? '—' }}</span></div>
                         <div class="flex justify-between"><span class="text-gray-400">wTPIX supply</span><span class="text-white font-mono">{{ state.token?.total_supply ?? '—' }}</span></div>
-                        <div class="flex justify-between"><span class="text-gray-400">wTPIX paused</span><span :class="state.token?.paused ? 'text-red-300' : 'text-white'">{{ state.token?.paused == null ? '—' : (state.token.paused ? 'ใช่' : 'ไม่') }}</span></div>
+                        <div class="flex justify-between"><span class="text-gray-400">wTPIX paused</span><span :class="state.token?.paused ? 'text-red-300' : 'text-white'">{{ state.token?.paused == null ? '—' : (state.token.paused ? t('common.yes') : t('common.no')) }}</span></div>
                     </div>
                 </div>
 
                 <div class="glass-card rounded-xl p-5 space-y-4">
                     <div class="flex flex-wrap items-center justify-between gap-2">
-                        <h3 class="font-semibold text-white">เงินหนุน {{ live ? '(สด)' : `(กระทบยอดล่าสุด ${snapshot?.checked_at ? new Date(snapshot.checked_at).toLocaleString() : '—'})` }}</h3>
+                        <h3 class="font-semibold text-white">{{ tt('backing.title') }} {{ live ? tt('backing.live') : tt('backing.lastReconcile', { time: formatDateTime(snapshot?.checked_at) }) }}</h3>
                         <button @click="measure" :disabled="measuring" class="px-3 py-1.5 text-xs rounded-lg bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 disabled:opacity-40">
-                            {{ measuring ? 'กำลังอ่าน…' : 'อ่านยอดสดสองเชน' }}
+                            {{ measuring ? tt('backing.reading') : tt('backing.readLive') }}
                         </button>
                     </div>
-                    <p v-if="!view" class="text-sm text-gray-500">ยังไม่มีผลกระทบยอด (bridge:wtpix-reconcile ยังไม่เคยรัน)</p>
+                    <p v-if="!view" class="text-sm text-gray-500">{{ tt('backing.empty') }}</p>
                     <template v-else>
                         <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
                             <div><p class="text-gray-500">wTPIX supply</p><p class="text-white font-mono text-base">{{ view.supply ?? '—' }}</p></div>
-                            <div><p class="text-gray-500">TPIX ในคลัง</p><p class="text-white font-mono text-base">{{ view.vault ?? '—' }}</p></div>
-                            <div><p class="text-gray-500">ค้างปล่อย</p><p class="text-white font-mono text-base">{{ view.owed }}</p></div>
-                            <div><p class="text-gray-500">คลังสุทธิ</p><p class="text-white font-mono text-base">{{ view.backing }}</p></div>
-                            <div><p class="text-gray-500">ขาด (ติดลบ = เกิน)</p><p :class="['font-mono text-base', String(view.deficit).startsWith('-') || view.deficit === '0' ? 'text-emerald-300' : 'text-red-300']">{{ view.deficit }}</p></div>
+                            <div><p class="text-gray-500">{{ tt('vault.balance') }}</p><p class="text-white font-mono text-base">{{ view.vault ?? '—' }}</p></div>
+                            <div><p class="text-gray-500">{{ tt('backing.owed') }}</p><p class="text-white font-mono text-base">{{ view.owed }}</p></div>
+                            <div><p class="text-gray-500">{{ tt('backing.net') }}</p><p class="text-white font-mono text-base">{{ view.backing }}</p></div>
+                            <div><p class="text-gray-500">{{ tt('backing.deficit') }}</p><p :class="['font-mono text-base', String(view.deficit).startsWith('-') || view.deficit === '0' ? 'text-emerald-300' : 'text-red-300']">{{ view.deficit }}</p></div>
                         </div>
-                        <p v-if="isNonZero(view.unexplained_mint)" class="text-sm text-red-300">⚠️ mint ที่ระบบไม่ได้สั่ง: {{ view.unexplained_mint }} wTPIX</p>
-                        <p v-if="isNonZero(view.unexplained_release)" class="text-sm text-red-300">⚠️ ปล่อยที่ระบบไม่ได้สั่ง: {{ view.unexplained_release }} TPIX</p>
-                        <p v-if="isNonZero(view.foreign_supply)" class="text-sm text-red-300">⚠️ wTPIX ที่ไม่ได้มาจาก minter ของสะพาน: {{ view.foreign_supply }}</p>
+                        <p v-if="isNonZero(view.unexplained_mint)" class="text-sm text-red-300">{{ tt('backing.unexplainedMint', { amount: view.unexplained_mint }) }}</p>
+                        <p v-if="isNonZero(view.unexplained_release)" class="text-sm text-red-300">{{ tt('backing.unexplainedRelease', { amount: view.unexplained_release }) }}</p>
+                        <p v-if="isNonZero(view.foreign_supply)" class="text-sm text-red-300">{{ tt('backing.foreignSupply', { amount: view.foreign_supply }) }}</p>
                         <p v-if="view.note" class="text-xs text-amber-300">{{ view.note }}</p>
-                        <p v-if="view.action" class="text-xs text-gray-500">การกระทำ: {{ view.action }}</p>
+                        <p v-if="view.action" class="text-xs text-gray-500">{{ tt('backing.action', { action: view.action }) }}</p>
                     </template>
                 </div>
             </div>
@@ -393,119 +387,119 @@ const blockingFailed = computed(() => (props.state.checks || []).filter((c) => !
             <!-- ═══════════ รายการ ═══════════ -->
             <div v-if="activeTab === 'transfers'" class="space-y-4">
                 <div class="flex flex-wrap gap-2">
-                    <button @click="filter(null, null)" :class="['px-3 py-1.5 text-xs rounded-lg border', !filters.status && !filters.direction ? 'bg-primary-500/20 text-primary-300 border-primary-500/30' : 'bg-white/5 text-gray-400 border-white/10']">ทั้งหมด</button>
+                    <button @click="filter(null, null)" :class="['px-3 py-1.5 text-xs rounded-lg border', !filters.status && !filters.direction ? 'bg-primary-500/20 text-primary-300 border-primary-500/30' : 'bg-white/5 text-gray-400 border-white/10']">{{ t('common.all') }}</button>
                     <button v-for="d in ['to_bsc', 'to_tpix']" :key="d" @click="filter(filters.status, filters.direction === d ? null : d)"
                         :class="['px-3 py-1.5 text-xs rounded-lg border', filters.direction === d ? 'bg-primary-500/20 text-primary-300 border-primary-500/30' : 'bg-white/5 text-gray-400 border-white/10']">{{ directionLabel[d] }}</button>
                     <span class="w-px bg-white/10"></span>
                     <button v-for="s in statusFilters" :key="s" @click="filter(filters.status === s ? null : s)"
                         :class="['px-3 py-1.5 text-xs rounded-lg border', filters.status === s ? 'bg-primary-500/20 text-primary-300 border-primary-500/30' : 'bg-white/5 text-gray-400 border-white/10']">
-                        {{ s }} ({{ counts?.[s] ?? 0 }})
+                        {{ codeLabel('statuses', s) }} ({{ counts?.[s] ?? 0 }})
                     </button>
                 </div>
                 <div class="glass-card rounded-xl overflow-x-auto">
                     <table class="w-full text-xs min-w-[900px]">
                         <thead class="bg-white/5 text-gray-500 uppercase tracking-wider"><tr>
-                            <th class="text-left px-3 py-2">ทิศ / tx ต้นทาง</th><th class="text-left px-3">ผู้ส่ง = ผู้รับ</th><th class="text-right px-3">จำนวน / ได้รับ</th>
-                            <th class="text-left px-3">สถานะ</th><th class="text-left px-3">tx ปลายทาง</th><th class="text-right px-3">จัดการ</th>
+                            <th class="text-left px-3 py-2">{{ tt('table.direction') }}</th><th class="text-left px-3">{{ tt('table.recipient') }}</th><th class="text-right px-3">{{ tt('table.amount') }}</th>
+                            <th class="text-left px-3">{{ t('common.status') }}</th><th class="text-left px-3">{{ tt('table.destTx') }}</th><th class="text-right px-3">{{ tt('table.actions') }}</th>
                         </tr></thead>
                         <tbody class="divide-y divide-white/5">
-                            <tr v-for="t in transfers.data" :key="t.id" class="align-top">
+                            <tr v-for="tr in transfers.data" :key="tr.id" class="align-top">
                                 <td class="px-3 py-2">
-                                    <div class="text-white">{{ directionLabel[t.direction] }}</div>
-                                    <a :href="txUrl(t.source_chain_id, t.tx_hash)" target="_blank" rel="noopener" class="font-mono text-primary-300 hover:underline">{{ short(t.tx_hash) }}</a>
-                                    <span class="text-gray-600"> #{{ t.log_index }}</span>
+                                    <div class="text-white">{{ directionLabel[tr.direction] }}</div>
+                                    <a :href="txUrl(tr.source_chain_id, tr.tx_hash)" target="_blank" rel="noopener" class="font-mono text-primary-300 hover:underline">{{ short(tr.tx_hash) }}</a>
+                                    <span class="text-gray-600"> #{{ tr.log_index }}</span>
                                 </td>
-                                <td class="px-3 py-2 font-mono text-gray-300">{{ short(t.recipient) }}</td>
-                                <td class="px-3 py-2 text-right font-mono text-white">{{ t.amount }}<div class="text-gray-500">ได้ {{ t.receive_amount }} (ค่าธรรมเนียม {{ t.fee }})</div></td>
+                                <td class="px-3 py-2 font-mono text-gray-300">{{ short(tr.recipient) }}</td>
+                                <td class="px-3 py-2 text-right font-mono text-white">{{ tr.amount }}<div class="text-gray-500">{{ tt('table.received', { amount: tr.receive_amount, fee: tr.fee }) }}</div></td>
                                 <td class="px-3 py-2">
-                                    <span :class="['px-2 py-0.5 rounded-md border', statusStyle[t.status]]">{{ t.status }}</span>
-                                    <div v-if="t.review_reason" class="text-amber-300 mt-1">{{ reasonLabel[t.review_reason] ?? t.review_reason }}</div>
-                                    <div v-if="t.last_error" class="text-gray-500 mt-1 max-w-[260px] break-words">{{ t.last_error }}</div>
-                                    <div v-if="t.limits_overridden" class="text-gray-500 mt-1">แอดมินอนุมัติแล้ว</div>
+                                    <span :class="['px-2 py-0.5 rounded-md border', statusStyle[tr.status]]">{{ codeLabel('statuses', tr.status) }}</span>
+                                    <div v-if="tr.review_reason" class="text-amber-300 mt-1">{{ codeLabel('reasons', tr.review_reason) }}</div>
+                                    <div v-if="tr.last_error" class="text-gray-500 mt-1 max-w-[260px] break-words">{{ tr.last_error }}</div>
+                                    <div v-if="tr.limits_overridden" class="text-gray-500 mt-1">{{ tt('table.adminApproved') }}</div>
                                 </td>
-                                <td class="px-3 py-2"><a v-if="t.dest_tx_hash" :href="txUrl(t.dest_chain_id, t.dest_tx_hash)" target="_blank" rel="noopener" class="font-mono text-primary-300 hover:underline">{{ short(t.dest_tx_hash) }}</a></td>
+                                <td class="px-3 py-2"><a v-if="tr.dest_tx_hash" :href="txUrl(tr.dest_chain_id, tr.dest_tx_hash)" target="_blank" rel="noopener" class="font-mono text-primary-300 hover:underline">{{ short(tr.dest_tx_hash) }}</a></td>
                                 <td class="px-3 py-2 text-right whitespace-nowrap">
-                                    <button v-if="t.status === 'needs_review' || (t.status === 'ignored' && t.review_reason === 'below_minimum')" @click="ask('approve', t)" :disabled="busy"
-                                        class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 disabled:opacity-40">อนุมัติ</button>
-                                    <button v-if="['needs_review', 'confirmed', 'awaiting_liquidity'].includes(t.status)" @click="ask('reject', t)" :disabled="busy"
-                                        class="ml-1 px-2.5 py-1 rounded-lg bg-white/5 text-gray-400 border border-white/10 disabled:opacity-40">ปฏิเสธ</button>
+                                    <button v-if="tr.status === 'needs_review' || (tr.status === 'ignored' && tr.review_reason === 'below_minimum')" @click="ask('approve', tr)" :disabled="busy"
+                                        class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 disabled:opacity-40">{{ tt('approve') }}</button>
+                                    <button v-if="['needs_review', 'confirmed', 'awaiting_liquidity'].includes(tr.status)" @click="ask('reject', tr)" :disabled="busy"
+                                        class="ml-1 px-2.5 py-1 rounded-lg bg-white/5 text-gray-400 border border-white/10 disabled:opacity-40">{{ tt('reject') }}</button>
                                 </td>
                             </tr>
-                            <tr v-if="!transfers.data.length"><td colspan="6" class="px-3 py-10 text-center text-gray-500">ไม่มีรายการ</td></tr>
+                            <tr v-if="!transfers.data.length"><td colspan="6" class="px-3 py-10 text-center text-gray-500">{{ tt('table.empty') }}</td></tr>
                         </tbody>
                     </table>
                 </div>
                 <div class="flex gap-2 text-xs">
-                    <button v-if="transfers.prev_page_url" @click="router.get(transfers.prev_page_url, {}, { preserveState: true })" class="px-3 py-1.5 rounded-lg bg-white/5 text-gray-300 border border-white/10">← ก่อนหน้า</button>
-                    <button v-if="transfers.next_page_url" @click="router.get(transfers.next_page_url, {}, { preserveState: true })" class="px-3 py-1.5 rounded-lg bg-white/5 text-gray-300 border border-white/10">ถัดไป →</button>
+                    <button v-if="transfers.prev_page_url" @click="router.get(transfers.prev_page_url, {}, { preserveState: true })" class="px-3 py-1.5 rounded-lg bg-white/5 text-gray-300 border border-white/10">{{ tt('table.prev') }}</button>
+                    <button v-if="transfers.next_page_url" @click="router.get(transfers.next_page_url, {}, { preserveState: true })" class="px-3 py-1.5 rounded-lg bg-white/5 text-gray-300 border border-white/10">{{ tt('table.next') }}</button>
                 </div>
             </div>
 
             <!-- ═══════════ วงเงิน ═══════════ -->
             <div v-if="activeTab === 'settings'" class="glass-card rounded-xl p-5 space-y-3 max-w-2xl">
-                <h3 class="font-semibold text-white">วงเงินและค่าธรรมเนียม (TPIX)</h3>
-                <p class="text-xs text-gray-500">เกินวงเงิน = รอแอดมินตรวจ ไม่ทำเอง · ค่าธรรมเนียมค้างในคลังเป็นส่วนเกิน · เพดานบนสัญญา (maxLock / maxPerTx / dailyCap) เปลี่ยนได้เฉพาะกระเป๋าเจ้าของ</p>
-                <div v-for="(label, key) in limitLabels" :key="key" class="flex items-center justify-between gap-3">
-                    <label class="text-xs text-gray-300">{{ label }}</label>
+                <h3 class="font-semibold text-white">{{ tt('settings.title') }}</h3>
+                <p class="text-xs text-gray-500">{{ tt('settings.help') }}</p>
+                <div v-for="key in limitKeys" :key="key" class="flex items-center justify-between gap-3">
+                    <label class="text-xs text-gray-300">{{ tt(`limits.${key}`) }}</label>
                     <input v-model.trim="limitsForm[key]" type="text" inputmode="decimal" class="w-40 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-sm font-mono text-right" />
                 </div>
                 <div class="flex items-center justify-between gap-3">
-                    <label class="text-xs text-gray-300">ส่วนเพิ่มบนค่าแก๊สจริงของ mint (%)</label>
+                    <label class="text-xs text-gray-300">{{ tt('settings.markup') }}</label>
                     <input v-model.trim="markupForm" type="text" inputmode="decimal" class="w-40 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-sm font-mono text-right" />
                 </div>
 
                 <div class="rounded-xl border border-white/10 bg-white/5 p-3 space-y-1 text-xs text-gray-300">
-                    <div class="font-semibold text-white">ค่าธรรมเนียมขาออกที่ประกาศอยู่: {{ feeQuote?.fee ?? '—' }} TPIX
-                        <span v-if="feeQuote && !feeQuote.fresh" class="text-amber-300">(ไม่มีราคาสดเกิน 30 นาที → ใช้เพดาน)</span>
+                    <div class="font-semibold text-white">{{ tt('settings.feeQuote', { fee: feeQuote?.fee ?? '—' }) }}
+                        <span v-if="feeQuote && !feeQuote.fresh" class="text-amber-300">{{ tt('settings.feeStale') }}</span>
                     </div>
                     <template v-if="feeQuote?.quote">
-                        <div>ที่มา: {{ feeSourceLabel[feeQuote.quote.source] ?? feeQuote.quote.source }}<span v-if="feeQuote.quote.note"> · {{ feeQuote.quote.note }}</span></div>
-                        <div>ค่าแก๊สจริง + ส่วนเพิ่ม: {{ feeQuote.quote.raw_fee ?? '—' }} TPIX
-                            · แก๊ส {{ feeQuote.quote.gas_units }} × {{ feeQuote.quote.gas_gwei ?? '—' }} gwei
-                            · BNB ${{ feeQuote.quote.bnb_usd ?? '—' }} · TPIX ${{ feeQuote.quote.tpix_usd ?? '—' }} (TWAP ต่ำกว่าระหว่าง 1 ชม./24 ชม.)</div>
-                        <div class="text-gray-500">ประกาศเมื่อ {{ feeQuote.quote.updated_at }} · ประกาศใหม่ทุก 5 นาทีและทุกครั้งที่บันทึก</div>
+                        <div>{{ tt('settings.source', { source: codeLabel('feeSources', feeQuote.quote.source) }) }}<span v-if="feeQuote.quote.note"> · {{ feeQuote.quote.note }}</span></div>
+                        <div>{{ tt('settings.rawFee', { fee: feeQuote.quote.raw_fee ?? '—' }) }}
+                            · {{ tt('settings.gas', { units: feeQuote.quote.gas_units, gwei: feeQuote.quote.gas_gwei ?? '—' }) }}
+                            · BNB ${{ feeQuote.quote.bnb_usd ?? '—' }} · TPIX ${{ feeQuote.quote.tpix_usd ?? '—' }} {{ tt('settings.twap') }}</div>
+                        <div class="text-gray-500">{{ tt('settings.updatedAt', { time: formatDateTime(feeQuote.quote.updated_at) }) }}</div>
                     </template>
                     <div v-if="feeLedger" class="pt-1 border-t border-white/5">
-                        เก็บค่าธรรมเนียมแล้ว {{ feeLedger.fees_tpix }} TPIX จาก {{ feeLedger.mints }} mint · relayer จ่ายแก๊สไป {{ feeLedger.gas_bnb }} BNB
-                        <span v-if="feeLedger.unmetered" class="text-gray-500">({{ feeLedger.unmetered }} รายการก่อนเริ่มบันทึกค่าแก๊ส ไม่นับ)</span>
+                        {{ tt('settings.ledger', { fees: feeLedger.fees_tpix, mints: feeLedger.mints, gas: feeLedger.gas_bnb }) }}
+                        <span v-if="feeLedger.unmetered" class="text-gray-500">{{ tt('settings.unmetered', { n: feeLedger.unmetered }) }}</span>
                     </div>
                 </div>
 
                 <div v-if="settingsErrors.length" class="rounded-xl border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-300">
                     <div v-for="(e, i) in settingsErrors" :key="i">{{ e }}</div>
                 </div>
-                <button @click="confirmSettings = true" :disabled="busy" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 border border-primary-500/30 disabled:opacity-40">บันทึก</button>
+                <button @click="confirmSettings = true" :disabled="busy" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 border border-primary-500/30 disabled:opacity-40">{{ t('common.save') }}</button>
             </div>
         </div>
 
         <ConfirmDialog :show="confirmToggle" :danger="state.site_switch" :loading="busy"
-            :title="state.site_switch ? 'หยุดสะพาน TPIX⇄wTPIX?' : 'เปิดสะพาน TPIX⇄wTPIX?'"
-            :message="state.site_switch ? 'mint และการปล่อย TPIX จะหยุดทันที (การสแกนยังเดินต่อ ไม่มีรายการหาย)' : 'ระบบจะเริ่ม mint/ปล่อยตามคิวภายใน 1 นาที — ตรวจด่านความพร้อมให้ครบก่อน'"
-            :confirm-text="state.site_switch ? 'หยุด' : 'เปิด'" cancel-text="ยกเลิก"
+            :title="state.site_switch ? tt('dialogs.stopTitle') : tt('dialogs.startTitle')"
+            :message="state.site_switch ? tt('dialogs.stopMessage') : tt('dialogs.startMessage')"
+            :confirm-text="state.site_switch ? tt('dialogs.stop') : tt('dialogs.start')" :cancel-text="t('common.cancel')"
             @confirm="doToggle" @cancel="confirmToggle = false" />
 
-        <ConfirmDialog :show="!!pending && pending.action === 'approve'" :loading="busy" title="ยืนยันการอนุมัติ"
-            :message="confirmMessage" confirm-text="อนุมัติ" cancel-text="ยกเลิก"
+        <ConfirmDialog :show="!!pending && pending.action === 'approve'" :loading="busy" :title="tt('dialogs.approveTitle')"
+            :message="confirmMessage" :confirm-text="tt('approve')" :cancel-text="t('common.cancel')"
             @confirm="runPending" @cancel="pending = null" />
 
-        <ConfirmDialog :show="confirmTestWallets" :loading="busy" title="บันทึกรายชื่อกระเป๋าทดสอบ?"
-            :message="testWalletsMessage" confirm-text="บันทึก" cancel-text="ยกเลิก"
+        <ConfirmDialog :show="confirmTestWallets" :loading="busy" :title="tt('dialogs.testWalletsTitle')"
+            :message="testWalletsMessage" :confirm-text="t('common.save')" :cancel-text="t('common.cancel')"
             @confirm="saveTestWallets" @cancel="confirmTestWallets = false" />
 
-        <ConfirmDialog :show="confirmSettings" :loading="busy" title="บันทึกวงเงิน/ค่าธรรมเนียม?"
-            message="มีผลกับรายการที่เข้ามาใหม่ทันที" confirm-text="บันทึก" cancel-text="ยกเลิก"
+        <ConfirmDialog :show="confirmSettings" :loading="busy" :title="tt('dialogs.settingsTitle')"
+            :message="tt('dialogs.settingsMessage')" :confirm-text="t('common.save')" :cancel-text="t('common.cancel')"
             @confirm="saveSettings" @cancel="confirmSettings = false" />
 
         <!-- ปฏิเสธ — ต้องมีเหตุผลเสมอ -->
         <div v-if="pending && pending.action === 'reject'" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" @click.self="!busy && (pending = null)">
             <div class="w-full max-w-md glass-card rounded-2xl p-6 space-y-4">
-                <h3 class="text-lg font-bold text-white">ยืนยันการปฏิเสธ</h3>
+                <h3 class="text-lg font-bold text-white">{{ tt('dialogs.rejectTitle') }}</h3>
                 <p class="text-sm text-gray-300 break-words">{{ confirmMessage }}</p>
-                <textarea v-model="rejectReason" rows="3" maxlength="500" placeholder="เหตุผล (จำเป็น)"
+                <textarea v-model="rejectReason" rows="3" maxlength="500" :placeholder="tt('dialogs.reasonPlaceholder')"
                     class="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm"></textarea>
                 <div class="flex justify-end gap-3">
-                    <button @click="pending = null" :disabled="busy" class="px-4 py-2 text-sm rounded-xl bg-white/5 text-gray-300 border border-white/10">ยกเลิก</button>
-                    <button @click="runPending" :disabled="busy || !rejectReason.trim()" class="px-4 py-2 text-sm rounded-xl bg-red-500/20 text-red-300 border border-red-500/30 disabled:opacity-40">ปฏิเสธ</button>
+                    <button @click="pending = null" :disabled="busy" class="px-4 py-2 text-sm rounded-xl bg-white/5 text-gray-300 border border-white/10">{{ t('common.cancel') }}</button>
+                    <button @click="runPending" :disabled="busy || !rejectReason.trim()" class="px-4 py-2 text-sm rounded-xl bg-red-500/20 text-red-300 border border-red-500/30 disabled:opacity-40">{{ tt('reject') }}</button>
                 </div>
             </div>
         </div>

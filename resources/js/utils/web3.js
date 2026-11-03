@@ -7,6 +7,7 @@
 import { Contract, formatUnits, parseUnits, MaxUint256, JsonRpcProvider, FetchRequest } from 'ethers';
 import axios from 'axios';
 import { TPIX_COIN_PNG } from '@/utils/brand';
+import { t } from '@/Composables/useTranslation';
 
 // =============================================================================
 // Chain Configuration Registry
@@ -234,7 +235,7 @@ export function buildAddChainParams(chain) {
         rpcUrls = [TPIX_RPC_URL];
     } else if (rpcUrls.length === 0) {
         if (chainIdNum === BSC_CHAIN_ID) rpcUrls = [...BSC_CHAIN_CONFIG.rpcUrls];
-        else throw new Error(`No valid HTTPS RPC URL for chain ${chain.chainName || chain.name || chainIdNum}`);
+        else throw new Error(t('util.web3.noHttpsRpc', { chain: chain.chainName || chain.name || chainIdNum }));
     }
 
     const explorerRaw = chain.blockExplorerUrls || (chain.explorer ? [chain.explorer] : []);
@@ -376,7 +377,7 @@ export const PANCAKE_ROUTER_ABI = [
  * @param {object|null} chainConfig - Optional pre-fetched chain config; fetched from API if null
  */
 export async function switchToChain(injectedProvider, targetChainId, chainConfig = null) {
-    if (!injectedProvider) throw new Error('No wallet detected');
+    if (!injectedProvider) throw new Error(t('util.web3.noWallet'));
 
     const targetNum = toChainIdNumber(targetChainId);
     const hexChainId = toChainIdHex(targetNum);
@@ -399,7 +400,7 @@ export async function switchToChain(injectedProvider, targetChainId, chainConfig
                 : await getChainConfig(targetNum);
         }
         if (!chainConfig) {
-            throw new Error(`Chain ${targetNum} is not supported.`);
+            throw new Error(t('util.web3.chainNotSupported', { chain: targetNum }));
         }
 
         await injectedProvider.request({
@@ -425,7 +426,7 @@ export async function switchToChain(injectedProvider, targetChainId, chainConfig
         now = await readWalletChainId(injectedProvider);
     }
     if (Number.isFinite(now) && now !== targetNum) {
-        const err = new Error(`Wallet is still on chain ${now}, expected ${targetNum}`);
+        const err = new Error(t('util.web3.chainNotSwitched', { current: now, expected: targetNum }));
         err.code = 'CHAIN_NOT_SWITCHED';
         throw err;
     }
@@ -435,7 +436,7 @@ export async function switchToChain(injectedProvider, targetChainId, chainConfig
  * @deprecated Use switchToChain() instead. Kept for backward compatibility.
  */
 export async function switchToBSC() {
-    if (!window.ethereum) throw new Error('No wallet detected');
+    if (!window.ethereum) throw new Error(t('util.web3.noWallet'));
     await switchToChain(window.ethereum, BSC_CHAIN_ID, BSC_CHAIN_CONFIG);
 }
 

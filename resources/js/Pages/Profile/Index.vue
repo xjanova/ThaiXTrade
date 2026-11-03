@@ -9,6 +9,9 @@ import { ref, computed } from 'vue';
 import { Head, useForm, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     profileUser: Object,
@@ -19,10 +22,10 @@ const props = defineProps({
 
 const activeTab = ref('profile');
 const tabs = [
-    { key: 'profile', label: 'Profile' },
-    { key: 'security', label: 'Security' },
-    { key: 'connections', label: 'Connections' },
-    { key: 'account', label: 'Account' },
+    { key: 'profile', labelKey: 'page.profile.tabs.profile' },
+    { key: 'security', labelKey: 'page.profile.tabs.security' },
+    { key: 'connections', labelKey: 'page.profile.tabs.connections' },
+    { key: 'account', labelKey: 'page.profile.tabs.account' },
 ];
 
 // Profile form
@@ -70,7 +73,7 @@ const deleteAvatar = () => {
 
 // Social unlink
 const unlinkSocial = (provider) => {
-    if (!confirm(`Disconnect ${provider} account?`)) return;
+    if (!confirm(t('page.profile.confirm.unlinkSocial', { provider: providerInfo[provider]?.name || provider }))) return;
     router.delete(`/auth/${provider}/unlink`, { preserveScroll: true });
 };
 
@@ -87,7 +90,7 @@ const errors = computed(() => usePage().props.errors || {});
 const linkedWallet = computed(() => props.profileUser.wallet_address || null);
 
 const unlinkWallet = () => {
-    if (!confirm('ถอดกระเป๋าออกจากบัญชีนี้? จะเข้าสู่ระบบด้วยกระเป๋าใบนี้ไม่ได้อีก')) return;
+    if (!confirm(t('page.profile.confirm.unlinkWallet'))) return;
     router.delete('/profile/wallet', { preserveScroll: true });
 };
 
@@ -150,29 +153,31 @@ const providerInfo = {
 };
 
 const kycBadge = {
-    none: { label: 'Not Submitted', class: 'bg-dark-600 text-dark-300' },
-    pending: { label: 'Pending', class: 'bg-yellow-500/20 text-yellow-400' },
-    approved: { label: 'Approved', class: 'bg-green-500/20 text-green-400' },
-    rejected: { label: 'Rejected', class: 'bg-red-500/20 text-red-400' },
+    none: { labelKey: 'page.profile.kyc.none', class: 'bg-dark-600 text-dark-300' },
+    pending: { labelKey: 'page.profile.kyc.pending', class: 'bg-yellow-500/20 text-yellow-400' },
+    approved: { labelKey: 'page.profile.kyc.approved', class: 'bg-green-500/20 text-green-400' },
+    rejected: { labelKey: 'page.profile.kyc.rejected', class: 'bg-red-500/20 text-red-400' },
 };
 </script>
 
 <template>
     <AppLayout>
-        <Head title="Profile" />
+        <Head :title="t('page.profile.headTitle')" />
 
         <div class="max-w-4xl mx-auto px-4 py-8">
             <!-- Header -->
             <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8">
                 <div class="relative group">
                     <div class="w-20 h-20 rounded-2xl bg-primary-500/20 border border-primary-500/30 flex items-center justify-center overflow-hidden">
-                        <img v-if="profileUser.avatar" :src="profileUser.avatar" class="w-full h-full object-cover" />
+                        <img v-if="profileUser.avatar" :src="profileUser.avatar" :alt="t('page.profile.avatarAlt')" class="w-full h-full object-cover" />
                         <span v-else class="text-3xl font-bold text-primary-400">
                             {{ (profileUser.name || profileUser.email || 'U')[0].toUpperCase() }}
                         </span>
                     </div>
                     <button
                         @click="avatarInput?.click()"
+                        :aria-label="t('page.profile.changeAvatar')"
+                        :title="t('page.profile.changeAvatar')"
                         class="absolute inset-0 rounded-2xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                     >
                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,7 +188,7 @@ const kycBadge = {
                     <input ref="avatarInput" type="file" accept="image/*" class="hidden" @change="uploadAvatar" />
                 </div>
                 <div>
-                    <h1 class="text-2xl font-bold text-white">{{ profileUser.name || 'Trader' }}</h1>
+                    <h1 class="text-2xl font-bold text-white">{{ profileUser.name || t('page.profile.defaultName') }}</h1>
                     <p class="text-dark-400 text-sm">{{ profileUser.email }}</p>
                     <p v-if="profileUser.wallet_address" class="text-dark-500 text-xs font-mono mt-1 truncate max-w-[280px] sm:max-w-none">{{ profileUser.wallet_address }}</p>
                 </div>
@@ -200,28 +205,28 @@ const kycBadge = {
                         ? 'bg-primary-500 text-white'
                         : 'text-dark-400 hover:text-white hover:bg-white/5'"
                 >
-                    {{ tab.label }}
+                    {{ t(tab.labelKey) }}
                 </button>
             </div>
 
             <!-- Tab: Profile -->
             <div v-if="activeTab === 'profile'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-glass">
-                <h2 class="text-lg font-semibold text-white mb-6">Profile Information</h2>
+                <h2 class="text-lg font-semibold text-white mb-6">{{ t('page.profile.info.title') }}</h2>
 
                 <form @submit.prevent="saveProfile" class="space-y-5 max-w-lg">
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Name</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('page.profile.info.name') }}</label>
                         <input
                             v-model="profileForm.name"
                             type="text"
                             class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all"
-                            placeholder="Your name"
+                            :placeholder="t('page.profile.info.namePlaceholder')"
                         />
                         <p v-if="profileForm.errors.name" class="text-red-400 text-sm mt-1">{{ profileForm.errors.name }}</p>
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Email</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('page.profile.info.email') }}</label>
                         <input
                             v-model="profileForm.email"
                             type="email"
@@ -237,7 +242,7 @@ const kycBadge = {
                             :disabled="profileForm.processing"
                             class="btn-primary disabled:opacity-50"
                         >
-                            {{ profileForm.processing ? 'Saving...' : 'Save Changes' }}
+                            {{ profileForm.processing ? t('page.profile.saving') : t('page.profile.info.save') }}
                         </button>
                         <button
                             v-if="profileUser.avatar"
@@ -245,7 +250,7 @@ const kycBadge = {
                             @click="deleteAvatar"
                             class="text-sm text-dark-400 hover:text-red-400 transition-colors"
                         >
-                            Remove Avatar
+                            {{ t('page.profile.info.removeAvatar') }}
                         </button>
                     </div>
                 </form>
@@ -254,15 +259,15 @@ const kycBadge = {
             <!-- Tab: Security -->
             <div v-if="activeTab === 'security'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-glass">
                 <h2 class="text-lg font-semibold text-white mb-2">
-                    {{ profileUser.has_password ? 'Change Password' : 'Set Password' }}
+                    {{ profileUser.has_password ? t('page.profile.security.changePassword') : t('page.profile.security.setPassword') }}
                 </h2>
                 <p v-if="!profileUser.has_password" class="text-dark-400 text-sm mb-6">
-                    You signed up via social login. Set a password to enable email login.
+                    {{ t('page.profile.security.socialHint') }}
                 </p>
 
                 <form @submit.prevent="savePassword" class="space-y-5 max-w-lg">
                     <div v-if="profileUser.has_password">
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Current Password</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('page.profile.security.currentPassword') }}</label>
                         <input
                             v-model="passwordForm.current_password"
                             type="password"
@@ -272,18 +277,18 @@ const kycBadge = {
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">New Password</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('page.profile.security.newPassword') }}</label>
                         <input
                             v-model="passwordForm.password"
                             type="password"
                             class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all"
-                            placeholder="Min 8 chars, mixed case + numbers"
+                            :placeholder="t('page.profile.security.passwordPlaceholder')"
                         />
                         <p v-if="passwordForm.errors.password" class="text-red-400 text-sm mt-1">{{ passwordForm.errors.password }}</p>
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Confirm Password</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('page.profile.security.confirmPassword') }}</label>
                         <input
                             v-model="passwordForm.password_confirmation"
                             type="password"
@@ -296,7 +301,7 @@ const kycBadge = {
                         :disabled="passwordForm.processing"
                         class="btn-primary disabled:opacity-50"
                     >
-                        {{ passwordForm.processing ? 'Saving...' : (profileUser.has_password ? 'Update Password' : 'Set Password') }}
+                        {{ passwordForm.processing ? t('page.profile.saving') : (profileUser.has_password ? t('page.profile.security.updatePassword') : t('page.profile.security.setPassword')) }}
                     </button>
                 </form>
             </div>
@@ -305,10 +310,10 @@ const kycBadge = {
             <div v-if="activeTab === 'connections'" class="space-y-6">
                 <!-- Social Accounts -->
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-glass">
-                    <h2 class="text-lg font-semibold text-white mb-6">Social Accounts</h2>
+                    <h2 class="text-lg font-semibold text-white mb-6">{{ t('page.profile.social.title') }}</h2>
 
                     <div v-if="enabledProviders.length === 0" class="text-dark-400 text-sm">
-                        No social login providers are enabled.
+                        {{ t('page.profile.social.noneEnabled') }}
                     </div>
 
                     <div v-else class="space-y-3">
@@ -326,9 +331,9 @@ const kycBadge = {
                                 <div>
                                     <p class="text-white font-medium">{{ providerInfo[provider]?.name }}</p>
                                     <p v-if="isLinked(provider)" class="text-dark-400 text-sm">
-                                        {{ getSocialAccount(provider)?.provider_email || 'Connected' }}
+                                        {{ getSocialAccount(provider)?.provider_email || t('page.profile.social.connected') }}
                                     </p>
-                                    <p v-else class="text-dark-500 text-sm">Not connected</p>
+                                    <p v-else class="text-dark-500 text-sm">{{ t('page.profile.social.notConnected') }}</p>
                                 </div>
                             </div>
 
@@ -337,14 +342,14 @@ const kycBadge = {
                                 :href="`/auth/${provider}`"
                                 class="px-4 py-2 rounded-lg text-sm font-medium bg-primary-500/10 text-primary-400 hover:bg-primary-500/20 transition-colors"
                             >
-                                Connect
+                                {{ t('page.profile.social.connect') }}
                             </a>
                             <button
                                 v-else
                                 @click="unlinkSocial(provider)"
                                 class="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
                             >
-                                Disconnect
+                                {{ t('page.profile.social.disconnect') }}
                             </button>
                         </div>
                     </div>
@@ -352,15 +357,15 @@ const kycBadge = {
 
                 <!-- กระเป๋าที่ผูกกับบัญชีนี้ — ต่างจากประวัติการเชื่อมต่อด้านล่าง -->
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-glass">
-                    <h2 class="text-lg font-semibold text-white mb-1">กระเป๋าของบัญชีนี้</h2>
-                    <p class="text-dark-500 text-xs mb-6">ใช้เข้าสู่ระบบได้โดยไม่ต้องใช้รหัสผ่าน</p>
+                    <h2 class="text-lg font-semibold text-white mb-1">{{ t('page.profile.wallet.title') }}</h2>
+                    <p class="text-dark-500 text-xs mb-6">{{ t('page.profile.wallet.subtitle') }}</p>
 
                     <div v-if="linkedWallet" class="p-4 rounded-xl bg-dark-800/30 border border-white/5">
                         <div class="flex flex-wrap items-center justify-between gap-3">
                             <div class="min-w-0">
                                 <div class="flex items-center gap-2 mb-1">
                                     <span class="w-2 h-2 rounded-full bg-trading-green shrink-0"></span>
-                                    <span class="text-xs text-trading-green font-medium">ผูกแล้ว</span>
+                                    <span class="text-xs text-trading-green font-medium">{{ t('page.profile.wallet.linked') }}</span>
                                 </div>
                                 <p class="text-white font-mono text-sm break-all">{{ linkedWallet }}</p>
                             </div>
@@ -372,13 +377,13 @@ const kycBadge = {
                                     @click="unlinkWallet"
                                     class="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
                                 >
-                                    ถอดกระเป๋า
+                                    {{ t('page.profile.wallet.unlink') }}
                                 </button>
                                 <!-- ถอดไม่ได้ต้องบอกว่าทำอะไรก่อนถึงจะถอดได้ ไม่ใช่ซ่อนปุ่มเฉยๆ -->
                                 <p v-else class="text-[11px] text-dark-500 max-w-[220px] leading-relaxed">
-                                    ถอดไม่ได้ — เป็นทางเข้าเดียวของบัญชีนี้
+                                    {{ t('page.profile.wallet.cannotUnlink') }}
                                     <button type="button" class="text-primary-400 hover:text-primary-300 underline" @click="activeTab = 'security'">
-                                        ตั้งอีเมลกับรหัสผ่านก่อน
+                                        {{ t('page.profile.wallet.setPasswordFirst') }}
                                     </button>
                                 </p>
                             </div>
@@ -386,10 +391,9 @@ const kycBadge = {
                     </div>
 
                     <div v-else class="p-4 rounded-xl bg-dark-800/30 border border-white/5">
-                        <p class="text-dark-300 text-sm mb-1">ยังไม่ได้ผูกกระเป๋า</p>
+                        <p class="text-dark-300 text-sm mb-1">{{ t('page.profile.wallet.notLinked') }}</p>
                         <p class="text-dark-500 text-xs leading-relaxed mb-3">
-                            ผูกแล้วประวัติเทรดและบอทจะรวมอยู่ที่เดียวกัน ไม่แตกเป็นสองบัญชี
-                            การผูกทำโดยเซ็นข้อความยืนยัน ไม่เสียค่าแก๊ส
+                            {{ t('page.profile.wallet.linkHint') }}
                         </p>
                         <button
                             type="button"
@@ -398,7 +402,7 @@ const kycBadge = {
                             @click="linkWallet"
                         >
                             <span v-if="isLinking" class="spinner !w-3 !h-3 !border-white/30 !border-t-white"></span>
-                            {{ isLinking ? 'รอเซ็นในกระเป๋า...' : (walletStore.isConnected ? 'เซ็นเพื่อผูกกระเป๋า' : 'เชื่อมกระเป๋าเพื่อผูก') }}
+                            {{ isLinking ? t('page.profile.wallet.waitingSign') : (walletStore.isConnected ? t('page.profile.wallet.signToLink') : t('page.profile.wallet.connectToLink')) }}
                         </button>
                         <p v-if="walletStore.linkError" class="text-xs text-amber-300 leading-relaxed mt-3">
                             {{ walletStore.linkError }}
@@ -410,11 +414,11 @@ const kycBadge = {
 
                 <!-- Wallet Connections -->
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-glass">
-                    <h2 class="text-lg font-semibold text-white mb-1">ประวัติการเชื่อมต่อ</h2>
-                    <p class="text-dark-500 text-xs mb-6">ทุกครั้งที่กระเป๋าเชื่อมเข้ามา — ไว้ตรวจย้อนหลัง</p>
+                    <h2 class="text-lg font-semibold text-white mb-1">{{ t('page.profile.history.title') }}</h2>
+                    <p class="text-dark-500 text-xs mb-6">{{ t('page.profile.history.subtitle') }}</p>
 
                     <div v-if="walletConnections.length === 0" class="text-dark-400 text-sm">
-                        ยังไม่มีประวัติ
+                        {{ t('page.profile.history.empty') }}
                     </div>
 
                     <div v-else class="space-y-3">
@@ -426,7 +430,7 @@ const kycBadge = {
                             <div>
                                 <p class="text-white font-mono text-sm">{{ wc.wallet_address }}</p>
                                 <p class="text-dark-500 text-xs mt-1">
-                                    {{ wc.wallet_type }} &middot; Chain {{ wc.chain_id }} &middot; {{ wc.connected_at }}
+                                    {{ wc.wallet_type }} &middot; {{ t('page.profile.history.chain', { id: wc.chain_id }) }} &middot; {{ wc.connected_at }}
                                 </p>
                             </div>
                         </div>
@@ -436,15 +440,15 @@ const kycBadge = {
 
             <!-- Tab: Account -->
             <div v-if="activeTab === 'account'" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-glass">
-                <h2 class="text-lg font-semibold text-white mb-6">Account Information</h2>
+                <h2 class="text-lg font-semibold text-white mb-6">{{ t('page.profile.account.title') }}</h2>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <!-- Referral Code -->
                     <div class="p-4 rounded-xl bg-dark-800/30 border border-white/5">
-                        <p class="text-dark-400 text-sm mb-1">Referral Code</p>
+                        <p class="text-dark-400 text-sm mb-1">{{ t('page.profile.account.referralCode') }}</p>
                         <div class="flex items-center gap-2">
                             <span class="text-white font-mono text-lg">{{ profileUser.referral_code }}</span>
-                            <button @click="copyReferral" class="text-dark-400 hover:text-primary-400 transition-colors">
+                            <button @click="copyReferral" :title="copied ? t('page.profile.account.copied') : t('page.profile.account.copy')" :aria-label="t('page.profile.account.copy')" class="text-dark-400 hover:text-primary-400 transition-colors">
                                 <svg v-if="!copied" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                 </svg>
@@ -457,24 +461,24 @@ const kycBadge = {
 
                     <!-- KYC Status -->
                     <div class="p-4 rounded-xl bg-dark-800/30 border border-white/5">
-                        <p class="text-dark-400 text-sm mb-1">KYC Status</p>
+                        <p class="text-dark-400 text-sm mb-1">{{ t('page.profile.account.kycStatus') }}</p>
                         <span class="inline-flex px-3 py-1 rounded-full text-sm font-medium" :class="kycBadge[profileUser.kyc_status]?.class">
-                            {{ kycBadge[profileUser.kyc_status]?.label }}
+                            {{ kycBadge[profileUser.kyc_status] ? t(kycBadge[profileUser.kyc_status].labelKey) : '' }}
                         </span>
                     </div>
 
                     <!-- Member Since -->
                     <div class="p-4 rounded-xl bg-dark-800/30 border border-white/5">
-                        <p class="text-dark-400 text-sm mb-1">Member Since</p>
+                        <p class="text-dark-400 text-sm mb-1">{{ t('page.profile.account.memberSince') }}</p>
                         <p class="text-white">{{ profileUser.created_at }}</p>
                     </div>
 
                     <!-- Trading Stats -->
                     <div class="p-4 rounded-xl bg-dark-800/30 border border-white/5">
-                        <p class="text-dark-400 text-sm mb-1">Trading Stats</p>
+                        <p class="text-dark-400 text-sm mb-1">{{ t('page.profile.account.tradingStats') }}</p>
                         <p class="text-white">
-                            {{ profileUser.total_trades }} trades &middot;
-                            ${{ Number(profileUser.total_volume_usd || 0).toLocaleString() }} volume
+                            {{ t('page.profile.account.tradesCount', { n: profileUser.total_trades ?? 0 }) }} &middot;
+                            {{ t('page.profile.account.volume', { amount: '$' + Number(profileUser.total_volume_usd || 0).toLocaleString(locale === 'th' ? 'th-TH' : 'en-US') }) }}
                         </p>
                     </div>
                 </div>

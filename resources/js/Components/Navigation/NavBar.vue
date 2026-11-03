@@ -77,7 +77,7 @@ const userDisplayName = computed(() => {
     if (user.email) return user.email;
     if (user.wallet_address) return `${user.wallet_address.slice(0, 6)}...${user.wallet_address.slice(-4)}`;
 
-    return 'Trader';
+    return t('ui.navigationNavBar.trader');
 });
 
 /*
@@ -124,8 +124,9 @@ const kycVisible = computed(() => {
 });
 
 const kycBadgeLabel = computed(() => {
-    if (kycShared.value.approved_level) return 'ผ่านแล้ว';
-    return { pending: 'รอตรวจ', rejected: 'ไม่ผ่าน' }[authUser.value?.kyc_status] ?? 'ยังไม่ยืนยัน';
+    if (kycShared.value.approved_level) return t('ui.navigationNavBar.kyc.approved');
+    const key = { pending: 'ui.navigationNavBar.kyc.pending', rejected: 'ui.navigationNavBar.kyc.rejected' }[authUser.value?.kyc_status];
+    return t(key ?? 'ui.navigationNavBar.kyc.unverified');
 });
 
 const kycBadgeClass = computed(() => {
@@ -205,6 +206,7 @@ const handleAddTpixAssets = async () => {
                     <!-- Mobile Menu Toggle -->
                     <button
                         @click="$emit('toggle-sidebar')"
+                        :aria-label="t('ui.navigationNavBar.toggleMenu')"
                         class="lg:hidden p-2 rounded-xl text-dark-400 hover:text-white hover:bg-white/5"
                     >
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -224,7 +226,7 @@ const handleAddTpixAssets = async () => {
                              เดิมวัดได้ว่าที่ 1280px สโลแกน + ป้ายเมนูดันปุ่มฝั่งขวาตกขอบจอ → รอจอกว้างมากจริงๆ
                              nowrap กันไม่ให้ตัดสองบรรทัดซึ่งจะดันแถบบนสูงขึ้น -->
                         <p class="hidden min-[1760px]:block pl-4 border-l border-white/10 text-xs text-dark-400 whitespace-nowrap">
-                            Decentralized trading &amp; trustworthy AI trading.
+                            {{ t('ui.navigationNavBar.slogan') }}
                         </p>
                     </Link>
                 </div>
@@ -271,13 +273,13 @@ const handleAddTpixAssets = async () => {
                                 AI TRADE
                             </Link>
                             <Link href="/ai-assistant" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
-                                AI Assistant
+                                {{ t('nav.aiAssistant') }}
                             </Link>
                             <Link href="/explorer" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
-                                Explorer
+                                {{ t('nav.explorer') }}
                             </Link>
                             <Link href="/whitepaper" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
-                                Whitepaper
+                                {{ t('nav.whitepaper') }}
                             </Link>
                             <Link href="/settings" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -287,16 +289,16 @@ const handleAddTpixAssets = async () => {
                                 {{ t('nav.settings') }}
                             </Link>
                             <Link href="/token-factory" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
-                                Token Factory
+                                {{ t('nav.tokenFactory') }}
                             </Link>
                             <Link href="/launch" class="flex items-center gap-2 px-4 py-2 text-sm text-primary-400 hover:text-primary-300 hover:bg-primary-500/10">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                                 </svg>
-                                Fair Launch
+                                {{ t('ui.navigationNavBar.fairLaunch') }}
                             </Link>
                             <Link href="/carbon-credits" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
-                                Carbon Credits
+                                {{ t('nav.carbonCredit') }}
                             </Link>
                             <div class="border-t border-white/5 my-1"></div>
                             <Link href="/liquidity" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
@@ -316,7 +318,7 @@ const handleAddTpixAssets = async () => {
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                                 </svg>
-                                Download App
+                                {{ t('ui.navigationNavBar.downloadApp') }}
                             </Link>
                         </div>
                     </div>
@@ -459,7 +461,7 @@ const handleAddTpixAssets = async () => {
                                 @click.stop
                             >
                                 <div class="px-4 py-2.5 border-b border-white/5">
-                                    <p class="text-sm text-white font-medium truncate">{{ authUser.name || 'Trader' }}</p>
+                                    <p class="text-sm text-white font-medium truncate">{{ authUser.name || t('ui.navigationNavBar.trader') }}</p>
                                     <p v-if="authUser.email" class="text-xs text-dark-400 truncate">{{ authUser.email }}</p>
 
                                     <!--
@@ -482,7 +484,7 @@ const handleAddTpixAssets = async () => {
                                 -->
                                 <div v-if="walletMismatch" class="mx-2 my-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/25">
                                     <p class="text-[11px] text-amber-300 leading-snug">
-                                        กระเป๋าที่เชื่อมอยู่ไม่ใช่ใบที่ผูกกับบัญชีนี้
+                                        {{ t('ui.navigationNavBar.walletMismatch') }}
                                     </p>
                                 </div>
 
@@ -494,7 +496,7 @@ const handleAddTpixAssets = async () => {
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                                     </svg>
-                                    Profile
+                                    {{ t('nav.profile') }}
                                 </Link>
 
                                 <!--
@@ -513,7 +515,7 @@ const handleAddTpixAssets = async () => {
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                                         </svg>
-                                        ยืนยันตัวตน
+                                        {{ t('ui.navigationNavBar.kyc.menu') }}
                                     </span>
                                     <span :class="kycBadgeClass" class="text-[10px] px-1.5 py-0.5 rounded-full">
                                         {{ kycBadgeLabel }}
@@ -572,7 +574,7 @@ const handleAddTpixAssets = async () => {
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                                     </svg>
-                                    Sign Out
+                                    {{ t('ui.navigationNavBar.signOut') }}
                                 </button>
                             </div>
                         </Transition>
@@ -638,9 +640,9 @@ const handleAddTpixAssets = async () => {
                                 @click.stop
                             >
                                 <div class="px-4 py-2 border-b border-white/5">
-                                    <p class="text-xs text-dark-400">Connected Wallet</p>
+                                    <p class="text-xs text-dark-400">{{ t('ui.navigationNavBar.connectedWallet') }}</p>
                                     <p class="text-sm text-white font-mono truncate">{{ walletStore.address }}</p>
-                                    <p class="text-xs text-dark-500 mt-1">Chain ID: {{ walletStore.chainId }}</p>
+                                    <p class="text-xs text-dark-500 mt-1">{{ t('ui.navigationNavBar.chainId', { id: walletStore.chainId }) }}</p>
                                 </div>
                                 <!-- ลิงก์ดูที่อยู่บน block explorer (รองรับหลาย chain) -->
                                 <a

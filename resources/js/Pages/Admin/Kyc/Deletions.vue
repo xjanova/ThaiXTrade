@@ -13,6 +13,9 @@
 import { ref, computed } from 'vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 defineProps({
     requests: { type: Object, default: () => ({ data: [] }) },
@@ -28,7 +31,7 @@ const rejectingId = ref(null);
 const complete = (req) => {
     const label = req.user.email || req.user.wallet_address || `#${req.user.id}`;
 
-    if (!confirm(`ลบข้อมูลยืนยันตัวตนของ ${label} ทั้งหมด?\n\nเอกสารจะถูกลบออกจากดิสก์จริง และข้อมูลส่วนตัวในใบคำขอจะถูกล้าง เอากลับมาไม่ได้`)) {
+    if (!confirm(t('admin.kycDeletions.confirmDelete', { label }))) {
         return;
     }
 
@@ -50,43 +53,42 @@ const reject = (req) => {
     });
 };
 
+// เก็บเป็นคีย์ แล้วแปลตอน render — สลับภาษาแล้วป้ายสถานะต้องเปลี่ยนตาม
 const STATUS_LABEL = {
-    pending: 'รอดำเนินการ',
-    completed: 'ลบแล้ว',
-    rejected: 'ปฏิเสธ',
+    pending: 'admin.kycDeletions.status.pending',
+    completed: 'admin.kycDeletions.status.completed',
+    rejected: 'admin.kycDeletions.status.rejected',
 };
 
-const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+const formatDate = (iso) => (iso ? new Date(iso).toLocaleString(locale.value === 'th' ? 'th-TH' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 </script>
 
 <template>
-    <Head title="คำขอลบข้อมูล — หลังบ้าน" />
+    <Head :title="t('admin.kycDeletions.headTitle')" />
 
     <AdminLayout>
         <div class="deletions-page">
             <header class="page-head">
                 <div>
-                    <Link href="/admin/kyc" class="back-link">← กลับคิวตรวจ</Link>
-                    <h1>คำขอลบข้อมูล (PDPA)</h1>
+                    <Link href="/admin/kyc" class="back-link">← {{ t('admin.kycDeletions.back') }}</Link>
+                    <h1>{{ t('admin.kycDeletions.title') }}</h1>
                 </div>
             </header>
 
             <div v-if="flash.success" class="alert alert-success">{{ flash.success }}</div>
 
             <p class="intro">
-                ผู้ใช้มีสิทธิขอให้ลบข้อมูลยืนยันตัวตนของตัวเอง
-                ปฏิเสธได้เฉพาะเมื่อมีกฎหมายอื่นกำหนดให้เราต้องเก็บต่อ
-                และต้องบันทึกเหตุผลไว้เสมอ
+                {{ t('admin.kycDeletions.intro') }}
             </p>
 
             <section class="card">
                 <table v-if="requests.data.length" class="data-table">
                     <thead>
                         <tr>
-                            <th>ผู้ขอ</th>
-                            <th>เหตุผลของผู้ขอ</th>
-                            <th>ยื่นเมื่อ</th>
-                            <th>สถานะ</th>
+                            <th>{{ t('admin.kycDeletions.table.requester') }}</th>
+                            <th>{{ t('admin.kycDeletions.table.reason') }}</th>
+                            <th>{{ t('admin.kycDeletions.table.requestedAt') }}</th>
+                            <th>{{ t('admin.kycDeletions.table.status') }}</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -103,17 +105,17 @@ const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateS
                                 <td class="col-date">{{ formatDate(req.requested_at) }}</td>
                                 <td>
                                     <span class="badge" :class="`badge-${req.status}`">
-                                        {{ STATUS_LABEL[req.status] }}
+                                        {{ STATUS_LABEL[req.status] ? t(STATUS_LABEL[req.status]) : req.status }}
                                     </span>
                                     <span v-if="req.status === 'completed'" class="files-count">
-                                        {{ req.files_deleted }} ไฟล์
+                                        {{ t('admin.kycDeletions.filesCount', { n: req.files_deleted }) }}
                                     </span>
                                 </td>
                                 <td class="actions-cell">
                                     <template v-if="req.status === 'pending'">
-                                        <button class="btn-delete" @click="complete(req)">ลบข้อมูล</button>
+                                        <button class="btn-delete" @click="complete(req)">{{ t('admin.kycDeletions.actions.delete') }}</button>
                                         <button class="btn-ghost-sm" @click="rejectingId = rejectingId === req.id ? null : req.id">
-                                            ปฏิเสธ
+                                            {{ t('admin.kycDeletions.actions.reject') }}
                                         </button>
                                     </template>
                                     <span v-else class="handled-by">
@@ -125,18 +127,18 @@ const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateS
 
                             <tr v-if="req.handler_note" class="note-row">
                                 <td colspan="5">
-                                    <strong>บันทึก:</strong> {{ req.handler_note }}
+                                    <strong>{{ t('admin.kycDeletions.note') }}</strong> {{ req.handler_note }}
                                 </td>
                             </tr>
 
                             <tr v-if="rejectingId === req.id" class="reject-row">
                                 <td colspan="5">
-                                    <label>เหตุผลที่ปฏิเสธ (ผู้ใช้จะเห็นข้อความนี้) <span class="req">*</span></label>
+                                    <label>{{ t('admin.kycDeletions.rejectReason') }} <span class="req">*</span></label>
                                     <textarea
                                         v-model="rejectForm.note"
                                         rows="2"
                                         class="input"
-                                        placeholder="เช่น ต้องเก็บไว้ตามกฎหมายป้องกันการฟอกเงินอีก 2 ปี"
+                                        :placeholder="t('admin.kycDeletions.rejectPlaceholder')"
                                     ></textarea>
                                     <div class="reject-buttons">
                                         <button
@@ -144,9 +146,9 @@ const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateS
                                             :disabled="!rejectForm.note.trim() || rejectForm.processing"
                                             @click="reject(req)"
                                         >
-                                            ยืนยันปฏิเสธ
+                                            {{ t('admin.kycDeletions.actions.confirmReject') }}
                                         </button>
-                                        <button class="btn-ghost-sm" @click="rejectingId = null">ยกเลิก</button>
+                                        <button class="btn-ghost-sm" @click="rejectingId = null">{{ t('admin.kycDeletions.actions.cancel') }}</button>
                                     </div>
                                 </td>
                             </tr>
@@ -154,7 +156,7 @@ const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateS
                     </tbody>
                 </table>
 
-                <p v-else class="empty-note">ยังไม่มีคำขอลบข้อมูล</p>
+                <p v-else class="empty-note">{{ t('admin.kycDeletions.empty') }}</p>
             </section>
         </div>
     </AdminLayout>

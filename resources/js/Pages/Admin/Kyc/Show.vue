@@ -13,6 +13,9 @@
 import { ref, computed } from 'vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     submission: { type: Object, required: true },
@@ -23,28 +26,33 @@ const props = defineProps({
 
 const flash = computed(() => usePage().props.flash || {});
 
-const DOC_LABEL = {
-    id_card_front: 'หน้าบัตร',
-    id_card_back: 'หลังบัตร',
-    selfie_with_id: 'รูปถือบัตร',
-    address_proof: 'หลักฐานที่อยู่',
-    bank_book: 'หน้าสมุดบัญชี',
+// เก็บ "คีย์แปล" ไม่ใช่ข้อความ — สลับภาษาแล้วป้ายเปลี่ยนตาม
+const DOC_LABEL_KEY = {
+    id_card_front: 'admin.kycShow.docs.idCardFront',
+    id_card_back: 'admin.kycShow.docs.idCardBack',
+    selfie_with_id: 'admin.kycShow.docs.selfieWithId',
+    address_proof: 'admin.kycShow.docs.addressProof',
+    bank_book: 'admin.kycShow.docs.bankBook',
 };
+const docLabel = (type) => (DOC_LABEL_KEY[type] ? t(DOC_LABEL_KEY[type]) : type);
+
+const STATUS_KEYS = ['pending', 'approved', 'rejected', 'cancelled', 'expired'];
+const statusLabel = (status) => (STATUS_KEYS.includes(status) ? t(`admin.kycShow.status.${status}`) : status);
 
 const isPending = computed(() => props.submission.status === 'pending');
 const isPurged = computed(() => !!props.submission.purged_at);
 
 // ── ฟิลด์ที่ต้องเทียบกับรูป ──────────────────────────────────────────────────
 const fields = computed(() => [
-    { label: 'ชื่อ-นามสกุล', value: props.submission.full_name },
-    { label: 'ชื่ออังกฤษ', value: props.submission.full_name_en },
-    { label: 'ประเภทเอกสาร', value: props.submission.id_type === 'passport' ? 'พาสปอร์ต' : 'บัตรประชาชน' },
-    { label: 'เลขที่เอกสาร', value: props.submission.national_id, mono: true },
-    { label: 'วันเกิด', value: props.submission.date_of_birth },
-    { label: 'สัญชาติ', value: props.submission.nationality },
-    { label: 'ที่อยู่', value: props.submission.address },
-    { label: 'อาชีพ', value: props.submission.occupation },
-    { label: 'เบอร์โทร', value: props.submission.phone },
+    { key: 'fullName', label: t('admin.kycShow.fields.fullName'), value: props.submission.full_name },
+    { key: 'fullNameEn', label: t('admin.kycShow.fields.fullNameEn'), value: props.submission.full_name_en },
+    { key: 'idType', label: t('admin.kycShow.fields.idType'), value: props.submission.id_type === 'passport' ? t('admin.kycShow.fields.passport') : t('admin.kycShow.fields.nationalIdCard') },
+    { key: 'idNumber', label: t('admin.kycShow.fields.idNumber'), value: props.submission.national_id, mono: true },
+    { key: 'dateOfBirth', label: t('admin.kycShow.fields.dateOfBirth'), value: props.submission.date_of_birth },
+    { key: 'nationality', label: t('admin.kycShow.fields.nationality'), value: props.submission.nationality },
+    { key: 'address', label: t('admin.kycShow.fields.address'), value: props.submission.address },
+    { key: 'occupation', label: t('admin.kycShow.fields.occupation'), value: props.submission.occupation },
+    { key: 'phone', label: t('admin.kycShow.fields.phone'), value: props.submission.phone },
 ]);
 
 // ── รูปที่กำลังดูแบบเต็มจอ ───────────────────────────────────────────────────
@@ -57,19 +65,20 @@ const rejectForm = useForm({ reason: '', note: '' });
 const showReject = ref(false);
 
 // เหตุผลที่เจอบ่อย — กดเลือกได้ ไม่ต้องพิมพ์ใหม่ทุกครั้ง และข้อความจะได้สม่ำเสมอ
-const COMMON_REASONS = [
-    'รูปบัตรไม่ชัด อ่านเลขบัตรไม่ออก',
-    'รูปบัตรมีแสงสะท้อนบังข้อมูล',
-    'ชื่อที่กรอกไม่ตรงกับชื่อบนบัตร',
-    'เลขบัตรที่กรอกไม่ตรงกับบัตร',
-    'รูปถือบัตรไม่เห็นหน้าชัด',
-    'รูปถือบัตรอ่านหน้าบัตรไม่ออก',
-    'เอกสารหมดอายุแล้ว',
-    'หลักฐานที่อยู่เก่ากว่า 3 เดือน',
+// เก็บเป็นคีย์แปล — ข้อความที่ส่งไปคือภาษาที่แอดมินเปิดอยู่ตอนกดเลือก
+const COMMON_REASON_KEYS = [
+    'admin.kycShow.reasons.blurryId',
+    'admin.kycShow.reasons.glare',
+    'admin.kycShow.reasons.nameMismatch',
+    'admin.kycShow.reasons.idNumberMismatch',
+    'admin.kycShow.reasons.selfieFaceUnclear',
+    'admin.kycShow.reasons.selfieIdUnreadable',
+    'admin.kycShow.reasons.documentExpired',
+    'admin.kycShow.reasons.addressProofOld',
 ];
 
 const approve = () => {
-    if (!confirm('อนุมัติใบนี้? ผู้ใช้จะได้สิทธิใช้ฟีเจอร์ที่มีด่านทันที')) return;
+    if (!confirm(t('admin.kycShow.decide.approveConfirm'))) return;
     approveForm.post(`/admin/kyc/${props.submission.uuid}/approve`, { preserveScroll: true });
 };
 
@@ -84,7 +93,7 @@ const reject = () => {
     });
 };
 
-const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+const formatDate = (iso) => (iso ? new Date(iso).toLocaleString(locale.value === 'th' ? 'th-TH' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 
 const formatSize = (bytes) => {
     if (!bytes) return '—';
@@ -95,133 +104,133 @@ const formatSize = (bytes) => {
 </script>
 
 <template>
-    <Head title="ตรวจเอกสารยืนยันตัวตน" />
+    <Head :title="t('admin.kycShow.pageTitle')" />
 
     <AdminLayout>
         <div class="review-page">
             <header class="page-head">
-                <Link href="/admin/kyc" class="back-link">← กลับคิวตรวจ</Link>
+                <Link href="/admin/kyc" class="back-link">← {{ t('admin.kycShow.backToQueue') }}</Link>
                 <span class="badge" :class="`badge-${submission.status}`">
-                    {{ { pending: 'รอตรวจ', approved: 'อนุมัติแล้ว', rejected: 'ไม่ผ่าน', cancelled: 'ยกเลิก', expired: 'หมดอายุ' }[submission.status] }}
+                    {{ statusLabel(submission.status) }}
                 </span>
             </header>
 
             <div v-if="flash.success" class="alert alert-success">{{ flash.success }}</div>
 
             <div v-if="isPurged" class="alert alert-warn">
-                ใบนี้ถูกล้างข้อมูลแล้วเมื่อ {{ formatDate(submission.purged_at) }}
-                ({{ submission.purge_reason === 'user_request' ? 'ตามคำขอของเจ้าของข้อมูล' : 'ครบกำหนดระยะเก็บ' }})
-                — เอกสารและข้อมูลส่วนตัวถูกลบถาวรแล้ว
+                {{ t('admin.kycShow.purged.notice', {
+                    date: formatDate(submission.purged_at),
+                    reason: submission.purge_reason === 'user_request' ? t('admin.kycShow.purged.byUserRequest') : t('admin.kycShow.purged.retentionExpired'),
+                }) }}
             </div>
 
             <!-- ── ธงเตือน ───────────────────────────────────────────────── -->
             <div v-if="duplicateUserIds.length" class="alert alert-warn">
-                <strong>เอกสารเลขนี้เคยยื่นในบัญชีอื่น</strong>
-                — บัญชี #{{ duplicateUserIds.join(', #') }}
+                <strong>{{ t('admin.kycShow.duplicate.title') }}</strong>
+                — {{ t('admin.kycShow.duplicate.accounts', { ids: duplicateUserIds.join(', #') }) }}
                 <p class="alert-sub">
-                    ไม่ได้แปลว่าผิดเสมอไป (ยื่นแทนกันในครอบครัวมีจริง)
-                    แต่ควรดูให้แน่ก่อนอนุมัติ
+                    {{ t('admin.kycShow.duplicate.hint') }}
                 </p>
             </div>
 
             <div class="review-grid">
                 <!-- ── ข้อมูลที่กรอก ──────────────────────────────────────── -->
                 <section class="card">
-                    <h2 class="card-title">ข้อมูลที่กรอกมา</h2>
+                    <h2 class="card-title">{{ t('admin.kycShow.info.title') }}</h2>
 
                     <dl class="field-list">
-                        <div v-for="f in fields" :key="f.label" class="field-row">
+                        <div v-for="f in fields" :key="f.key" class="field-row">
                             <dt>{{ f.label }}</dt>
                             <dd :class="{ mono: f.mono }">{{ f.value || '—' }}</dd>
                         </div>
                     </dl>
 
-                    <h3 class="sub-title">บัญชีผู้ยื่น</h3>
+                    <h3 class="sub-title">{{ t('admin.kycShow.account.title') }}</h3>
                     <dl class="field-list">
                         <div class="field-row">
-                            <dt>อีเมล</dt>
+                            <dt>{{ t('admin.kycShow.account.email') }}</dt>
                             <dd>{{ user.email || '—' }}</dd>
                         </div>
                         <div class="field-row">
-                            <dt>กระเป๋า</dt>
+                            <dt>{{ t('admin.kycShow.account.wallet') }}</dt>
                             <dd class="mono">{{ user.wallet_address || '—' }}</dd>
                         </div>
                         <div class="field-row">
-                            <dt>สมัครเมื่อ</dt>
+                            <dt>{{ t('admin.kycShow.account.joinedAt') }}</dt>
                             <dd>{{ formatDate(user.joined_at) }}</dd>
                         </div>
                     </dl>
 
-                    <h3 class="sub-title">การยื่น</h3>
+                    <h3 class="sub-title">{{ t('admin.kycShow.submissionInfo.title') }}</h3>
                     <dl class="field-list">
                         <div class="field-row">
-                            <dt>ระดับ</dt>
-                            <dd>{{ submission.level === 'enhanced' ? 'เพิ่มเติม' : 'ปกติ' }}</dd>
+                            <dt>{{ t('admin.kycShow.submissionInfo.level') }}</dt>
+                            <dd>{{ submission.level === 'enhanced' ? t('admin.kycShow.submissionInfo.levelEnhanced') : t('admin.kycShow.submissionInfo.levelBasic') }}</dd>
                         </div>
                         <div class="field-row">
-                            <dt>ที่มา</dt>
+                            <dt>{{ t('admin.kycShow.submissionInfo.source') }}</dt>
                             <dd>
                                 {{ submission.source === 'thaiprompt'
-                                    ? 'ผลยืนยันตัวตนจาก Thaiprompt (ลูกค้าอนุญาตให้ส่งมา — ไม่มีข้อมูลบัตร/เอกสารในใบนี้)'
-                                    : 'ส่งเอกสารกับ TPIX TRADE' }}
+                                    ? t('admin.kycShow.submissionInfo.sourceThaiprompt')
+                                    : t('admin.kycShow.submissionInfo.sourceDirect') }}
                             </dd>
                         </div>
                         <div class="field-row">
-                            <dt>ยื่นเมื่อ</dt>
+                            <dt>{{ t('admin.kycShow.submissionInfo.submittedAt') }}</dt>
                             <dd>{{ formatDate(submission.submitted_at) }}</dd>
                         </div>
                         <div class="field-row">
-                            <dt>ยินยอมเมื่อ</dt>
+                            <dt>{{ t('admin.kycShow.submissionInfo.consentedAt') }}</dt>
                             <dd>{{ formatDate(submission.consented_at) }} (v{{ submission.consent_version }})</dd>
                         </div>
                         <div v-if="submission.reviewed_at" class="field-row">
-                            <dt>ตรวจโดย</dt>
+                            <dt>{{ t('admin.kycShow.submissionInfo.reviewedBy') }}</dt>
                             <dd>{{ submission.reviewed_by || '—' }} · {{ formatDate(submission.reviewed_at) }}</dd>
                         </div>
                         <div class="field-row">
-                            <dt>ครบกำหนดล้าง</dt>
+                            <dt>{{ t('admin.kycShow.submissionInfo.purgeAfter') }}</dt>
                             <dd>{{ formatDate(submission.purge_after) }}</dd>
                         </div>
                     </dl>
 
                     <div v-if="submission.reject_reason" class="prior-reject">
-                        <strong>เหตุผลที่แจ้งผู้ใช้</strong>
+                        <strong>{{ t('admin.kycShow.submissionInfo.rejectReason') }}</strong>
                         <p>{{ submission.reject_reason }}</p>
                     </div>
 
                     <div v-if="submission.review_note" class="prior-note">
-                        <strong>บันทึกภายใน</strong>
+                        <strong>{{ t('admin.kycShow.submissionInfo.internalNote') }}</strong>
                         <p>{{ submission.review_note }}</p>
                     </div>
                 </section>
 
                 <!-- ── เอกสาร ─────────────────────────────────────────────── -->
                 <section class="card">
-                    <h2 class="card-title">เอกสารแนบ</h2>
+                    <h2 class="card-title">{{ t('admin.kycShow.documents.title') }}</h2>
 
                     <p class="access-note">
-                        การเปิดดูรูปทุกครั้งถูกบันทึกไว้ และเจ้าของข้อมูลขอดูรายการนี้ได้ตามกฎหมาย
+                        {{ t('admin.kycShow.documents.accessNote') }}
                     </p>
 
                     <div class="doc-list">
                         <div v-for="doc in submission.documents" :key="doc.id" class="doc-card">
                             <div class="doc-head">
-                                <strong>{{ DOC_LABEL[doc.type] ?? doc.type }}</strong>
+                                <strong>{{ docLabel(doc.type) }}</strong>
                                 <span class="doc-meta">{{ formatSize(doc.size) }}</span>
                             </div>
 
-                            <div v-if="doc.purged" class="doc-purged">ลบไปแล้ว</div>
+                            <div v-if="doc.purged" class="doc-purged">{{ t('admin.kycShow.documents.purged') }}</div>
 
                             <img
                                 v-else
                                 :src="`/admin/kyc/documents/${doc.id}`"
                                 class="doc-image"
-                                :alt="DOC_LABEL[doc.type]"
+                                :alt="docLabel(doc.type)"
                                 @click="lightbox = `/admin/kyc/documents/${doc.id}`"
                             />
 
                             <details v-if="doc.views.length" class="doc-views">
-                                <summary>เปิดดูแล้ว {{ doc.views.length }} ครั้ง</summary>
+                                <summary>{{ t('admin.kycShow.documents.viewedTimes', { n: doc.views.length }) }}</summary>
                                 <ul>
                                     <li v-for="(v, i) in doc.views" :key="i">
                                         {{ v.admin }} · {{ formatDate(v.viewed_at) }}
@@ -231,17 +240,17 @@ const formatSize = (bytes) => {
                         </div>
                     </div>
 
-                    <p v-if="!submission.documents.length" class="empty-note">ไม่มีเอกสารแนบ</p>
+                    <p v-if="!submission.documents.length" class="empty-note">{{ t('admin.kycShow.documents.empty') }}</p>
                 </section>
             </div>
 
             <!-- ── ประวัติการยื่นก่อนหน้า ─────────────────────────────────── -->
             <section v-if="history.length" class="card">
-                <h2 class="card-title">เคยยื่นมาก่อน {{ history.length }} ครั้ง</h2>
+                <h2 class="card-title">{{ t('admin.kycShow.history.title', { n: history.length }) }}</h2>
                 <ul class="history-list">
                     <li v-for="h in history" :key="h.uuid">
                         <Link :href="`/admin/kyc/${h.uuid}`" class="history-link">
-                            <span class="badge" :class="`badge-${h.status}`">{{ h.status }}</span>
+                            <span class="badge" :class="`badge-${h.status}`">{{ statusLabel(h.status) }}</span>
                             <span>{{ formatDate(h.submitted_at) }}</span>
                             <span v-if="h.reject_reason" class="history-reason">{{ h.reject_reason }}</span>
                         </Link>
@@ -251,49 +260,50 @@ const formatSize = (bytes) => {
 
             <!-- ── ตัดสิน ────────────────────────────────────────────────── -->
             <section v-if="isPending && !isPurged" class="card decide-card">
-                <h2 class="card-title">ผลการตรวจ</h2>
+                <h2 class="card-title">{{ t('admin.kycShow.decide.title') }}</h2>
 
                 <div v-if="!showReject" class="decide-row">
                     <div class="decide-approve">
-                        <label>บันทึกภายใน (ไม่บังคับ · ผู้ใช้ไม่เห็น)</label>
-                        <input v-model="approveForm.note" type="text" class="input" placeholder="เช่น ตรวจตรงทุกช่อง" />
+                        <label>{{ t('admin.kycShow.decide.approveNoteLabel') }}</label>
+                        <input v-model="approveForm.note" type="text" class="input" :placeholder="t('admin.kycShow.decide.approveNotePlaceholder')" />
                         <button class="btn-approve" :disabled="approveForm.processing" @click="approve">
-                            {{ approveForm.processing ? 'กำลังบันทึก…' : '✓ อนุมัติ' }}
+                            {{ approveForm.processing ? t('admin.kycShow.decide.saving') : '✓ ' + t('admin.kycShow.decide.approve') }}
                         </button>
                     </div>
 
-                    <button class="btn-reject-open" @click="showReject = true">✕ ไม่ผ่าน</button>
+                    <button class="btn-reject-open" @click="showReject = true">✕ {{ t('admin.kycShow.decide.reject') }}</button>
                 </div>
 
                 <div v-else class="reject-panel">
-                    <label>เหตุผลที่แจ้งผู้ใช้ <span class="req">*</span></label>
+                    <label>{{ t('admin.kycShow.decide.rejectReasonLabel') }} <span class="req">*</span></label>
                     <p class="reject-hint">
-                        ผู้ใช้เห็นข้อความนี้และต้องรู้ว่าต้องแก้อะไรถึงจะยื่นใหม่ให้ผ่านได้
+                        {{ t('admin.kycShow.decide.rejectHint') }}
                     </p>
 
                     <div class="reason-chips">
                         <button
-                            v-for="r in COMMON_REASONS"
+                            v-for="r in COMMON_REASON_KEYS"
                             :key="r"
+                            type="button"
                             class="chip"
-                            :class="{ 'chip--on': rejectForm.reason === r }"
-                            @click="rejectForm.reason = r"
+                            :class="{ 'chip--on': rejectForm.reason === t(r) }"
+                            @click="rejectForm.reason = t(r)"
                         >
-                            {{ r }}
+                            {{ t(r) }}
                         </button>
                     </div>
 
-                    <textarea v-model="rejectForm.reason" rows="2" class="input" placeholder="หรือพิมพ์เอง"></textarea>
+                    <textarea v-model="rejectForm.reason" rows="2" class="input" :placeholder="t('admin.kycShow.decide.rejectReasonPlaceholder')"></textarea>
                     <p v-if="rejectForm.errors.reason" class="field-error">{{ rejectForm.errors.reason }}</p>
 
-                    <label class="mt">บันทึกภายใน (ผู้ใช้ไม่เห็น)</label>
+                    <label class="mt">{{ t('admin.kycShow.decide.rejectNoteLabel') }}</label>
                     <input v-model="rejectForm.note" type="text" class="input" />
 
                     <div class="reject-buttons">
                         <button class="btn-reject" :disabled="!rejectForm.reason.trim() || rejectForm.processing" @click="reject">
-                            {{ rejectForm.processing ? 'กำลังบันทึก…' : 'ยืนยันไม่ผ่าน' }}
+                            {{ rejectForm.processing ? t('admin.kycShow.decide.saving') : t('admin.kycShow.decide.confirmReject') }}
                         </button>
-                        <button class="btn-ghost" @click="showReject = false">ยกเลิก</button>
+                        <button class="btn-ghost" @click="showReject = false">{{ t('common.cancel') }}</button>
                     </div>
                 </div>
             </section>
@@ -301,7 +311,7 @@ const formatSize = (bytes) => {
             <!-- ── ดูรูปเต็มจอ ───────────────────────────────────────────── -->
             <div v-if="lightbox" class="lightbox" @click="lightbox = null">
                 <img :src="lightbox" alt="" />
-                <button class="lightbox-close">✕</button>
+                <button class="lightbox-close" :aria-label="t('common.close')">✕</button>
             </div>
         </div>
     </AdminLayout>

@@ -10,7 +10,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import axios from 'axios';
 import { useTranslation } from '@/Composables/useTranslation';
 
-const { t } = useTranslation();
+const { t, locale } = useTranslation();
 const articles = ref([]);
 const isLoading = ref(true);
 const currentPage = ref(1);
@@ -19,14 +19,15 @@ const activeCategory = ref('all');
 const activeLanguage = ref('th');
 
 const categories = [
-    { id: 'all', label: 'ทั้งหมด' },
-    { id: 'learn', label: '🎓 เรียนรู้' },
-    { id: 'news', label: '📰 ข่าว' },
-    { id: 'analysis', label: '📊 วิเคราะห์' },
-    { id: 'tutorial', label: '📖 สอนใช้งาน' },
-    { id: 'tpix_chain', label: '⛓️ TPIX Chain' },
-    { id: 'defi', label: '🏦 DeFi' },
-    { id: 'technology', label: '🔬 เทคโนโลยี' },
+    // เก็บ key + emoji แยกกัน แล้วแปลตอน render — เปลี่ยนภาษาได้ทันทีโดยไม่ต้อง reload
+    { id: 'all', icon: '', labelKey: 'common.all' },
+    { id: 'learn', icon: '🎓', labelKey: 'page.blog.categories.learn' },
+    { id: 'news', icon: '📰', labelKey: 'blog.news' },
+    { id: 'analysis', icon: '📊', labelKey: 'blog.analysis' },
+    { id: 'tutorial', icon: '📖', labelKey: 'blog.tutorial' },
+    { id: 'tpix_chain', icon: '⛓️', label: 'TPIX Chain' },
+    { id: 'defi', icon: '🏦', label: 'DeFi' },
+    { id: 'technology', icon: '🔬', labelKey: 'blog.technology' },
 ];
 
 async function fetchArticles() {
@@ -47,11 +48,18 @@ function setCategory(cat) {
     fetchArticles();
 }
 
-const categoryLabel = (id) => categories.find((c) => c.id === id)?.label ?? id;
+const catText = (c) => {
+    const name = c.labelKey ? t(c.labelKey) : c.label;
+    return c.icon ? `${c.icon} ${name}` : name;
+};
+const categoryLabel = (id) => {
+    const c = categories.find((x) => x.id === id);
+    return c ? catText(c) : id;
+};
 const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 function formatDate(d) {
-    return new Date(d).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+    return new Date(d).toLocaleDateString(locale.value === 'th' ? 'th-TH' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 // ลิงก์ตรงเข้าหมวด เช่น /blog?category=learn (จากหน้าดาวน์โหลด / Discord) — รับเฉพาะหมวดที่มีจริง
@@ -63,7 +71,7 @@ onMounted(() => {
 </script>
 
 <template>
-    <Head title="Blog — TPIX TRADE" />
+    <Head :title="t('page.blog.headTitle')" />
     <AppLayout>
         <div class="max-w-6xl mx-auto">
             <!-- Header -->
@@ -79,7 +87,7 @@ onMounted(() => {
                         activeCategory === cat.id
                             ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
                             : 'bg-white/5 text-dark-400 border border-white/10 hover:border-primary-500/30']">
-                    {{ cat.label }}
+                    {{ catText(cat) }}
                 </button>
             </div>
 
@@ -128,7 +136,7 @@ onMounted(() => {
             <div v-else class="text-center py-20 glass-card">
                 <span class="text-6xl mb-4 block">📝</span>
                 <h3 class="text-xl font-semibold text-white mb-2">{{ t('blog.noArticles') }}</h3>
-                <p class="text-dark-400">บทความจะถูกสร้างโดย AI โปรดรอสักครู่</p>
+                <p class="text-dark-400">{{ t('page.blog.emptyHint') }}</p>
             </div>
 
             <!-- Pagination -->

@@ -7,6 +7,9 @@
 import { ref, watch } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 defineOptions({ layout: AdminLayout });
 
@@ -39,11 +42,28 @@ function toggleBan(member) {
     if (member.is_banned) {
         useForm({}).patch(`/admin/members/${member.id}/unban`);
     } else {
-        const reason = prompt('เหตุผลที่แบน:');
+        const reason = prompt(t('admin.members.banReasonPrompt'));
         if (reason !== null) {
             useForm({ reason }).patch(`/admin/members/${member.id}/ban`);
         }
     }
+}
+
+// kyc_status เป็นค่าจากเซิร์ฟเวอร์ — แปลเฉพาะตอนแสดง ค่าที่ไม่รู้จักโชว์ตามจริง
+const KYC_LABEL_KEYS = {
+    none: 'admin.members.kyc.none',
+    pending: 'admin.members.kyc.pending',
+    approved: 'admin.members.kyc.approved',
+    rejected: 'admin.members.kyc.rejected',
+};
+
+function kycLabel(status) {
+    const key = KYC_LABEL_KEYS[status];
+    return key ? t(key) : (status || '-');
+}
+
+function formatDate(value) {
+    return new Date(value).toLocaleDateString(locale.value === 'th' ? 'th-TH' : 'en-US');
 }
 
 function shortAddr(addr) {
@@ -71,49 +91,49 @@ function decodeLabel(html) {
 </script>
 
 <template>
-    <Head title="Members — Admin" />
+    <Head :title="t('admin.members.pageTitle')" />
 
     <div class="space-y-6">
         <!-- Header -->
         <div>
-            <h1 class="text-2xl font-bold text-white">Members</h1>
-            <p class="text-dark-400 text-sm mt-1">จัดการสมาชิก — สมัครอัตโนมัติเมื่อ Connect Wallet</p>
+            <h1 class="text-2xl font-bold text-white">{{ t('admin.members.title') }}</h1>
+            <p class="text-dark-400 text-sm mt-1">{{ t('admin.members.subtitle') }}</p>
         </div>
 
         <!-- Stats -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div class="glass-card p-4 rounded-xl text-center">
                 <p class="text-2xl font-bold text-white">{{ stats.total_users || 0 }}</p>
-                <p class="text-xs text-dark-400 mt-1">สมาชิกทั้งหมด</p>
+                <p class="text-xs text-dark-400 mt-1">{{ t('admin.members.stats.total') }}</p>
             </div>
             <div class="glass-card p-4 rounded-xl text-center">
                 <p class="text-2xl font-bold text-trading-green">{{ stats.active_users || 0 }}</p>
-                <p class="text-xs text-dark-400 mt-1">Active</p>
+                <p class="text-xs text-dark-400 mt-1">{{ t('admin.members.stats.active') }}</p>
             </div>
             <div class="glass-card p-4 rounded-xl text-center">
                 <p class="text-2xl font-bold text-trading-red">{{ stats.banned_users || 0 }}</p>
-                <p class="text-xs text-dark-400 mt-1">Banned</p>
+                <p class="text-xs text-dark-400 mt-1">{{ t('admin.members.stats.banned') }}</p>
             </div>
             <div class="glass-card p-4 rounded-xl text-center">
                 <p class="text-2xl font-bold text-primary-400">{{ stats.total_wallets || 0 }}</p>
-                <p class="text-xs text-dark-400 mt-1">Wallets Connected</p>
+                <p class="text-xs text-dark-400 mt-1">{{ t('admin.members.stats.wallets') }}</p>
             </div>
         </div>
 
         <!-- Filters -->
         <div class="flex flex-wrap gap-3">
-            <input v-model="search" :class="inputClass" placeholder="ค้นหา wallet, email, ชื่อ..." class="flex-1 min-w-48" />
+            <input v-model="search" :class="inputClass" :placeholder="t('admin.members.searchPlaceholder')" class="flex-1 min-w-48" />
             <select v-model="statusFilter" :class="inputClass" @change="applyFilters">
-                <option value="">ทุกสถานะ</option>
-                <option value="active">Active</option>
-                <option value="banned">Banned</option>
+                <option value="">{{ t('admin.members.filter.allStatus') }}</option>
+                <option value="active">{{ t('admin.members.status.active') }}</option>
+                <option value="banned">{{ t('admin.members.status.banned') }}</option>
             </select>
             <select v-model="kycFilter" :class="inputClass" @change="applyFilters">
-                <option value="">ทุก KYC</option>
-                <option value="none">ไม่มี</option>
-                <option value="pending">รอตรวจ</option>
-                <option value="approved">ผ่าน</option>
-                <option value="rejected">ไม่ผ่าน</option>
+                <option value="">{{ t('admin.members.filter.allKyc') }}</option>
+                <option value="none">{{ t('admin.members.kyc.none') }}</option>
+                <option value="pending">{{ t('admin.members.kyc.pending') }}</option>
+                <option value="approved">{{ t('admin.members.kyc.approved') }}</option>
+                <option value="rejected">{{ t('admin.members.kyc.rejected') }}</option>
             </select>
         </div>
 
@@ -122,14 +142,14 @@ function decodeLabel(html) {
             <table class="w-full">
                 <thead>
                     <tr class="border-b border-white/5">
-                        <th class="text-left p-4 text-xs text-dark-400 uppercase">Wallet</th>
-                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden md:table-cell">Email</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden sm:table-cell">KYC</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">Wallets</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">Trades</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase">Status</th>
-                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden md:table-cell">Last Active</th>
-                        <th class="text-right p-4 text-xs text-dark-400 uppercase">Actions</th>
+                        <th class="text-left p-4 text-xs text-dark-400 uppercase">{{ t('admin.members.table.wallet') }}</th>
+                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden md:table-cell">{{ t('admin.members.table.email') }}</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden sm:table-cell">{{ t('admin.members.table.kyc') }}</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">{{ t('admin.members.table.wallets') }}</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">{{ t('admin.members.table.trades') }}</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase">{{ t('admin.members.table.status') }}</th>
+                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden md:table-cell">{{ t('admin.members.table.lastActive') }}</th>
+                        <th class="text-right p-4 text-xs text-dark-400 uppercase">{{ t('admin.members.table.actions') }}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -141,25 +161,25 @@ function decodeLabel(html) {
                         </td>
                         <td class="p-4 text-dark-300 text-sm hidden md:table-cell">{{ member.email || '-' }}</td>
                         <td class="p-4 text-center hidden sm:table-cell">
-                            <span :class="kycBadge(member.kyc_status)" class="px-2 py-1 rounded-md text-xs font-medium">{{ member.kyc_status }}</span>
+                            <span :class="kycBadge(member.kyc_status)" class="px-2 py-1 rounded-md text-xs font-medium">{{ kycLabel(member.kyc_status) }}</span>
                         </td>
                         <td class="p-4 text-center text-dark-300 text-sm hidden lg:table-cell">{{ member.wallet_connections_count }}</td>
                         <td class="p-4 text-center text-dark-300 text-sm hidden lg:table-cell">{{ member.total_trades }}</td>
                         <td class="p-4 text-center">
                             <span :class="member.is_banned ? 'bg-trading-red/20 text-trading-red' : 'bg-trading-green/20 text-trading-green'" class="px-2 py-1 rounded-full text-xs font-medium">
-                                {{ member.is_banned ? 'Banned' : 'Active' }}
+                                {{ member.is_banned ? t('admin.members.status.banned') : t('admin.members.status.active') }}
                             </span>
                         </td>
-                        <td class="p-4 text-dark-400 text-xs hidden md:table-cell">{{ member.last_active_at ? new Date(member.last_active_at).toLocaleDateString() : '-' }}</td>
+                        <td class="p-4 text-dark-400 text-xs hidden md:table-cell">{{ member.last_active_at ? formatDate(member.last_active_at) : '-' }}</td>
                         <td class="p-4 text-right">
-                            <Link :href="`/admin/members/${member.id}`" class="text-primary-400 hover:text-primary-300 text-sm mr-3">ดู</Link>
+                            <Link :href="`/admin/members/${member.id}`" class="text-primary-400 hover:text-primary-300 text-sm mr-3">{{ t('admin.members.view') }}</Link>
                             <button @click="toggleBan(member)" :class="member.is_banned ? 'text-trading-green' : 'text-trading-red'" class="text-sm hover:opacity-80">
-                                {{ member.is_banned ? 'ปลดแบน' : 'แบน' }}
+                                {{ member.is_banned ? t('admin.members.unban') : t('admin.members.ban') }}
                             </button>
                         </td>
                     </tr>
                     <tr v-if="!members.data?.length">
-                        <td colspan="8" class="p-8 text-center text-dark-500">ยังไม่มีสมาชิก</td>
+                        <td colspan="8" class="p-8 text-center text-dark-500">{{ t('admin.members.empty') }}</td>
                     </tr>
                 </tbody>
             </table>

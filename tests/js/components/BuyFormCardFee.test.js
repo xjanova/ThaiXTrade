@@ -59,6 +59,7 @@ vi.mock('@/utils/web3', () => ({ TPIX_CHAIN_CONFIG: { chainIdNum: 4289 } }));
 vi.mock('@/Components/Brand/BrandLogo.vue', () => ({ default: { template: '<span />' } }));
 
 import BuyForm from '@/Components/TokenSale/BuyForm.vue';
+import { t, currentLocale } from '@/Composables/useTranslation';
 
 async function typeAmount(wrapper, value) {
     await wrapper.find('[data-testid="amount-input"]').setValue(String(value));
@@ -82,8 +83,8 @@ describe('BuyForm — card payment', () => {
         const card = wrapper.find('[data-testid="method-card"]');
         expect(card.exists()).toBe(true);
         expect(card.findAll('svg.card-logo')).toHaveLength(4);
-        expect(wrapper.text()).toContain('กรอกเลขบัตรในหน้าชำระเงินที่ปลอดภัย');
-        expect(wrapper.find('[data-testid="submit-hint"]').text()).toContain('จำนวนเงิน');
+        expect(wrapper.text()).toContain(t('ui.tokenSaleBuyForm.form.step3Card'));
+        expect(wrapper.find('[data-testid="submit-hint"]').text()).toContain(t('ui.tokenSaleBuyForm.hint.enterAmount'));
     });
 
     it('quick amounts start at the phase minimum ($5 for 100 TPIX at $0.05)', () => {
@@ -107,7 +108,7 @@ describe('BuyForm — card payment', () => {
         const wrapper = mount(BuyForm);
         await typeAmount(wrapper, 5);
 
-        expect(wrapper.find('[data-testid="card-hold-note"]').text()).toContain('60 วัน');
+        expect(wrapper.find('[data-testid="card-hold-note"]').text()).toContain(t('ui.tokenSaleBuyForm.summary.cardHold', { days: 60 }));
     });
 
     it('does not mention a hold when it is turned off', async () => {
@@ -131,7 +132,8 @@ describe('BuyForm — card payment', () => {
         await flushPromises();
 
         expect(wrapper.text()).toContain('TPIX-ABC234');
-        expect(wrapper.find('[data-testid="bank-expiry-note"]').text()).toContain('ราคาอาจเปลี่ยน');
+        const expiresLocal = new Date('2026-11-01T00:00:00Z').toLocaleString(currentLocale.value === 'th' ? 'th-TH' : 'en-US');
+        expect(wrapper.find('[data-testid="bank-expiry-note"]').text()).toBe(t('ui.tokenSaleBuyForm.bank.expiry', { time: expiresLocal }));
     });
 
     it('sends the token amount (not the total) to create the checkout', async () => {
@@ -170,7 +172,7 @@ describe('BuyForm — card payment', () => {
         await flushPromises();
 
         expect(saleStore.createStripeCheckout).toHaveBeenCalledTimes(1);
-        expect(wrapper.text()).toContain('ต้องเซ็นยืนยันว่าเป็นเจ้าของกระเป๋าก่อนซื้อ');
+        expect(wrapper.text()).toContain(t('ui.tokenSaleBuyForm.err.signRequired'));
     });
 
     it('blocks amounts below the minimum and says why', async () => {
@@ -178,6 +180,6 @@ describe('BuyForm — card payment', () => {
         await typeAmount(wrapper, 2);
 
         expect(wrapper.find('[data-testid="submit-order"]').attributes('disabled')).toBeDefined();
-        expect(wrapper.find('[data-testid="submit-hint"]').text()).toContain('ขั้นต่ำ $5');
+        expect(wrapper.find('[data-testid="submit-hint"]').text()).toContain(t('ui.tokenSaleBuyForm.hint.min', { amount: '5' }));
     });
 });

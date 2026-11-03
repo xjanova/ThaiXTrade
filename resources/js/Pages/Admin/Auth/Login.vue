@@ -8,6 +8,9 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     turnstileEnabled: {
@@ -35,7 +38,8 @@ const form = useForm({
 
 const turnstileReady = ref(false);
 const turnstileLoadFailed = ref(false);
-const turnstileError = ref('');
+// เก็บเป็น { key, params } แล้วแปลตอน render — ข้อความค้างบนจออยู่ จึงต้องเปลี่ยนภาษาตามได้
+const turnstileError = ref(null);
 
 // BUG FIX: เก็บ widgetId ที่ได้จาก turnstile.render() — จำเป็นสำหรับ reset()/remove()
 let turnstileWidgetId = null;
@@ -55,7 +59,7 @@ const waitForTurnstile = () => {
         } else if (attempts > 50) { // 5 seconds max
             clearInterval(interval);
             turnstileLoadFailed.value = true;
-            turnstileError.value = 'Turnstile timeout — ลองรีเฟรชหน้า';
+            turnstileError.value = { key: 'admin.authLogin.turnstile.timeout', params: {} };
         }
     }, 100);
 };
@@ -89,7 +93,7 @@ const loadTurnstile = () => {
 
     script.onerror = () => {
         turnstileLoadFailed.value = true;
-        turnstileError.value = 'ไม่สามารถโหลด Turnstile ได้ — ลองรีเฟรชหน้า';
+        turnstileError.value = { key: 'admin.authLogin.turnstile.loadFailed', params: {} };
     };
 
     document.head.appendChild(script);
@@ -105,7 +109,7 @@ const renderTurnstile = () => {
             try { window.turnstile.remove(turnstileWidgetId); } catch {}
         }
 
-        turnstileError.value = '';
+        turnstileError.value = null;
 
         // BUG FIX: เก็บ widgetId ที่ return จาก render()
         turnstileWidgetId = window.turnstile.render(container, {
@@ -114,7 +118,7 @@ const renderTurnstile = () => {
             callback: (token) => {
                 form['cf-turnstile-response'] = token;
                 turnstileReady.value = true;
-                turnstileError.value = '';
+                turnstileError.value = null;
             },
             'expired-callback': () => {
                 form['cf-turnstile-response'] = '';
@@ -123,7 +127,7 @@ const renderTurnstile = () => {
             // BUG FIX: เพิ่ม error-callback — ถ้า widget error ไม่ block login
             'error-callback': (errorCode) => {
                 turnstileLoadFailed.value = true;
-                turnstileError.value = `Turnstile error (${errorCode}) — ข้าม verification`;
+                turnstileError.value = { key: 'admin.authLogin.turnstile.widgetError', params: { code: errorCode } };
                 form['cf-turnstile-response'] = '';
             },
         });
@@ -164,7 +168,7 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Admin Login" />
+    <Head :title="t('admin.authLogin.pageTitle')" />
 
     <div class="min-h-screen bg-dark-950 flex items-center justify-center p-4">
         <!-- Background Effects (brand gradient glow) -->
@@ -179,12 +183,12 @@ const submit = () => {
             <div class="text-center mb-8">
                 <BrandLogo variant="mark" class="w-20 h-20 mx-auto mb-4 rounded-full shadow-glow-brand" />
                 <h1 class="text-2xl font-bold text-white">TPIX <span class="text-gradient">TRADE</span></h1>
-                <p class="text-dark-400 text-sm mt-1">Admin Panel</p>
+                <p class="text-dark-400 text-sm mt-1">{{ t('admin.authLogin.adminPanel') }}</p>
             </div>
 
             <!-- Login Card -->
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-glass">
-                <h2 class="text-lg font-semibold text-white mb-6">Sign in to your account</h2>
+                <h2 class="text-lg font-semibold text-white mb-6">{{ t('admin.authLogin.heading') }}</h2>
 
                 <!-- Rate Limit Warning -->
                 <div v-if="rateLimitWarning" class="mb-6 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
@@ -213,7 +217,7 @@ const submit = () => {
                 <form @submit.prevent="submit" class="space-y-5">
                     <!-- Email -->
                     <div>
-                        <label for="email" class="block text-sm font-medium text-dark-300 mb-2">Email Address</label>
+                        <label for="email" class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.authLogin.email') }}</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                 <svg class="w-5 h-5 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -235,7 +239,7 @@ const submit = () => {
 
                     <!-- Password -->
                     <div>
-                        <label for="password" class="block text-sm font-medium text-dark-300 mb-2">Password</label>
+                        <label for="password" class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.authLogin.password') }}</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                 <svg class="w-5 h-5 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -248,7 +252,7 @@ const submit = () => {
                                 :type="showPassword ? 'text' : 'password'"
                                 required
                                 autocomplete="current-password"
-                                placeholder="Enter your password"
+                                :placeholder="t('admin.authLogin.passwordPlaceholder')"
                                 class="w-full bg-dark-800/50 border border-dark-600 rounded-xl pl-12 pr-12 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
                             />
                             <button
@@ -275,7 +279,7 @@ const submit = () => {
                                 type="checkbox"
                                 class="w-4 h-4 rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500 focus:ring-offset-dark-900"
                             />
-                            <span class="text-sm text-dark-400">Remember me</span>
+                            <span class="text-sm text-dark-400">{{ t('admin.authLogin.rememberMe') }}</span>
                         </label>
                     </div>
 
@@ -284,7 +288,7 @@ const submit = () => {
                         <div id="cf-turnstile" class="flex justify-center">
                             <!-- Cloudflare Turnstile widget rendered via JS -->
                         </div>
-                        <p v-if="turnstileError" class="text-center text-xs text-amber-400">{{ turnstileError }}</p>
+                        <p v-if="turnstileError" class="text-center text-xs text-amber-400">{{ t(turnstileError.key, turnstileError.params) }}</p>
                     </div>
 
                     <!-- Submit -->
@@ -297,15 +301,15 @@ const submit = () => {
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        <span v-if="form.processing">Signing in...</span>
-                        <span v-else>Sign In</span>
+                        <span v-if="form.processing">{{ t('admin.authLogin.signingIn') }}</span>
+                        <span v-else>{{ t('admin.authLogin.signIn') }}</span>
                     </button>
                 </form>
             </div>
 
             <!-- Footer -->
             <p class="text-center text-dark-500 text-xs mt-6">
-                TPIX TRADE Admin &middot; by Xman Studio
+                {{ t('admin.authLogin.footer') }}
             </p>
         </div>
     </div>

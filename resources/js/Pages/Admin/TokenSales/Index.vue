@@ -11,6 +11,9 @@ import { Head, useForm, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import SaleLaunchPanel from '@/Components/Admin/SaleLaunchPanel.vue';
 import SaleCryptoPanel from '@/Components/Admin/SaleCryptoPanel.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     sales: { type: Array, default: () => [] },
@@ -29,11 +32,12 @@ const props = defineProps({
 
 // Tab ปัจจุบัน
 const activeTab = ref('overview');
+// เก็บคีย์ไว้ แล้วเรียก t() ใน template — ป้ายแท็บเปลี่ยนภาษาได้ทันที
 const tabs = [
-    { id: 'overview', label: '📊 Overview' },
-    { id: 'sales', label: '🏷️ Sales & Phases' },
-    { id: 'transactions', label: '📋 Transactions' },
-    { id: 'wallet', label: '💰 Master Wallet' },
+    { id: 'overview', icon: '📊', labelKey: 'admin.tokenSales.tabs.overview' },
+    { id: 'sales', icon: '🏷️', labelKey: 'admin.tokenSales.tabs.sales' },
+    { id: 'transactions', icon: '📋', labelKey: 'admin.tokenSales.tabs.transactions' },
+    { id: 'wallet', icon: '💰', labelKey: 'admin.tokenSales.tabs.wallet' },
 ];
 
 // Modal states
@@ -43,8 +47,8 @@ const editingSale = ref(null);
 
 // ช่องทางรับเงินที่เลือกเพิ่มจากบัตรได้ — ต้องตรงกับ TokenSale::PAYMENT_CHANNELS ที่เซิร์ฟเวอร์ตรวจซ้ำตอนบันทึก
 const OPTIONAL_CHANNELS = [
-    { id: 'BANK', label: 'โอนเข้าบัญชีธนาคาร', short: 'โอนเงิน', hint: 'ใช้ได้เมื่อกรอกเลขบัญชีแล้ว' },
-    { id: 'CRYPTO', label: 'USDT ตรวจเงินเข้าบนเชน', short: 'USDT', hint: 'ใช้ได้เมื่อเปิดระบบรับ USDT แล้ว' },
+    { id: 'BANK', keyBase: 'admin.tokenSales.channels.bank' },
+    { id: 'CRYPTO', keyBase: 'admin.tokenSales.channels.crypto' },
 ];
 
 /** บัตรเปิดเสมอ และตัดค่าที่เลิกรับแล้ว (USDT, BNB, STRIPE) ทิ้ง ฟอร์มจะได้ไม่ส่งค่าที่เซิร์ฟเวอร์ปฏิเสธ */
@@ -54,7 +58,7 @@ function saleChannels(saved) {
 
 /** ป้ายบนการ์ดรอบขาย ตามช่องทางที่รอบนั้นรับจริง */
 function saleChannelsLabel(saved) {
-    return ['Stripe', ...OPTIONAL_CHANNELS.filter((channel) => saved?.includes(channel.id)).map((channel) => channel.short)].join(' + ');
+    return ['Stripe', ...OPTIONAL_CHANNELS.filter((channel) => saved?.includes(channel.id)).map((channel) => t(`${channel.keyBase}.short`))].join(' + ');
 }
 
 // ฟอร์ม Token Sale
@@ -220,10 +224,8 @@ function confirmBank(tx) {
 
     const ref = bankReference(tx) || tx.uuid;
     const expired = isBankOrderExpired(tx);
-    const warning = expired
-        ? '\n\nออเดอร์นี้หมดอายุแล้ว กดยืนยันเฉพาะเมื่อเงินเข้าก่อนเวลาหมดอายุจริงเท่านั้น ระบบจะรับราคาเดิมและบันทึกชื่อคุณไว้'
-        : '';
-    if (!window.confirm(`ยืนยันว่าได้รับเงินโอนของรายการ ${ref} แล้วจริงหรือไม่?\n\nกดยืนยันแล้วระบบจะนับเป็นยอดขายและเข้าคิวจ่ายเหรียญทันที${warning}`)) {
+    const warning = expired ? t('admin.tokenSales.confirm.bankExpiredWarning') : '';
+    if (!window.confirm(t('admin.tokenSales.confirm.bank', { ref, warning }))) {
         return;
     }
 
@@ -238,7 +240,7 @@ function confirmBank(tx) {
 function rejectBank(tx) {
     if (confirmingId.value) return;
 
-    const reason = window.prompt('เหตุผลที่ปฏิเสธ (บันทึกไว้ในระบบ)', 'ไม่พบเงินเข้าตามรหัสอ้างอิง');
+    const reason = window.prompt(t('admin.tokenSales.confirm.rejectPrompt'), t('admin.tokenSales.confirm.rejectDefault'));
     if (!reason) return;
 
     confirmingId.value = tx.id;
@@ -256,7 +258,7 @@ function requeuePayout(tx) {
     if (confirmingId.value) return;
 
     const reference = bankReference(tx) || tx.uuid;
-    if (!window.confirm(`เข้าคิวจ่าย ${tx.requeue_payout_tpix} TPIX ของรายการ ${reference} ใหม่หรือไม่?\n\nรายการใหม่จะไปรออนุมัติที่หน้าคลัง — ตรวจก่อนว่ารอบก่อนจบเพราะอะไร`)) {
+    if (!window.confirm(t('admin.tokenSales.confirm.requeuePayout', { amount: tx.requeue_payout_tpix, ref: reference }))) {
         return;
     }
 
@@ -275,7 +277,7 @@ function restoreDispute(tx) {
     if (confirmingId.value) return;
 
     const amount = Number(tx.tpix_amount).toLocaleString('en-US');
-    if (!window.confirm(`กู้ออเดอร์ ${tx.uuid} กลับเป็นยอดขายหรือไม่?\n\nผู้ซื้อจะกลับมามีสิทธิ์ ${amount} TPIX และยอดขายจะถูกนับเพิ่ม — ถ้าตั้งใจคืนเงินแทน ให้คืนใน Stripe`)) {
+    if (!window.confirm(t('admin.tokenSales.confirm.restoreDispute', { uuid: tx.uuid, amount }))) {
         return;
     }
 
@@ -295,9 +297,9 @@ function requeueClaim(tx) {
 
     const reference = bankReference(tx) || tx.uuid;
     const returned = tx.requeue_claim_returned_tpix
-        ? `\n\nส่วนที่เกินวงเงินต่อครั้ง ${tx.requeue_claim_returned_tpix} TPIX จะคืนเป็นสิทธิ์ให้ผู้ซื้อ claim เอง`
+        ? t('admin.tokenSales.confirm.claimReturned', { amount: tx.requeue_claim_returned_tpix })
         : '';
-    if (!window.confirm(`เข้าคิวจ่าย claim ${tx.requeue_claim_tpix} TPIX ของรายการ ${reference} ใหม่หรือไม่?${returned}\n\nรายการใหม่จะไปรออนุมัติที่หน้าคลัง — ตรวจก่อนว่ารอบก่อนจบเพราะอะไร`)) {
+    if (!window.confirm(t('admin.tokenSales.confirm.requeueClaim', { amount: tx.requeue_claim_tpix, ref: reference, returned }))) {
         return;
     }
 
@@ -331,32 +333,68 @@ function statusBadge(s) {
     };
     return m[s] || 'bg-gray-500/20 text-gray-400';
 }
+
+/** ป้ายสถานะตามภาษา — สถานะที่ไม่มีคำแปลแสดงค่าจากเซิร์ฟเวอร์ตรงๆ */
+function statusLabel(s) {
+    if (!s) return '';
+    const key = `admin.tokenSales.status.${s}`;
+    const label = t(key);
+    return label === key ? s : label;
+}
+
+function walletStatusLabel(s) {
+    const key = `admin.tokenSales.walletStatus.${s || 'unknown'}`;
+    const label = t(key);
+    return label === key ? s : label;
+}
+
+/**
+ * ที่อยู่ master wallet — เซิร์ฟเวอร์ส่ง 'Not configured' เป็นข้อความอังกฤษตายตัวเมื่อยังไม่ตั้งค่า
+ * ตัดสินจาก status แล้วแสดงคำแปลแทน
+ */
+const walletAddressLabel = computed(() => (
+    props.walletInfo.status === 'not_configured' || !props.walletInfo.address
+        ? t('admin.tokenSales.wallet.notConfigured')
+        : props.walletInfo.address
+));
+
+/** ยอดคงเหลือ — ตอน RPC ล้ม เซิร์ฟเวอร์ส่ง 'RPC Error' มาแทนตัวเลข */
+const walletBalanceLabel = computed(() => (
+    props.walletInfo.status === 'rpc_error'
+        ? t('admin.tokenSales.walletStatus.rpc_error')
+        : (props.walletInfo.balance_formatted || '0 TPIX')
+));
+
+/** วันที่สำหรับแสดงผล ตามภาษาที่เลือก */
+function displayDate(d) {
+    return new Date(d).toLocaleDateString(locale.value === 'th' ? 'th-TH' : 'en-US');
+}
 </script>
 
 <template>
-    <Head title="Token Sales & Control" />
+    <Head :title="t('admin.tokenSales.header.pageTitle')" />
 
     <AdminLayout>
         <div class="p-6">
             <!-- Header -->
             <div class="flex items-center justify-between mb-6">
                 <div>
-                    <h1 class="text-2xl font-bold text-white">🪙 Token Sales & Control</h1>
-                    <p class="text-gray-400 text-sm">จัดการรอบขาย TPIX + Master Wallet | USDT exchange only — ไม่มีการถอนเป็นเงินสด</p>
+                    <h1 class="text-2xl font-bold text-white">🪙 {{ t('admin.tokenSales.header.title') }}</h1>
+                    <p class="text-gray-400 text-sm">{{ t('admin.tokenSales.header.subtitle') }}</p>
                 </div>
             </div>
 
             <!-- ⚠️ No Cash Withdrawal Warning -->
             <div class="mb-6 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/30">
                 <p class="text-sm text-yellow-400 font-medium">
-                    ⚠️ <strong>สำคัญ:</strong> TPIX เป็น utility token แลกเปลี่ยนได้กับ USDT เท่านั้น ไม่สามารถถอนเป็นเงินสดได้ ข้อความนี้แสดงให้ผู้ซื้อทราบทุกจุด
+                    ⚠️ <strong>{{ t('admin.tokenSales.warning.label') }}</strong> {{ t('admin.tokenSales.warning.text') }}
                 </p>
             </div>
 
             <!-- ร้านยังถือเงินอยู่หลัง chargeback แต่ผู้ซื้อไม่มีเหรียญ — อยู่นอกแท็บเพราะต้องมีคนตัดสินทุกแถว -->
             <div v-if="disputesAwaitingRestore.length" class="mb-6 glass-dark rounded-xl border border-trading-red/30 p-4">
-                <h2 class="text-sm font-semibold text-trading-red">ออเดอร์บัตรที่ร้านถือเงินอยู่แต่ผู้ซื้อยังไม่ได้เหรียญ</h2>
-                <p class="text-xs text-gray-400 mt-1 mb-3">กู้ได้ถ้า Stripe ยืนยัน และโควตากับเพดานกระเป๋ายังพอ ถ้ากู้ไม่ได้ต้องคืนเงินใน Stripe</p>
+                <h2 class="text-sm font-semibold text-trading-red">{{ t('admin.tokenSales.disputes.title') }}</h2>
+                <p class="text-xs text-gray-400 mt-1 mb-3">{{ t('admin.tokenSales.disputes.desc') }}</p>
                 <div
                     v-for="tx in disputesAwaitingRestore" :key="tx.id"
                     class="flex flex-wrap items-center justify-between gap-2 py-2 border-t border-white/5 text-xs"
@@ -373,7 +411,7 @@ function statusBadge(s) {
                         class="px-2 py-1 rounded-lg bg-trading-green/20 text-trading-green hover:bg-trading-green/30 transition disabled:opacity-40"
                         :disabled="confirmingId === tx.id"
                         @click="restoreDispute(tx)"
-                    >กู้ออเดอร์</button>
+                    >{{ t('admin.tokenSales.disputes.restore') }}</button>
                 </div>
             </div>
 
@@ -384,7 +422,7 @@ function statusBadge(s) {
                     class="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                     :class="activeTab === tab.id ? 'bg-primary-500/20 text-primary-400' : 'text-gray-400 hover:text-white'"
                     @click="activeTab = tab.id"
-                >{{ tab.label }}</button>
+                >{{ tab.icon }} {{ t(tab.labelKey) }}</button>
             </div>
 
             <!-- ==================== TAB: Overview ==================== -->
@@ -392,46 +430,46 @@ function statusBadge(s) {
                 <div class="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                     <div class="glass-dark rounded-xl border border-white/10 p-5 text-center">
                         <p class="text-3xl font-bold text-white">{{ fmt(stats.total_supply) }}</p>
-                        <p class="text-sm text-gray-400 mt-1">Total Supply</p>
+                        <p class="text-sm text-gray-400 mt-1">{{ t('admin.tokenSales.overview.totalSupply') }}</p>
                     </div>
                     <div class="glass-dark rounded-xl border border-white/10 p-5 text-center">
                         <p class="text-3xl font-bold text-trading-green">{{ fmt(stats.total_sold) }}</p>
-                        <p class="text-sm text-gray-400 mt-1">Total Sold</p>
+                        <p class="text-sm text-gray-400 mt-1">{{ t('admin.tokenSales.overview.totalSold') }}</p>
                     </div>
                     <div class="glass-dark rounded-xl border border-white/10 p-5 text-center">
                         <p class="text-3xl font-bold text-primary-400">${{ fmt(stats.total_raised_usd) }}</p>
-                        <p class="text-sm text-gray-400 mt-1">Total Raised</p>
+                        <p class="text-sm text-gray-400 mt-1">{{ t('admin.tokenSales.overview.totalRaised') }}</p>
                     </div>
                     <div class="glass-dark rounded-xl border border-white/10 p-5 text-center">
                         <p class="text-3xl font-bold text-accent-400">{{ stats.total_buyers || 0 }}</p>
-                        <p class="text-sm text-gray-400 mt-1">Unique Buyers</p>
+                        <p class="text-sm text-gray-400 mt-1">{{ t('admin.tokenSales.overview.uniqueBuyers') }}</p>
                     </div>
                     <div class="glass-dark rounded-xl border border-white/10 p-5 text-center">
                         <p class="text-3xl font-bold text-white">{{ stats.total_transactions || 0 }}</p>
-                        <p class="text-sm text-gray-400 mt-1">Total Transactions</p>
+                        <p class="text-sm text-gray-400 mt-1">{{ t('admin.tokenSales.overview.totalTransactions') }}</p>
                     </div>
                     <div class="glass-dark rounded-xl border border-white/10 p-5 text-center">
                         <p class="text-3xl font-bold text-yellow-400">{{ stats.pending_transactions || 0 }}</p>
-                        <p class="text-sm text-gray-400 mt-1">Pending</p>
+                        <p class="text-sm text-gray-400 mt-1">{{ t('admin.tokenSales.overview.pending') }}</p>
                     </div>
                 </div>
 
                 <!-- Master Wallet Quick View -->
                 <div class="glass-dark rounded-xl border border-white/10 p-5">
-                    <h3 class="text-lg font-bold text-white mb-3">💰 Master Wallet</h3>
+                    <h3 class="text-lg font-bold text-white mb-3">💰 {{ t('admin.tokenSales.tabs.wallet') }}</h3>
                     <div class="grid sm:grid-cols-3 gap-4">
                         <div>
-                            <p class="text-xs text-gray-500">Address</p>
-                            <p class="text-sm font-mono text-primary-400 break-all">{{ walletInfo.address || 'Not set' }}</p>
+                            <p class="text-xs text-gray-500">{{ t('admin.tokenSales.overview.address') }}</p>
+                            <p class="text-sm font-mono text-primary-400 break-all">{{ walletAddressLabel }}</p>
                         </div>
                         <div>
-                            <p class="text-xs text-gray-500">Balance</p>
-                            <p class="text-lg font-bold text-white">{{ walletInfo.balance_formatted || '0 TPIX' }}</p>
+                            <p class="text-xs text-gray-500">{{ t('admin.tokenSales.overview.balance') }}</p>
+                            <p class="text-lg font-bold text-white">{{ walletBalanceLabel }}</p>
                         </div>
                         <div>
-                            <p class="text-xs text-gray-500">Status</p>
+                            <p class="text-xs text-gray-500">{{ t('admin.tokenSales.overview.status') }}</p>
                             <span class="px-2 py-1 text-xs rounded-full" :class="walletInfo.status === 'connected' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'">
-                                {{ walletInfo.status || 'unknown' }}
+                                {{ walletStatusLabel(walletInfo.status) }}
                             </span>
                         </div>
                     </div>
@@ -446,7 +484,7 @@ function statusBadge(s) {
                 <SaleCryptoPanel :crypto="crypto" :can-manage="canManageMoney" />
 
                 <div class="flex justify-end mb-4">
-                    <button v-if="canManageMoney" class="btn-primary px-4 py-2 text-sm font-semibold" @click="openCreateSale">+ New Sale</button>
+                    <button v-if="canManageMoney" class="btn-primary px-4 py-2 text-sm font-semibold" @click="openCreateSale">{{ t('admin.tokenSales.sales.newSale') }}</button>
                 </div>
 
                 <div class="space-y-4">
@@ -454,35 +492,35 @@ function statusBadge(s) {
                         <div class="flex items-center justify-between mb-4">
                             <div class="flex items-center gap-3">
                                 <h3 class="text-lg font-bold text-white">{{ sale.name }}</h3>
-                                <span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(sale.status)">{{ sale.status }}</span>
+                                <span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(sale.status)">{{ statusLabel(sale.status) }}</span>
                             </div>
                             <div class="flex gap-2">
-                                <button v-if="canManageMoney" class="btn-secondary px-3 py-1 text-xs" @click="openAddPhase(sale)">+ Phase</button>
-                                <button class="btn-secondary px-3 py-1 text-xs" @click="openEditSale(sale)">Edit</button>
+                                <button v-if="canManageMoney" class="btn-secondary px-3 py-1 text-xs" @click="openAddPhase(sale)">{{ t('admin.tokenSales.sales.addPhase') }}</button>
+                                <button class="btn-secondary px-3 py-1 text-xs" @click="openEditSale(sale)">{{ t('admin.tokenSales.sales.edit') }}</button>
                             </div>
                         </div>
 
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 text-sm">
-                            <div><span class="text-gray-500">Supply</span><p class="text-white font-medium">{{ fmt(sale.total_supply_for_sale) }}</p></div>
-                            <div><span class="text-gray-500">Sold</span><p class="text-trading-green font-medium">{{ fmt(sale.total_sold) }}</p></div>
-                            <div><span class="text-gray-500">Raised</span><p class="text-primary-400 font-medium">${{ fmt(sale.total_raised_usd) }}</p></div>
-                            <div><span class="text-gray-500">Payment</span><p class="text-white">{{ saleChannelsLabel(sale.accept_currencies) }}</p></div>
+                            <div><span class="text-gray-500">{{ t('admin.tokenSales.sales.supply') }}</span><p class="text-white font-medium">{{ fmt(sale.total_supply_for_sale) }}</p></div>
+                            <div><span class="text-gray-500">{{ t('admin.tokenSales.sales.sold') }}</span><p class="text-trading-green font-medium">{{ fmt(sale.total_sold) }}</p></div>
+                            <div><span class="text-gray-500">{{ t('admin.tokenSales.sales.raised') }}</span><p class="text-primary-400 font-medium">${{ fmt(sale.total_raised_usd) }}</p></div>
+                            <div><span class="text-gray-500">{{ t('admin.tokenSales.sales.payment') }}</span><p class="text-white">{{ saleChannelsLabel(sale.accept_currencies) }}</p></div>
                         </div>
 
                         <!-- Phases Table -->
                         <div v-if="sale.phases?.length" class="border-t border-white/5 pt-3 overflow-x-auto">
                             <table class="w-full text-sm min-w-[600px]">
                                 <thead><tr class="text-gray-500 text-xs">
-                                    <th class="text-left py-1 px-2">Phase</th>
-                                    <th class="text-right py-1 px-2">Price</th>
-                                    <th class="text-right py-1 px-2">Allocation</th>
-                                    <th class="text-right py-1 px-2">Sold</th>
+                                    <th class="text-left py-1 px-2">{{ t('admin.tokenSales.phases.phase') }}</th>
+                                    <th class="text-right py-1 px-2">{{ t('admin.tokenSales.phases.price') }}</th>
+                                    <th class="text-right py-1 px-2">{{ t('admin.tokenSales.phases.allocation') }}</th>
+                                    <th class="text-right py-1 px-2">{{ t('admin.tokenSales.phases.sold') }}</th>
                                     <th class="text-right py-1 px-2">%</th>
-                                    <th class="text-center py-1 px-2">TGE</th>
-                                    <th class="text-center py-1 px-2">Vesting</th>
-                                    <th class="text-center py-1 px-2">Status</th>
-                                    <th class="text-center py-1 px-2">ช่วงเวลา</th>
-                                    <th class="text-right py-1 px-2">จัดการ</th>
+                                    <th class="text-center py-1 px-2">{{ t('admin.tokenSales.phases.tge') }}</th>
+                                    <th class="text-center py-1 px-2">{{ t('admin.tokenSales.phases.vesting') }}</th>
+                                    <th class="text-center py-1 px-2">{{ t('admin.tokenSales.phases.status') }}</th>
+                                    <th class="text-center py-1 px-2">{{ t('admin.tokenSales.phases.period') }}</th>
+                                    <th class="text-right py-1 px-2">{{ t('admin.tokenSales.phases.actions') }}</th>
                                 </tr></thead>
                                 <tbody>
                                     <tr v-for="p in sale.phases" :key="p.id" class="border-t border-white/5">
@@ -492,9 +530,9 @@ function statusBadge(s) {
                                         <td class="py-1.5 px-2 text-right text-trading-green">{{ fmt(p.sold) }}</td>
                                         <td class="py-1.5 px-2 text-right text-gray-400">{{ p.allocation > 0 ? ((p.sold / p.allocation) * 100).toFixed(1) : 0 }}%</td>
                                         <td class="py-1.5 px-2 text-center text-gray-300">{{ p.vesting_tge_percent }}%</td>
-                                        <td class="py-1.5 px-2 text-center text-gray-400 text-xs">{{ p.vesting_cliff_days }}d cliff / {{ p.vesting_duration_days }}d</td>
+                                        <td class="py-1.5 px-2 text-center text-gray-400 text-xs">{{ t('admin.tokenSales.phases.vestingSchedule', { cliff: p.vesting_cliff_days, duration: p.vesting_duration_days }) }}</td>
                                         <td class="py-1.5 px-2 text-center">
-                                            <span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(p.status)">{{ p.status }}</span>
+                                            <span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(p.status)">{{ statusLabel(p.status) }}</span>
                                             <!--
                                                 ป้าย status อย่างเดียวหลอกตาได้ — เฟสที่ค้าง active ไว้แต่เลยวันปิด
                                                 จะถูกปฏิเสธทุกการซื้อ ต้องเห็นตรงนี้ทันทีว่าต้องเข้าไปแก้
@@ -502,13 +540,13 @@ function statusBadge(s) {
                                             <span
                                                 v-if="isPhaseExpired(p)"
                                                 class="ml-1 px-2 py-0.5 text-xs rounded-full bg-trading-red/20 text-trading-red border border-trading-red/30"
-                                                title="สถานะเป็น active แต่เลยวันปิดแล้ว — ระบบจะปฏิเสธทุกการซื้อ"
-                                            >หมดอายุ</span>
+                                                :title="t('admin.tokenSales.phases.expiredTitle')"
+                                            >{{ t('admin.tokenSales.phases.expired') }}</span>
                                         </td>
                                         <td class="py-1.5 px-2 text-center text-xs text-gray-400 whitespace-nowrap">
-                                            {{ p.starts_at ? new Date(p.starts_at).toLocaleDateString('th-TH') : '—' }}
+                                            {{ p.starts_at ? displayDate(p.starts_at) : '—' }}
                                             &rarr;
-                                            {{ p.ends_at ? new Date(p.ends_at).toLocaleDateString('th-TH') : '—' }}
+                                            {{ p.ends_at ? displayDate(p.ends_at) : '—' }}
                                         </td>
                                         <td class="py-1.5 px-2 text-right">
                                             <button
@@ -516,7 +554,7 @@ function statusBadge(s) {
                                                 type="button"
                                                 class="px-2 py-1 text-xs rounded-lg bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"
                                                 @click="openEditPhase(sale, p)"
-                                            >แก้ไข</button>
+                                            >{{ t('admin.tokenSales.phases.edit') }}</button>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -525,8 +563,8 @@ function statusBadge(s) {
                     </div>
 
                     <div v-if="!sales.length" class="text-center py-16 text-gray-500">
-                        <p class="text-lg mb-2">No token sales yet</p>
-                        <button v-if="canManageMoney" class="btn-primary px-6 py-2 mt-2" @click="openCreateSale">Create First Sale</button>
+                        <p class="text-lg mb-2">{{ t('admin.tokenSales.sales.empty') }}</p>
+                        <button v-if="canManageMoney" class="btn-primary px-6 py-2 mt-2" @click="openCreateSale">{{ t('admin.tokenSales.sales.createFirst') }}</button>
                     </div>
                 </div>
             </div>
@@ -536,15 +574,15 @@ function statusBadge(s) {
                 <div class="glass-dark rounded-xl border border-white/10 overflow-hidden overflow-x-auto">
                     <table class="w-full text-sm min-w-[600px]">
                         <thead><tr class="border-b border-white/10 text-gray-500 text-xs">
-                            <th class="text-left py-3 px-4">ID</th>
-                            <th class="text-left py-3 px-4">Wallet</th>
-                            <th class="text-left py-3 px-4 hidden sm:table-cell">Payment</th>
-                            <th class="text-right py-3 px-4">USD</th>
-                            <th class="text-right py-3 px-4">TPIX</th>
-                            <th class="text-center py-3 px-4">Status</th>
-                            <th class="text-center py-3 px-4">รหัสอ้างอิง</th>
-                            <th class="text-right py-3 px-4 hidden md:table-cell">Date</th>
-                            <th class="text-right py-3 px-4">จัดการ</th>
+                            <th class="text-left py-3 px-4">{{ t('admin.tokenSales.tx.id') }}</th>
+                            <th class="text-left py-3 px-4">{{ t('admin.tokenSales.tx.wallet') }}</th>
+                            <th class="text-left py-3 px-4 hidden sm:table-cell">{{ t('admin.tokenSales.tx.payment') }}</th>
+                            <th class="text-right py-3 px-4">{{ t('admin.tokenSales.tx.usd') }}</th>
+                            <th class="text-right py-3 px-4">{{ t('admin.tokenSales.tx.tpix') }}</th>
+                            <th class="text-center py-3 px-4">{{ t('admin.tokenSales.tx.status') }}</th>
+                            <th class="text-center py-3 px-4">{{ t('admin.tokenSales.tx.reference') }}</th>
+                            <th class="text-right py-3 px-4 hidden md:table-cell">{{ t('admin.tokenSales.tx.date') }}</th>
+                            <th class="text-right py-3 px-4">{{ t('admin.tokenSales.tx.actions') }}</th>
                         </tr></thead>
                         <tbody>
                             <tr v-for="tx in transactions.data" :key="tx.id" class="border-t border-white/5 hover:bg-white/5">
@@ -553,12 +591,12 @@ function statusBadge(s) {
                                 <td class="py-2 px-4 text-gray-300 hidden sm:table-cell">{{ tx.payment_currency }}</td>
                                 <td class="py-2 px-4 text-right text-white">${{ Number(tx.payment_usd_value).toFixed(2) }}</td>
                                 <td class="py-2 px-4 text-right text-trading-green font-medium">{{ fmt(tx.tpix_amount) }}</td>
-                                <td class="py-2 px-4 text-center"><span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(tx.status)">{{ tx.status }}</span></td>
+                                <td class="py-2 px-4 text-center"><span class="px-2 py-0.5 text-xs rounded-full" :class="statusBadge(tx.status)">{{ statusLabel(tx.status) }}</span></td>
                                 <td class="py-2 px-4 text-center">
                                     <code v-if="bankReference(tx)" class="text-xs text-primary-300">{{ bankReference(tx) }}</code>
                                     <span v-else class="text-gray-600 text-xs">—</span>
                                 </td>
-                                <td class="py-2 px-4 text-right text-gray-500 text-xs hidden md:table-cell">{{ new Date(tx.created_at).toLocaleDateString() }}</td>
+                                <td class="py-2 px-4 text-right text-gray-500 text-xs hidden md:table-cell">{{ displayDate(tx.created_at) }}</td>
                                 <td class="py-2 px-4 text-right whitespace-nowrap">
                                     <!--
                                         ปุ่มโผล่เฉพาะรายการโอนเงินที่ยังรอยืนยัน
@@ -569,12 +607,12 @@ function statusBadge(s) {
                                             class="px-2 py-1 text-xs rounded-lg bg-trading-green/20 text-trading-green hover:bg-trading-green/30 transition disabled:opacity-40"
                                             :disabled="confirmingId === tx.id"
                                             @click="confirmBank(tx)"
-                                        >ได้รับเงินแล้ว</button>
+                                        >{{ t('admin.tokenSales.tx.received') }}</button>
                                         <button
                                             class="ml-1 px-2 py-1 text-xs rounded-lg bg-white/5 text-gray-400 hover:text-trading-red hover:bg-trading-red/10 transition disabled:opacity-40"
                                             :disabled="confirmingId === tx.id"
                                             @click="rejectBank(tx)"
-                                        >ปฏิเสธ</button>
+                                        >{{ t('admin.tokenSales.tx.reject') }}</button>
                                     </template>
                                     <template v-else-if="tx.requeue_payout_tpix || tx.requeue_claim_tpix">
                                         <button
@@ -582,13 +620,13 @@ function statusBadge(s) {
                                             class="px-2 py-1 text-xs rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition disabled:opacity-40"
                                             :disabled="confirmingId === tx.id"
                                             @click="requeuePayout(tx)"
-                                        >เข้าคิวจ่ายใหม่</button>
+                                        >{{ t('admin.tokenSales.tx.requeuePayout') }}</button>
                                         <button
                                             v-if="tx.requeue_claim_tpix"
                                             class="ml-1 px-2 py-1 text-xs rounded-lg bg-primary-500/20 text-primary-400 hover:bg-primary-500/30 transition disabled:opacity-40"
                                             :disabled="confirmingId === tx.id"
                                             @click="requeueClaim(tx)"
-                                        >เข้าคิว claim ใหม่</button>
+                                        >{{ t('admin.tokenSales.tx.requeueClaim') }}</button>
                                     </template>
                                     <span v-else class="text-gray-600 text-xs">—</span>
                                 </td>
@@ -597,7 +635,7 @@ function statusBadge(s) {
                     </table>
 
                     <div v-if="!transactions.data?.length" class="text-center py-12 text-gray-500">
-                        <p>No transactions yet</p>
+                        <p>{{ t('admin.tokenSales.tx.empty') }}</p>
                     </div>
                 </div>
             </div>
@@ -606,45 +644,45 @@ function statusBadge(s) {
             <div v-if="activeTab === 'wallet'">
                 <div class="space-y-4">
                     <div class="glass-dark rounded-xl border border-white/10 p-6">
-                        <h3 class="text-lg font-bold text-white mb-4">💰 Master Wallet — TPIX Chain</h3>
+                        <h3 class="text-lg font-bold text-white mb-4">💰 {{ t('admin.tokenSales.wallet.title') }}</h3>
                         <div class="grid sm:grid-cols-2 gap-6">
                             <div>
-                                <p class="text-xs text-gray-500 mb-1">Wallet Address</p>
-                                <p class="text-sm font-mono text-primary-400 bg-white/5 p-3 rounded-lg break-all">{{ walletInfo.address || 'Not configured' }}</p>
+                                <p class="text-xs text-gray-500 mb-1">{{ t('admin.tokenSales.wallet.address') }}</p>
+                                <p class="text-sm font-mono text-primary-400 bg-white/5 p-3 rounded-lg break-all">{{ walletAddressLabel }}</p>
                             </div>
                             <div>
-                                <p class="text-xs text-gray-500 mb-1">Balance</p>
-                                <p class="text-3xl font-bold text-white">{{ walletInfo.balance_formatted || '0 TPIX' }}</p>
+                                <p class="text-xs text-gray-500 mb-1">{{ t('admin.tokenSales.wallet.balance') }}</p>
+                                <p class="text-3xl font-bold text-white">{{ walletBalanceLabel }}</p>
                             </div>
                             <div>
-                                <p class="text-xs text-gray-500 mb-1">Chain</p>
-                                <p class="text-sm text-gray-300">TPIX Chain (ID: {{ walletInfo.chain_id || 7000 }})</p>
+                                <p class="text-xs text-gray-500 mb-1">{{ t('admin.tokenSales.wallet.chain') }}</p>
+                                <p class="text-sm text-gray-300">{{ t('admin.tokenSales.wallet.chainValue', { id: walletInfo.chain_id || 7000 }) }}</p>
                             </div>
                             <div>
-                                <p class="text-xs text-gray-500 mb-1">RPC URL</p>
+                                <p class="text-xs text-gray-500 mb-1">{{ t('admin.tokenSales.wallet.rpcUrl') }}</p>
                                 <p class="text-sm font-mono text-gray-400">{{ walletInfo.rpc_url || 'https://rpc1.tpix.online' }}</p>
                             </div>
                         </div>
                     </div>
 
                     <div class="glass-dark rounded-xl border border-white/10 p-6">
-                        <h3 class="text-lg font-bold text-white mb-3">🔐 Validator Keys</h3>
-                        <p class="text-sm text-gray-400 mb-3">Private key / mnemonic ของ validator อยู่ที่เซิร์ฟเวอร์:</p>
+                        <h3 class="text-lg font-bold text-white mb-3">🔐 {{ t('admin.tokenSales.wallet.validatorKeys') }}</h3>
+                        <p class="text-sm text-gray-400 mb-3">{{ t('admin.tokenSales.wallet.validatorDesc') }}</p>
                         <div class="bg-white/5 p-4 rounded-lg font-mono text-sm text-gray-400 space-y-1">
                             <p>📁 ~/tpix-infrastructure/tpix-chain/data/consensus/validator.key</p>
                             <p>📁 ~/tpix-infrastructure/tpix-chain/data/consensus/validator-bls.key</p>
                         </div>
-                        <p class="text-xs text-yellow-400 mt-3">⚠️ อย่าเปิดเผย private key กับใคร! ใช้ SSH เข้าเซิร์ฟเวอร์เพื่อดู</p>
+                        <p class="text-xs text-yellow-400 mt-3">⚠️ {{ t('admin.tokenSales.wallet.keyWarning') }}</p>
                     </div>
 
                     <div class="glass-dark rounded-xl border border-white/10 p-6">
-                        <h3 class="text-lg font-bold text-white mb-3">🔗 Quick Links</h3>
+                        <h3 class="text-lg font-bold text-white mb-3">🔗 {{ t('admin.tokenSales.wallet.quickLinks') }}</h3>
                         <div class="grid sm:grid-cols-2 gap-3">
                             <a href="https://explorer.tpix.online" target="_blank" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 hover:bg-white/10 text-primary-400 text-sm">
-                                🔍 TPIX Explorer
+                                🔍 {{ t('admin.tokenSales.wallet.explorer') }}
                             </a>
                             <a href="https://rpc1.tpix.online" target="_blank" class="flex items-center gap-2 p-3 rounded-lg bg-white/5 hover:bg-white/10 text-primary-400 text-sm">
-                                🌐 RPC Endpoint
+                                🌐 {{ t('admin.tokenSales.wallet.rpcEndpoint') }}
                             </a>
                         </div>
                     </div>
@@ -655,68 +693,68 @@ function statusBadge(s) {
             <Teleport to="body">
                 <div v-if="showSaleModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="showSaleModal = false">
                     <div class="glass-dark rounded-xl border border-white/10 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                        <h3 class="text-xl font-bold text-white mb-4">{{ editingSale ? 'Edit Sale' : 'Create Token Sale' }}</h3>
+                        <h3 class="text-xl font-bold text-white mb-4">{{ editingSale ? t('admin.tokenSales.saleModal.editTitle') : t('admin.tokenSales.saleModal.createTitle') }}</h3>
                         <form @submit.prevent="submitSale" class="space-y-4">
                             <div>
-                                <label class="block text-sm text-gray-400 mb-1">Name</label>
-                                <input v-model="saleForm.name" class="trading-input w-full" placeholder="TPIX ICO Round 1" />
+                                <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.saleModal.name') }}</label>
+                                <input v-model="saleForm.name" class="trading-input w-full" :placeholder="t('admin.tokenSales.saleModal.namePlaceholder')" />
                             </div>
                             <div>
-                                <label class="block text-sm text-gray-400 mb-1">Description</label>
+                                <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.saleModal.description') }}</label>
                                 <textarea v-model="saleForm.description" class="trading-input w-full" rows="2" />
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Supply for Sale</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.saleModal.supply') }}</label>
                                     <input v-model.number="saleForm.total_supply_for_sale" type="number" class="trading-input w-full" />
                                 </div>
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Status</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.saleModal.status') }}</label>
                                     <select v-model="saleForm.status" class="trading-input w-full">
-                                        <option value="draft">Draft</option>
-                                        <option value="upcoming">Upcoming</option>
-                                        <option value="active">Active</option>
-                                        <option value="paused">Paused</option>
-                                        <option value="completed">Completed</option>
+                                        <option value="draft">{{ t('admin.tokenSales.status.draft') }}</option>
+                                        <option value="upcoming">{{ t('admin.tokenSales.status.upcoming') }}</option>
+                                        <option value="active">{{ t('admin.tokenSales.status.active') }}</option>
+                                        <option value="paused">{{ t('admin.tokenSales.status.paused') }}</option>
+                                        <option value="completed">{{ t('admin.tokenSales.status.completed') }}</option>
                                     </select>
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-sm text-gray-400 mb-1">Sale Wallet Address</label>
+                                <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.saleModal.wallet') }}</label>
                                 <input v-model="saleForm.sale_wallet_address" class="trading-input w-full font-mono text-sm" placeholder="0x..." />
-                                <p class="mt-1 text-xs text-gray-500">ใช้กับทาง USDT เท่านั้น ถ้าไม่เปิดรับ USDT เว้นว่างได้</p>
+                                <p class="mt-1 text-xs text-gray-500">{{ t('admin.tokenSales.saleModal.walletHint') }}</p>
                                 <p v-if="saleForm.errors.sale_wallet_address" class="mt-1 text-sm text-red-400">{{ saleForm.errors.sale_wallet_address }}</p>
                             </div>
                             <div>
-                                <label class="block text-sm text-gray-400 mb-1">ช่องทางรับเงิน</label>
+                                <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.saleModal.channels') }}</label>
                                 <div class="space-y-2">
                                     <label class="flex items-center gap-2 text-sm text-gray-300">
                                         <input type="checkbox" checked disabled class="w-4 h-4 rounded bg-dark-800 border-white/20" />
-                                        <span>บัตรเครดิต/เดบิต</span>
-                                        <span class="text-xs text-gray-500">เปิดเสมอ</span>
+                                        <span>{{ t('admin.tokenSales.saleModal.card') }}</span>
+                                        <span class="text-xs text-gray-500">{{ t('admin.tokenSales.saleModal.alwaysOn') }}</span>
                                     </label>
                                     <label v-for="channel in OPTIONAL_CHANNELS" :key="channel.id" class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
                                         <input v-model="saleForm.accept_currencies" type="checkbox" :value="channel.id" class="w-4 h-4 rounded bg-dark-800 border-white/20" />
-                                        <span>{{ channel.label }}</span>
-                                        <span class="text-xs text-gray-500">{{ channel.hint }}</span>
+                                        <span>{{ t(`${channel.keyBase}.label`) }}</span>
+                                        <span class="text-xs text-gray-500">{{ t(`${channel.keyBase}.hint`) }}</span>
                                     </label>
                                 </div>
                                 <p v-if="saleForm.errors.accept_currencies" class="mt-1 text-sm text-red-400">{{ saleForm.errors.accept_currencies }}</p>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Starts At</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.saleModal.startsAt') }}</label>
                                     <input v-model="saleForm.starts_at" type="datetime-local" class="trading-input w-full" />
                                 </div>
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Ends At</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.saleModal.endsAt') }}</label>
                                     <input v-model="saleForm.ends_at" type="datetime-local" class="trading-input w-full" />
                                 </div>
                             </div>
                             <div class="flex gap-3 pt-2">
-                                <button v-if="canManageMoney" type="submit" class="btn-primary px-6 py-2 font-semibold" :disabled="saleForm.processing">{{ editingSale ? 'Update' : 'Create' }}</button>
-                                <p v-else class="text-xs text-amber-300 self-center">รอบขายมีกระเป๋ารับเงิน แก้ได้เฉพาะ Super Admin</p>
-                                <button type="button" class="btn-secondary px-6 py-2" @click="showSaleModal = false">Cancel</button>
+                                <button v-if="canManageMoney" type="submit" class="btn-primary px-6 py-2 font-semibold" :disabled="saleForm.processing">{{ editingSale ? t('admin.tokenSales.saleModal.update') : t('admin.tokenSales.saleModal.create') }}</button>
+                                <p v-else class="text-xs text-amber-300 self-center">{{ t('admin.tokenSales.saleModal.superAdminOnly') }}</p>
+                                <button type="button" class="btn-secondary px-6 py-2" @click="showSaleModal = false">{{ t('common.cancel') }}</button>
                             </div>
                         </form>
                     </div>
@@ -727,71 +765,71 @@ function statusBadge(s) {
             <Teleport to="body">
                 <div v-if="showPhaseModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="showPhaseModal = false">
                     <div class="glass-dark rounded-xl border border-white/10 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                        <h3 class="text-xl font-bold text-white mb-4">{{ phaseForm.id ? 'แก้ไขเฟสรอบขาย' : 'Add Sale Phase' }}</h3>
+                        <h3 class="text-xl font-bold text-white mb-4">{{ phaseForm.id ? t('admin.tokenSales.phaseModal.editTitle') : t('admin.tokenSales.phaseModal.addTitle') }}</h3>
                         <form @submit.prevent="submitPhase" class="space-y-4">
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Phase Name</label>
-                                    <input v-model="phaseForm.name" class="trading-input w-full" placeholder="Private Sale" />
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.name') }}</label>
+                                    <input v-model="phaseForm.name" class="trading-input w-full" :placeholder="t('admin.tokenSales.phaseModal.namePlaceholder')" />
                                 </div>
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Order</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.order') }}</label>
                                     <input v-model.number="phaseForm.phase_order" type="number" class="trading-input w-full" />
                                 </div>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">ความยาวเฟส (วัน)</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.duration') }}</label>
                                     <input v-model.number="phaseForm.duration_days" type="number" min="1" class="trading-input w-full" />
-                                    <p class="text-xs text-gray-500 mt-1">ใช้คำนวณวันจริงตอนกด "เปิดรอบขาย"</p>
+                                    <p class="text-xs text-gray-500 mt-1">{{ t('admin.tokenSales.phaseModal.durationHint') }}</p>
                                 </div>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Price (USD)</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.price') }}</label>
                                     <input v-model.number="phaseForm.price_usd" type="number" step="0.001" class="trading-input w-full" />
                                 </div>
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Allocation (TPIX)</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.allocation') }}</label>
                                     <input v-model.number="phaseForm.allocation" type="number" class="trading-input w-full" />
                                 </div>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Min Purchase</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.minPurchase') }}</label>
                                     <input v-model.number="phaseForm.min_purchase" type="number" class="trading-input w-full" />
                                 </div>
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Max Purchase</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.maxPurchase') }}</label>
                                     <input v-model.number="phaseForm.max_purchase" type="number" class="trading-input w-full" />
                                 </div>
                             </div>
-                            <h4 class="text-sm font-semibold text-white pt-2">Vesting</h4>
+                            <h4 class="text-sm font-semibold text-white pt-2">{{ t('admin.tokenSales.phaseModal.vesting') }}</h4>
                             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">TGE %</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.tge') }}</label>
                                     <input v-model.number="phaseForm.vesting_tge_percent" type="number" class="trading-input w-full" />
                                 </div>
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Cliff (days)</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.cliff') }}</label>
                                     <input v-model.number="phaseForm.vesting_cliff_days" type="number" class="trading-input w-full" />
                                 </div>
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Duration (days)</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.vestingDuration') }}</label>
                                     <input v-model.number="phaseForm.vesting_duration_days" type="number" class="trading-input w-full" />
                                 </div>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Status</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.status') }}</label>
                                     <select v-model="phaseForm.status" class="trading-input w-full">
-                                        <option value="upcoming">Upcoming</option>
-                                        <option value="active">Active</option>
-                                        <option value="completed">Completed</option>
+                                        <option value="upcoming">{{ t('admin.tokenSales.status.upcoming') }}</option>
+                                        <option value="active">{{ t('admin.tokenSales.status.active') }}</option>
+                                        <option value="completed">{{ t('admin.tokenSales.status.completed') }}</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="block text-sm text-gray-400 mb-1">Starts At</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.startsAt') }}</label>
                                     <input v-model="phaseForm.starts_at" type="datetime-local" class="trading-input w-full" />
                                 </div>
                             </div>
@@ -801,9 +839,9 @@ function statusBadge(s) {
                                         ช่องนี้เคยไม่มีในฟอร์มเลย ทั้งที่เป็นค่าที่ตัดสินว่าเฟสยังขายได้ไหม
                                         เฟสที่เลย ends_at จะถูกปฏิเสธทุกการซื้อ แต่แอดมินแก้ไม่ได้
                                     -->
-                                    <label class="block text-sm text-gray-400 mb-1">Ends At</label>
+                                    <label class="block text-sm text-gray-400 mb-1">{{ t('admin.tokenSales.phaseModal.endsAt') }}</label>
                                     <input v-model="phaseForm.ends_at" type="datetime-local" class="trading-input w-full" />
-                                    <p class="mt-1 text-xs text-gray-500">ว่างไว้ = ไม่จำกัดวันปิด</p>
+                                    <p class="mt-1 text-xs text-gray-500">{{ t('admin.tokenSales.phaseModal.endsAtHint') }}</p>
                                 </div>
                             </div>
                             <!-- แสดง error จากเซิร์ฟเวอร์ ไม่งั้นกดบันทึกแล้วเงียบ ไม่รู้ว่าติดอะไร -->
@@ -811,8 +849,8 @@ function statusBadge(s) {
                                 <p v-for="(msg, field) in phaseForm.errors" :key="field" class="text-xs text-trading-red">{{ msg }}</p>
                             </div>
                             <div class="flex gap-3 pt-2">
-                                <button type="submit" class="btn-primary px-6 py-2 font-semibold" :disabled="phaseForm.processing">{{ phaseForm.processing ? 'กำลังบันทึก...' : (phaseForm.id ? 'บันทึกการแก้ไข' : 'Add Phase') }}</button>
-                                <button type="button" class="btn-secondary px-6 py-2" @click="showPhaseModal = false">Cancel</button>
+                                <button type="submit" class="btn-primary px-6 py-2 font-semibold" :disabled="phaseForm.processing">{{ phaseForm.processing ? t('admin.tokenSales.phaseModal.saving') : (phaseForm.id ? t('admin.tokenSales.phaseModal.saveChanges') : t('admin.tokenSales.phaseModal.add')) }}</button>
+                                <button type="button" class="btn-secondary px-6 py-2" @click="showPhaseModal = false">{{ t('common.cancel') }}</button>
                             </div>
                         </form>
                     </div>

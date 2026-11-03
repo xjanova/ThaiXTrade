@@ -8,6 +8,9 @@
 import { ref, computed } from 'vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const step = ref(1);
 const totalSteps = 3;
@@ -42,7 +45,7 @@ function submitSetup() {
 </script>
 
 <template>
-    <Head title="TPIX TRADE — First Time Setup" />
+    <Head :title="t('admin.setupWizard.pageTitle')" />
 
     <div class="min-h-screen bg-dark-950 flex items-center justify-center p-4">
         <!-- Subtle background -->
@@ -56,7 +59,7 @@ function submitSetup() {
             <div class="text-center mb-8">
                 <BrandLogo variant="mark" class="w-20 h-20 mx-auto mb-4" />
                 <h1 class="text-3xl font-black text-white">TPIX <span class="text-cyan-400">TRADE</span></h1>
-                <p class="text-gray-500 mt-1">Super Admin Setup Wizard</p>
+                <p class="text-gray-500 mt-1">{{ t('admin.setupWizard.subtitle') }}</p>
             </div>
 
             <!-- Progress -->
@@ -72,18 +75,18 @@ function submitSetup() {
 
                 <!-- Step 1: Admin Info -->
                 <div v-if="step === 1">
-                    <h2 class="text-xl font-bold text-white mb-1">👤 สร้างบัญชี Super Admin</h2>
-                    <p class="text-sm text-gray-500 mb-6">Create your administrator account</p>
+                    <h2 class="text-xl font-bold text-white mb-1">👤 {{ t('admin.setupWizard.step1.title') }}</h2>
+                    <p class="text-sm text-gray-500 mb-6">{{ t('admin.setupWizard.step1.description') }}</p>
 
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm text-gray-400 mb-1">ชื่อ / Name</label>
-                            <input v-model="form.name" type="text" placeholder="Admin Name"
+                            <label class="block text-sm text-gray-400 mb-1">{{ t('admin.setupWizard.step1.name') }}</label>
+                            <input v-model="form.name" type="text" :placeholder="t('admin.setupWizard.step1.namePlaceholder')"
                                 class="w-full bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none" />
                             <p v-if="form.errors.name" class="text-red-400 text-xs mt-1">{{ form.errors.name }}</p>
                         </div>
                         <div>
-                            <label class="block text-sm text-gray-400 mb-1">อีเมล / Email</label>
+                            <label class="block text-sm text-gray-400 mb-1">{{ t('admin.setupWizard.step1.email') }}</label>
                             <input v-model="form.email" type="email" placeholder="admin@tpix.online"
                                 class="w-full bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none" />
                             <p v-if="form.errors.email" class="text-red-400 text-xs mt-1">{{ form.errors.email }}</p>
@@ -93,73 +96,73 @@ function submitSetup() {
                     <button @click="nextStep" :disabled="!canProceedStep1"
                         class="w-full mt-6 py-3 rounded-xl font-bold text-white transition"
                         :class="canProceedStep1 ? 'bg-cyan-500 hover:bg-cyan-600' : 'bg-gray-700 cursor-not-allowed'">
-                        ถัดไป →
+                        {{ t('admin.setupWizard.next') }} →
                     </button>
                 </div>
 
                 <!-- Step 2: Password -->
                 <div v-if="step === 2">
-                    <h2 class="text-xl font-bold text-white mb-1">🔒 ตั้งรหัสผ่าน</h2>
-                    <p class="text-sm text-gray-500 mb-6">Set a strong password (min 8 characters)</p>
+                    <h2 class="text-xl font-bold text-white mb-1">🔒 {{ t('admin.setupWizard.step2.title') }}</h2>
+                    <p class="text-sm text-gray-500 mb-6">{{ t('admin.setupWizard.step2.description') }}</p>
 
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm text-gray-400 mb-1">รหัสผ่าน / Password</label>
+                            <label class="block text-sm text-gray-400 mb-1">{{ t('admin.setupWizard.step2.password') }}</label>
                             <input v-model="form.password" type="password" placeholder="••••••••"
                                 class="w-full bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none" />
                         </div>
                         <div>
-                            <label class="block text-sm text-gray-400 mb-1">ยืนยันรหัสผ่าน / Confirm</label>
+                            <label class="block text-sm text-gray-400 mb-1">{{ t('admin.setupWizard.step2.confirm') }}</label>
                             <input v-model="form.password_confirmation" type="password" placeholder="••••••••"
                                 class="w-full bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none" />
                             <p v-if="form.password && form.password_confirmation && form.password !== form.password_confirmation"
-                                class="text-red-400 text-xs mt-1">รหัสผ่านไม่ตรงกัน</p>
+                                class="text-red-400 text-xs mt-1">{{ t('admin.setupWizard.step2.mismatch') }}</p>
                         </div>
                     </div>
 
                     <div class="flex gap-3 mt-6">
                         <button @click="prevStep" class="flex-1 py-3 rounded-xl font-bold text-gray-400 border border-white/10 hover:bg-white/5 transition">
-                            ← ย้อนกลับ
+                            ← {{ t('admin.setupWizard.back') }}
                         </button>
                         <button @click="nextStep" :disabled="!canProceedStep2"
                             class="flex-1 py-3 rounded-xl font-bold text-white transition"
                             :class="canProceedStep2 ? 'bg-cyan-500 hover:bg-cyan-600' : 'bg-gray-700 cursor-not-allowed'">
-                            ถัดไป →
+                            {{ t('admin.setupWizard.next') }} →
                         </button>
                     </div>
                 </div>
 
                 <!-- Step 3: Fee Wallet + Confirm -->
                 <div v-if="step === 3">
-                    <h2 class="text-xl font-bold text-white mb-1">💰 กระเป๋ารับค่าธรรมเนียม</h2>
-                    <p class="text-sm text-gray-500 mb-6">Fee collector wallet (optional — can set later in admin)</p>
+                    <h2 class="text-xl font-bold text-white mb-1">💰 {{ t('admin.setupWizard.step3.title') }}</h2>
+                    <p class="text-sm text-gray-500 mb-6">{{ t('admin.setupWizard.step3.description') }}</p>
 
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm text-gray-400 mb-1">Wallet Address (0x...)</label>
+                            <label class="block text-sm text-gray-400 mb-1">{{ t('admin.setupWizard.step3.walletAddress') }}</label>
                             <input v-model="form.fee_collector_wallet" type="text" placeholder="0x..."
                                 class="w-full bg-dark-800 border border-white/10 rounded-xl px-4 py-3 text-white font-mono text-sm focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none" />
-                            <p class="text-xs text-gray-600 mt-1">ที่อยู่กระเป๋าสำหรับรับค่า fee จากการเทรด/swap</p>
+                            <p class="text-xs text-gray-600 mt-1">{{ t('admin.setupWizard.step3.walletHint') }}</p>
                         </div>
 
                         <!-- Summary -->
                         <div class="bg-dark-800/50 rounded-xl p-4 border border-white/5">
-                            <h3 class="text-sm font-bold text-gray-400 mb-3">สรุปการตั้งค่า</h3>
+                            <h3 class="text-sm font-bold text-gray-400 mb-3">{{ t('admin.setupWizard.summary.title') }}</h3>
                             <div class="space-y-2 text-sm">
                                 <div class="flex justify-between">
-                                    <span class="text-gray-500">Name</span>
+                                    <span class="text-gray-500">{{ t('admin.setupWizard.summary.name') }}</span>
                                     <span class="text-white font-medium">{{ form.name }}</span>
                                 </div>
                                 <div class="flex justify-between">
-                                    <span class="text-gray-500">Email</span>
+                                    <span class="text-gray-500">{{ t('admin.setupWizard.summary.email') }}</span>
                                     <span class="text-cyan-400">{{ form.email }}</span>
                                 </div>
                                 <div class="flex justify-between">
-                                    <span class="text-gray-500">Role</span>
-                                    <span class="text-amber-400 font-semibold">Super Admin</span>
+                                    <span class="text-gray-500">{{ t('admin.setupWizard.summary.role') }}</span>
+                                    <span class="text-amber-400 font-semibold">{{ t('admin.setupWizard.summary.superAdmin') }}</span>
                                 </div>
                                 <div class="flex justify-between" v-if="form.fee_collector_wallet">
-                                    <span class="text-gray-500">Fee Wallet</span>
+                                    <span class="text-gray-500">{{ t('admin.setupWizard.summary.feeWallet') }}</span>
                                     <span class="text-green-400 font-mono text-xs">{{ form.fee_collector_wallet.slice(0, 10) }}...{{ form.fee_collector_wallet.slice(-6) }}</span>
                                 </div>
                             </div>
@@ -168,11 +171,11 @@ function submitSetup() {
 
                     <div class="flex gap-3 mt-6">
                         <button @click="prevStep" class="flex-1 py-3 rounded-xl font-bold text-gray-400 border border-white/10 hover:bg-white/5 transition">
-                            ← ย้อนกลับ
+                            ← {{ t('admin.setupWizard.back') }}
                         </button>
                         <button @click="submitSetup" :disabled="isSubmitting"
                             class="flex-1 py-3 rounded-xl font-bold text-white bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 transition disabled:opacity-50">
-                            {{ isSubmitting ? 'กำลังสร้าง...' : '✨ เริ่มต้นใช้งาน' }}
+                            {{ isSubmitting ? t('admin.setupWizard.creating') : '✨ ' + t('admin.setupWizard.getStarted') }}
                         </button>
                     </div>
                 </div>
@@ -180,7 +183,7 @@ function submitSetup() {
 
             <!-- Footer -->
             <p class="text-center text-xs text-gray-600 mt-6">
-                TPIX TRADE v1.0 · Developed by Xman Studio
+                TPIX TRADE v1.0 · {{ t('admin.setupWizard.footer') }}
             </p>
         </div>
     </div>

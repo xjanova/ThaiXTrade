@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import { C, clamp, smoothstep, glowTexture, coinFaceTexture, createLabel, loadTexture, loadImage, canvasTexture } from './common.js';
+import { t as translate, currentLocale } from '@/Composables/useTranslation';
 
 const approach = (cur, target, k, dt) => cur + (target - cur) * (1 - Math.exp(-k * dt));
 
@@ -247,9 +248,9 @@ export function buildTickers() {
 export function buildSale({ onCoinLand } = {}) {
     const group = new THREE.Group();
     const stacks = [
-        { label: 'Private', price: '$0.05', n: 7, x: -4.8 },
-        { label: 'Pre-Sale', price: '$0.08', n: 11, x: 0 },
-        { label: 'Public', price: '$0.10', n: 15, x: 4.8 },
+        { labelKey: 'ui.home3DWorldStationsWorld.sale.private', price: '$0.05', n: 7, x: -4.8 },
+        { labelKey: 'ui.home3DWorldStationsWorld.sale.preSale', price: '$0.08', n: 11, x: 0 },
+        { labelKey: 'ui.home3DWorldStationsWorld.sale.public', price: '$0.10', n: 15, x: 4.8 },
     ];
     const total = stacks.reduce((a, s) => a + s.n, 0);
     const coinGeo = new THREE.CylinderGeometry(1.25, 1.25, 0.26, 48);
@@ -260,19 +261,29 @@ export function buildSale({ onCoinLand } = {}) {
     group.add(mesh);
     const coins = [];
     const labels = [];
+    const labelObjs = [];
+    // ป้ายวาดลง canvas ครั้งเดียว — จำภาษาที่วาดไว้ แล้ววาดใหม่ใน update() เมื่อผู้ใช้สลับภาษา
+    let drawnLocale = null;
+    const drawLabels = () => {
+        drawnLocale = currentLocale.value;
+        labelObjs.forEach((label, i) => {
+            label.set([
+                { text: translate(stacks[i].labelKey), size: 44, color: '#fcd34d' },
+                { text: stacks[i].price, size: 48, color: '#ffffff', font: 'ui-monospace, Menlo, monospace' },
+            ], { border: '#f6bd35' });
+        });
+    };
     stacks.forEach((s) => {
         for (let i = 0; i < s.n; i++) {
             coins.push({ x: s.x + (Math.random() - 0.5) * 0.14, y: 0.13 + i * 0.28, z: (Math.random() - 0.5) * 0.14, rot: Math.random() * 6, delay: i * 0.05 + Math.abs(s.x) * 0.02, landed: false });
         }
         const label = createLabel({ width: 420, height: 150, scale: 3 });
-        label.set([
-            { text: s.label, size: 44, color: '#fcd34d' },
-            { text: s.price, size: 48, color: '#ffffff', font: 'ui-monospace, Menlo, monospace' },
-        ], { border: '#f6bd35' });
+        labelObjs.push(label);
         label.sprite.position.set(s.x, 0.4 + s.n * 0.28 + 1.3, 0);
         group.add(label.sprite);
         labels.push(label.sprite);
     });
+    drawLabels();
     // พื้นที่กด: กล่องใสครอบทั้งสามกอง
     const hitBox = new THREE.Mesh(new THREE.BoxGeometry(14, 6.5, 3.5), new THREE.MeshBasicMaterial({ visible: false }));
     hitBox.position.y = 3;
@@ -294,6 +305,7 @@ export function buildSale({ onCoinLand } = {}) {
             hovered = key === 'sale';
         },
         update(t, dt, focus) {
+            if (drawnLocale !== currentLocale.value) drawLabels();
             if (focus > 0.3) built = Math.min(1, built + dt / 2.2);
             hover = approach(hover, hovered ? 1 : 0, 8, dt);
             coinMat.emissive.setRGB(0.35 * hover, 0.22 * hover, 0);

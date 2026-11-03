@@ -10,6 +10,9 @@
 import { computed } from 'vue';
 import { Head, Link, useForm, router, usePage } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     submissions: { type: Object, default: () => ({ data: [] }) },
@@ -21,11 +24,11 @@ const props = defineProps({
 const flash = computed(() => usePage().props.flash || {});
 
 const TABS = [
-    { key: 'pending', label: 'รอตรวจ' },
-    { key: 'approved', label: 'อนุมัติแล้ว' },
-    { key: 'rejected', label: 'ไม่ผ่าน' },
-    { key: 'cancelled', label: 'ยกเลิก' },
-    { key: 'all', label: 'ทั้งหมด' },
+    { key: 'pending', label: 'admin.kyc.tabs.pending' },
+    { key: 'approved', label: 'admin.kyc.tabs.approved' },
+    { key: 'rejected', label: 'admin.kyc.tabs.rejected' },
+    { key: 'cancelled', label: 'admin.kyc.tabs.cancelled' },
+    { key: 'all', label: 'admin.kyc.tabs.all' },
 ];
 
 const setStatus = (status) => {
@@ -60,27 +63,37 @@ const STATUS_CLS = {
 };
 
 const STATUS_LABEL = {
-    pending: 'รอตรวจ',
-    approved: 'อนุมัติ',
-    rejected: 'ไม่ผ่าน',
-    cancelled: 'ยกเลิก',
-    expired: 'หมดอายุ',
+    pending: 'admin.kyc.status.pending',
+    approved: 'admin.kyc.status.approved',
+    rejected: 'admin.kyc.status.rejected',
+    cancelled: 'admin.kyc.status.cancelled',
+    expired: 'admin.kyc.status.expired',
 };
 
-const formatDate = (iso) => (iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+const formatDate = (iso) => (iso ? new Date(iso).toLocaleString(locale.value === 'th' ? 'th-TH' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+
+// ป้ายด่านมาจากเซิร์ฟเวอร์ — มี label_en ให้ ส่วนคำอธิบายมีแค่ภาษาไทย
+const gateLabel = (g) => (locale.value === 'en' && g?.label_en ? g.label_en : g?.label_th);
+
+// คำอธิบายด่านแปลฝั่งหน้าเว็บตามคีย์ด่าน — ด่านใหม่ที่ยังไม่มีคำแปลจะใช้ desc_th จากเซิร์ฟเวอร์
+const gateDesc = (key, g) => {
+    const k = `admin.kyc.gateDesc.${key}`;
+    const text = t(k);
+    return text === k ? g?.desc_th : text;
+};
 
 const shortWallet = (w) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : '—');
 </script>
 
 <template>
-    <Head title="ยืนยันตัวตน — หลังบ้าน" />
+    <Head :title="t('admin.kyc.pageTitle')" />
 
     <AdminLayout>
         <div class="kyc-admin">
             <header class="page-head">
-                <h1>ยืนยันตัวตน (KYC)</h1>
+                <h1>{{ t('admin.kyc.header.title') }}</h1>
                 <Link href="/admin/kyc/deletions" class="link-deletions">
-                    คำขอลบข้อมูล
+                    {{ t('admin.kyc.header.deletionRequests') }}
                     <span v-if="counts.deletion_pending" class="pill-alert">{{ counts.deletion_pending }}</span>
                 </Link>
             </header>
@@ -89,45 +102,42 @@ const shortWallet = (w) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : '—');
 
             <!-- ── ตั้งค่าด่าน ──────────────────────────────────────────── -->
             <section class="card">
-                <h2 class="card-title">ด่านยืนยันตัวตน</h2>
+                <h2 class="card-title">{{ t('admin.kyc.gates.title') }}</h2>
 
                 <label class="master-switch">
                     <input v-model="settingsForm.enabled" type="checkbox" />
                     <div>
-                        <strong>เปิดใช้ระบบยืนยันตัวตน</strong>
-                        <span>
-                            สวิตช์ใหญ่ — ปิดอันนี้แล้วทุกด่านข้างล่างหยุดทำงานพร้อมกัน
-                            (มีไว้ปลดล็อกผู้ใช้ทั้งเว็บได้ในคลิกเดียวถ้าคิวตรวจมีปัญหา)
-                        </span>
+                        <strong>{{ t('admin.kyc.gates.masterSwitch') }}</strong>
+                        <span>{{ t('admin.kyc.gates.masterSwitchHint') }}</span>
                     </div>
                 </label>
 
                 <div v-if="armedButDisabled.length" class="warn-box">
-                    เปิดด่านไว้ {{ armedButDisabled.length }} รายการ แต่สวิตช์ใหญ่ยังปิดอยู่ —
-                    <strong>ตอนนี้ยังไม่มีด่านไหนทำงานจริง</strong>
+                    {{ t('admin.kyc.gates.armedButDisabled', { n: armedButDisabled.length }) }}
+                    <strong>{{ t('admin.kyc.gates.noneActive') }}</strong>
                 </div>
 
                 <table class="gate-table">
                     <thead>
                         <tr>
-                            <th>ฟีเจอร์</th>
-                            <th class="col-narrow">บังคับ KYC</th>
-                            <th class="col-narrow">ระดับที่ต้องผ่าน</th>
+                            <th>{{ t('admin.kyc.gates.colFeature') }}</th>
+                            <th class="col-narrow">{{ t('admin.kyc.gates.colRequire') }}</th>
+                            <th class="col-narrow">{{ t('admin.kyc.gates.colLevel') }}</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="key in gateKeys" :key="key">
                             <td>
-                                <strong>{{ settingsForm.gates[key].label_th }}</strong>
-                                <span class="gate-desc">{{ settingsForm.gates[key].desc_th }}</span>
+                                <strong>{{ gateLabel(settingsForm.gates[key]) }}</strong>
+                                <span class="gate-desc">{{ gateDesc(key, settingsForm.gates[key]) }}</span>
                             </td>
                             <td class="col-narrow">
                                 <input v-model="settingsForm.gates[key].enabled" type="checkbox" />
                             </td>
                             <td class="col-narrow">
                                 <select v-model="settingsForm.gates[key].level" class="input-sm">
-                                    <option value="basic">ปกติ</option>
-                                    <option value="enhanced">เพิ่มเติม</option>
+                                    <option value="basic">{{ t('admin.kyc.level.basic') }}</option>
+                                    <option value="enhanced">{{ t('admin.kyc.level.enhanced') }}</option>
                                 </select>
                             </td>
                         </tr>
@@ -136,34 +146,28 @@ const shortWallet = (w) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : '—');
 
                 <div class="settings-row">
                     <div class="field">
-                        <label>เก็บข้อมูลไว้กี่วัน</label>
+                        <label>{{ t('admin.kyc.settings.retentionLabel') }}</label>
                         <input v-model.number="settingsForm.retention_days" type="number" min="1" class="input-sm" />
-                        <p class="field-hint">
-                            ครบกำหนดแล้วระบบลบเอกสารและข้อมูลส่วนตัวอัตโนมัติทุกวันตี 3
-                            (PDPA ไม่ให้เก็บเกินความจำเป็น)
-                        </p>
+                        <p class="field-hint">{{ t('admin.kyc.settings.retentionHint') }}</p>
                     </div>
 
                     <div class="field">
-                        <label>เวอร์ชันข้อความยินยอม</label>
+                        <label>{{ t('admin.kyc.settings.consentLabel') }}</label>
                         <input v-model="settingsForm.consent_version" type="text" class="input-sm" />
-                        <p class="field-hint">
-                            แก้ข้อความยินยอมเมื่อไหร่ ต้องขยับเลขนี้ด้วย
-                            ไม่งั้นพิสูจน์ทีหลังไม่ได้ว่าผู้ใช้ยินยอมข้อความชุดไหน
-                        </p>
+                        <p class="field-hint">{{ t('admin.kyc.settings.consentHint') }}</p>
                     </div>
                 </div>
 
                 <button class="btn-primary" :disabled="settingsForm.processing" @click="saveSettings">
-                    {{ settingsForm.processing ? 'กำลังบันทึก…' : 'บันทึกการตั้งค่า' }}
+                    {{ settingsForm.processing ? t('admin.kyc.settings.saving') : t('admin.kyc.settings.save') }}
                 </button>
             </section>
 
             <!-- ── คิวตรวจ ──────────────────────────────────────────────── -->
             <section class="card">
                 <h2 class="card-title">
-                    คิวตรวจ
-                    <span v-if="counts.pending" class="pill-alert">{{ counts.pending }} รอตรวจ</span>
+                    {{ t('admin.kyc.queue.title') }}
+                    <span v-if="counts.pending" class="pill-alert">{{ t('admin.kyc.queue.pendingCount', { n: counts.pending }) }}</span>
                 </h2>
 
                 <div class="tabs">
@@ -174,7 +178,7 @@ const shortWallet = (w) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : '—');
                         :class="{ 'tab--active': filters.status === tab.key }"
                         @click="setStatus(tab.key)"
                     >
-                        {{ tab.label }}
+                        {{ t(tab.label) }}
                         <span v-if="counts[tab.key]" class="tab-count">{{ counts[tab.key] }}</span>
                     </button>
                 </div>
@@ -182,11 +186,11 @@ const shortWallet = (w) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : '—');
                 <table v-if="submissions.data.length" class="data-table">
                     <thead>
                         <tr>
-                            <th>ผู้ยื่น</th>
-                            <th>ชื่อตามบัตร</th>
-                            <th>ระดับ</th>
-                            <th>สถานะ</th>
-                            <th>ยื่นเมื่อ</th>
+                            <th>{{ t('admin.kyc.queue.colApplicant') }}</th>
+                            <th>{{ t('admin.kyc.queue.colName') }}</th>
+                            <th>{{ t('admin.kyc.queue.colLevel') }}</th>
+                            <th>{{ t('admin.kyc.queue.colStatus') }}</th>
+                            <th>{{ t('admin.kyc.queue.colSubmitted') }}</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -199,21 +203,21 @@ const shortWallet = (w) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : '—');
                                 </div>
                             </td>
                             <td>
-                                <span v-if="s.purged_at" class="purged-tag">ลบข้อมูลแล้ว</span>
-                                <span v-else-if="s.source === 'thaiprompt'" class="purged-tag">ยืนยันผ่าน Thaiprompt</span>
+                                <span v-if="s.purged_at" class="purged-tag">{{ t('admin.kyc.queue.purged') }}</span>
+                                <span v-else-if="s.source === 'thaiprompt'" class="purged-tag">{{ t('admin.kyc.queue.viaThaiprompt') }}</span>
                                 <template v-else>{{ s.full_name || '—' }}</template>
                             </td>
-                            <td>{{ s.level === 'enhanced' ? 'เพิ่มเติม' : 'ปกติ' }}</td>
-                            <td><span class="badge" :class="STATUS_CLS[s.status]">{{ STATUS_LABEL[s.status] }}</span></td>
+                            <td>{{ s.level === 'enhanced' ? t('admin.kyc.level.enhanced') : t('admin.kyc.level.basic') }}</td>
+                            <td><span class="badge" :class="STATUS_CLS[s.status]">{{ STATUS_LABEL[s.status] ? t(STATUS_LABEL[s.status]) : s.status }}</span></td>
                             <td class="col-date">{{ formatDate(s.submitted_at) }}</td>
                             <td>
-                                <Link :href="`/admin/kyc/${s.uuid}`" class="btn-sm">ตรวจ</Link>
+                                <Link :href="`/admin/kyc/${s.uuid}`" class="btn-sm">{{ t('admin.kyc.queue.review') }}</Link>
                             </td>
                         </tr>
                     </tbody>
                 </table>
 
-                <p v-else class="empty-note">ไม่มีรายการในหมวดนี้</p>
+                <p v-else class="empty-note">{{ t('admin.kyc.queue.empty') }}</p>
 
                 <div v-if="submissions.links" class="pagination">
                     <Link

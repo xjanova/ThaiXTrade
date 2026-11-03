@@ -8,6 +8,9 @@
 import { ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     logs: {
@@ -72,6 +75,14 @@ const formatDiff = (data) => {
     }
 };
 
+// ป้ายชื่อ action ตามภาษา — ค่าที่ไม่รู้จักแสดงตามที่เซิร์ฟเวอร์ส่งมา
+const actionLabel = (action) => {
+    if (!action) return '-';
+    const key = `admin.auditLog.actions.${action}`;
+    const label = t(key);
+    return label === key ? action.charAt(0).toUpperCase() + action.slice(1) : label;
+};
+
 const actionColors = {
     created: 'text-green-400',
     updated: 'text-blue-400',
@@ -89,19 +100,22 @@ const inputClass = 'bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-2.5
 function decodeLabel(html) {
     const txt = document.createElement("textarea");
     txt.innerHTML = html;
-    return txt.value;
+    // ป้าย Previous/Next ของ Laravel เป็นภาษาอังกฤษตายตัว — แปลตามภาษาที่เลือก
+    return txt.value
+        .replace('Previous', t('common.previous'))
+        .replace('Next', t('common.next'));
 }
 </script>
 
 <template>
-    <Head title="Audit Logs" />
+    <Head :title="t('admin.auditLog.title')" />
 
-    <AdminLayout title="Audit Logs">
+    <AdminLayout :title="t('admin.auditLog.title')">
         <!-- Header -->
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div>
-                <h2 class="text-xl font-semibold text-white">Audit Logs</h2>
-                <p class="text-sm text-dark-400 mt-1">Track all admin actions and changes</p>
+                <h2 class="text-xl font-semibold text-white">{{ t('admin.auditLog.title') }}</h2>
+                <p class="text-sm text-dark-400 mt-1">{{ t('admin.auditLog.subtitle') }}</p>
             </div>
         </div>
 
@@ -109,30 +123,30 @@ function decodeLabel(html) {
         <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 mb-6">
             <div class="flex flex-wrap items-end gap-3">
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Admin</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.auditLog.filters.admin') }}</label>
                     <select v-model="filterAdmin" :class="selectClass">
-                        <option value="">All Admins</option>
+                        <option value="">{{ t('admin.auditLog.filters.allAdmins') }}</option>
                         <option v-for="admin in admins" :key="admin.id" :value="admin.id">{{ admin.name }}</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Action</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.auditLog.filters.action') }}</label>
                     <select v-model="filterAction" :class="selectClass">
-                        <option value="">All Actions</option>
-                        <option v-for="a in actions" :key="a" :value="a">{{ a.charAt(0).toUpperCase() + a.slice(1) }}</option>
+                        <option value="">{{ t('admin.auditLog.filters.allActions') }}</option>
+                        <option v-for="a in actions" :key="a" :value="a">{{ actionLabel(a) }}</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">From</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.auditLog.filters.from') }}</label>
                     <input v-model="filterDateFrom" type="date" :class="inputClass" />
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">To</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.auditLog.filters.to') }}</label>
                     <input v-model="filterDateTo" type="date" :class="inputClass" />
                 </div>
                 <div class="flex items-center gap-2">
-                    <button @click="applyFilters" class="btn-primary px-4 py-2.5 text-sm">Filter</button>
-                    <button @click="resetFilters" class="px-4 py-2.5 text-sm text-dark-400 hover:text-white transition-colors">Reset</button>
+                    <button @click="applyFilters" class="btn-primary px-4 py-2.5 text-sm">{{ t('common.filter') }}</button>
+                    <button @click="resetFilters" class="px-4 py-2.5 text-sm text-dark-400 hover:text-white transition-colors">{{ t('admin.auditLog.filters.reset') }}</button>
                 </div>
             </div>
         </div>
@@ -143,11 +157,11 @@ function decodeLabel(html) {
                 <thead>
                     <tr class="bg-dark-800/50">
                         <th class="w-8 py-3 px-2"></th>
-                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4">Date</th>
-                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 hidden sm:table-cell">Admin</th>
-                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4">Action</th>
-                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 hidden md:table-cell">Model</th>
-                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 hidden lg:table-cell">IP Address</th>
+                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4">{{ t('admin.auditLog.table.date') }}</th>
+                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 hidden sm:table-cell">{{ t('admin.auditLog.table.admin') }}</th>
+                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4">{{ t('admin.auditLog.table.action') }}</th>
+                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 hidden md:table-cell">{{ t('admin.auditLog.table.model') }}</th>
+                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 hidden lg:table-cell">{{ t('admin.auditLog.table.ipAddress') }}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -168,7 +182,7 @@ function decodeLabel(html) {
                             <td class="py-3 px-4 text-sm text-dark-400">{{ log.created_at }}</td>
                             <td class="py-3 px-4 text-sm text-white hidden sm:table-cell">{{ log.admin?.name || '-' }}</td>
                             <td class="py-3 px-4 text-sm capitalize" :class="actionColors[log.action] || 'text-dark-300'">
-                                {{ log.action }}
+                                {{ actionLabel(log.action) }}
                             </td>
                             <td class="py-3 px-4 text-sm text-dark-300 hidden md:table-cell">
                                 {{ log.auditable_type?.split('\\').pop() || '-' }}
@@ -183,17 +197,17 @@ function decodeLabel(html) {
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <!-- Old Values -->
                                     <div v-if="log.old_values">
-                                        <p class="text-xs font-medium text-red-400 mb-2 uppercase">Old Values</p>
+                                        <p class="text-xs font-medium text-red-400 mb-2 uppercase">{{ t('admin.auditLog.diff.oldValues') }}</p>
                                         <pre class="bg-dark-900/50 border border-red-500/10 rounded-xl p-3 text-xs text-dark-300 font-mono overflow-x-auto">{{ JSON.stringify(formatDiff(log.old_values), null, 2) }}</pre>
                                     </div>
                                     <!-- New Values -->
                                     <div v-if="log.new_values">
-                                        <p class="text-xs font-medium text-green-400 mb-2 uppercase">New Values</p>
+                                        <p class="text-xs font-medium text-green-400 mb-2 uppercase">{{ t('admin.auditLog.diff.newValues') }}</p>
                                         <pre class="bg-dark-900/50 border border-green-500/10 rounded-xl p-3 text-xs text-dark-300 font-mono overflow-x-auto">{{ JSON.stringify(formatDiff(log.new_values), null, 2) }}</pre>
                                     </div>
                                     <!-- No diff -->
                                     <div v-if="!log.old_values && !log.new_values" class="col-span-2">
-                                        <p class="text-sm text-dark-500 italic">No detailed changes recorded</p>
+                                        <p class="text-sm text-dark-500 italic">{{ t('admin.auditLog.diff.noChanges') }}</p>
                                     </div>
                                 </div>
                             </td>
@@ -207,7 +221,7 @@ function decodeLabel(html) {
                                 <svg class="w-12 h-12 text-dark-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                                 </svg>
-                                <p class="text-dark-400 text-sm">No audit logs found</p>
+                                <p class="text-dark-400 text-sm">{{ t('admin.auditLog.empty') }}</p>
                             </div>
                         </td>
                     </tr>

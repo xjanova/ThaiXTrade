@@ -20,6 +20,8 @@
  * Developed by Xman Studio
  */
 
+import { t } from '@/Composables/useTranslation';
+
 const DEVTOOLS_KEYS = ['KeyI', 'KeyJ', 'KeyC', 'KeyK'];
 const MAC_DEVTOOLS_KEYS = ['KeyI', 'KeyJ', 'KeyC', 'KeyU'];
 const PAUSE_MS = 200; // debugger ไม่หยุด = ใช้เวลาไม่ถึง 1 ms · หยุด = รอคนกด resume
@@ -45,21 +47,7 @@ export function isGuardedPath(path) {
     return !/^\/admin(\/|$)/.test(path || '/');
 }
 
-const lang = () => (document.documentElement.lang === 'en' ? 'en' : 'th');
-const TEXT = {
-    th: {
-        copy: '📋 คัดลอก',
-        copied: '✓ คัดลอกแล้ว',
-        blockedTitle: 'ปิดเครื่องมือนักพัฒนาก่อนนะคะ',
-        blockedBody: 'เพื่อความปลอดภัยของบัญชีและเงินของคุณ TPIX TRADE ไม่อนุญาตให้เปิด DevTools ระหว่างใช้งาน ปิดแล้วหน้าเว็บจะกลับมาใช้ได้ทันที',
-    },
-    en: {
-        copy: '📋 Copy',
-        copied: '✓ Copied',
-        blockedTitle: 'Please close the developer tools',
-        blockedBody: 'To keep your account and funds safe, TPIX TRADE does not allow DevTools while in use. Close them and the page works again right away.',
-    },
-};
+// ข้อความแปลผ่าน t() ตอนแสดงผลทุกครั้ง — ตามภาษาที่ผู้ใช้สลับอยู่ ณ ตอนนั้น
 
 let installed = false;
 
@@ -136,7 +124,7 @@ export function installDevtoolsGuard(opts = {}) {
         const s = selectedText();
         if (!s) return hidePill();
         pillText = s.text;
-        pill.textContent = TEXT[lang()].copy;
+        pill.textContent = t('util.devtoolsGuard.copy');
         if (!pill.isConnected) document.body.appendChild(pill);
         pill.style.display = 'block';
         const touch = window.matchMedia?.('(pointer: coarse)').matches;
@@ -178,7 +166,7 @@ export function installDevtoolsGuard(opts = {}) {
         if (!pillText) return;
         const ok = await writeClipboard(pillText);
         if (!ok) return;
-        pill.textContent = TEXT[lang()].copied;
+        pill.textContent = t('util.devtoolsGuard.copied');
         clearTimeout(hideTimer);
         hideTimer = setTimeout(hidePill, 1200);
     });
@@ -208,7 +196,6 @@ export function installDevtoolsGuard(opts = {}) {
         'color:#e2e8f0;text-align:center;font:15px/1.6 system-ui,sans-serif';
 
     function showOverlay() {
-        const t = TEXT[lang()];
         overlay.innerHTML = '';
         const box = document.createElement('div');
         box.style.cssText = 'max-width:420px';
@@ -216,10 +203,10 @@ export function installDevtoolsGuard(opts = {}) {
         icon.textContent = '🛡️';
         icon.style.cssText = 'font-size:44px;margin-bottom:12px';
         const h = document.createElement('p');
-        h.textContent = t.blockedTitle;
+        h.textContent = t('util.devtoolsGuard.blockedTitle');
         h.style.cssText = 'font-size:20px;font-weight:700;color:#fff;margin:0 0 8px';
         const p = document.createElement('p');
-        p.textContent = t.blockedBody;
+        p.textContent = t('util.devtoolsGuard.blockedBody');
         p.style.cssText = 'margin:0;color:#94a3b8';
         box.append(icon, h, p);
         overlay.append(box);

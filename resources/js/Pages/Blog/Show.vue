@@ -12,7 +12,7 @@ import { useTranslation } from '@/Composables/useTranslation';
 import { sanitizeHtml } from '@/utils/sanitize';
 import LearnVideoPlayer from '@/Components/Learn/LearnVideoPlayer.vue';
 
-const { t } = useTranslation();
+const { t, locale } = useTranslation();
 const props = defineProps({ slug: String });
 const article = ref(null);
 const isLoading = ref(true);
@@ -26,14 +26,14 @@ async function fetchArticle() {
 }
 
 function formatDate(d) {
-    return new Date(d).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+    return new Date(d).toLocaleDateString(locale.value === 'th' ? 'th-TH' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 onMounted(fetchArticle);
 </script>
 
 <template>
-    <Head :title="article?.title || 'Article'" />
+    <Head :title="article?.title || t('page.blogShow.article')" />
     <AppLayout>
         <div class="max-w-4xl mx-auto px-2 sm:px-0">
             <!-- Loading -->
@@ -47,9 +47,9 @@ onMounted(fetchArticle);
             <article v-else-if="article" class="space-y-6">
                 <!-- Breadcrumb -->
                 <div class="flex items-center gap-2 text-sm text-dark-400">
-                    <Link href="/blog" class="hover:text-primary-400 transition-colors">Blog</Link>
+                    <Link href="/blog" class="hover:text-primary-400 transition-colors">{{ t('page.blogShow.blog') }}</Link>
                     <span>/</span>
-                    <Link v-if="article.category === 'learn'" href="/blog?category=learn" class="text-dark-300 hover:text-primary-400 transition-colors">🎓 {{ article.language === 'en' ? 'Learn' : 'เรียนรู้' }}</Link>
+                    <Link v-if="article.category === 'learn'" href="/blog?category=learn" class="text-dark-300 hover:text-primary-400 transition-colors">🎓 {{ t('page.blogShow.learn') }}</Link>
                     <span v-else class="text-dark-300">{{ article.category }}</span>
                 </div>
 
@@ -62,9 +62,9 @@ onMounted(fetchArticle);
                     <span>·</span>
                     <span>{{ formatDate(article.published_at) }}</span>
                     <span>·</span>
-                    <span>👁 {{ article.views }} อ่าน</span>
+                    <span>👁 {{ t('page.blogShow.views', { n: article.views }) }}</span>
                     <span v-if="article.is_ai_generated"
-                        class="px-2 py-0.5 bg-accent-500/20 text-accent-400 rounded-lg text-xs">🤖 AI Generated</span>
+                        class="px-2 py-0.5 bg-accent-500/20 text-accent-400 rounded-lg text-xs">{{ t('blog.aiGenerated') }}</span>
                 </div>
 
                 <!-- บทเรียนวิดีโอ: ตัวเล่น + บท แทนรูปปก (รูปปกคือเฟรมแรกของคลิปอยู่แล้ว) -->
@@ -101,7 +101,7 @@ onMounted(fetchArticle);
             <!-- Not Found -->
             <div v-else class="text-center py-20">
                 <span class="text-6xl mb-4 block">🔍</span>
-                <h3 class="text-xl font-semibold text-white mb-2">{{ t('blog.noArticles') }}</h3>
+                <h3 class="text-xl font-semibold text-white mb-2">{{ t('page.blogShow.notFound') }}</h3>
                 <Link href="/blog" class="text-primary-400">{{ t('blog.backToBlog') }}</Link>
             </div>
         </div>

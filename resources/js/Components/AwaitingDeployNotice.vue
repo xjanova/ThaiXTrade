@@ -10,6 +10,9 @@
  * ป้ายนี้บอกความจริงตั้งแต่วินาทีแรกที่เปิดหน้า
  */
 import { computed } from 'vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     /** 'buy' = หน้าซื้อโหนด · 'create' = หน้าสร้างเหรียญ */
@@ -24,14 +27,14 @@ const props = defineProps({
 
 const copy = computed(() => (props.action === 'create'
     ? {
-        title: 'ยังสร้างเหรียญไม่ได้ — ระบบรอติดตั้งสัญญาบนเชน',
-        body: 'ตัวสร้างเหรียญเขียนเสร็จและทดสอบผ่านครบทุกประเภทแล้ว เหลือขั้นตอนเดียวคือติดตั้งสัญญาแฟกทอรีลงบนเชน TPIX',
-        assurance: 'ตอนนี้ยังกดสร้างไม่ได้ และ ไม่มีการเรียกเก็บค่าธรรมเนียมใด ๆ',
+        title: t('ui.awaitingDeployNotice.create.title'),
+        body: t('ui.awaitingDeployNotice.create.body'),
+        assurance: t('ui.awaitingDeployNotice.create.assurance'),
     }
     : {
-        title: 'ยังเปิดให้ลงทะเบียนโหนดไม่ได้ — ระบบรอติดตั้งสัญญาบนเชน',
-        body: 'ระบบมาสเตอร์โหนดเขียนเสร็จและทดสอบผ่านครบทุกชั้นแล้ว เหลือขั้นตอนเดียวคือติดตั้งสัญญา NodeRegistry ลงบนเชน TPIX',
-        assurance: 'ตอนนี้ยังกดวางเงินค้ำไม่ได้ และ ไม่มีการหักเงินจากกระเป๋าของคุณ',
+        title: t('ui.awaitingDeployNotice.buy.title'),
+        body: t('ui.awaitingDeployNotice.buy.body'),
+        assurance: t('ui.awaitingDeployNotice.buy.assurance'),
     }));
 </script>
 
@@ -60,17 +63,17 @@ const copy = computed(() => (props.action === 'create'
                     <!-- เชนล่มเป็นคนละเรื่องกับรอ deploy ต้องแยกให้ชัด -->
                     <div v-if="!rpcConnected" class="flex items-start gap-2 text-xs text-trading-red">
                         <span class="leading-none mt-0.5">⚠</span>
-                        <span>ตอนนี้เชื่อมต่อกับเชน TPIX ไม่ได้ด้วย — สถานะด้านล่างอาจไม่อัปเดต</span>
+                        <span>{{ t('ui.awaitingDeployNotice.rpcDown') }}</span>
                     </div>
 
                     <p class="text-xs text-gray-500">
-                        ดูรายละเอียดข้างล่างได้ตามปกติ เมื่อติดตั้งเสร็จหน้านี้จะเปิดใช้งานเองทันที ไม่ต้องรอประกาศ
+                        {{ t('ui.awaitingDeployNotice.autoEnable') }}
                     </p>
 
                     <!-- รายละเอียดสำหรับผู้ดูแล -->
                     <details v-if="showDetails && issues.length" class="text-xs">
                         <summary class="cursor-pointer text-gray-500 hover:text-gray-300 select-none">
-                            รายละเอียดสำหรับผู้ดูแล ({{ issues.length }})
+                            {{ t('ui.awaitingDeployNotice.adminDetails', { n: issues.length }) }}
                         </summary>
                         <ul class="mt-2 space-y-1 pl-4 list-disc text-gray-400">
                             <li v-for="(issue, i) in issues" :key="i">{{ issue }}</li>

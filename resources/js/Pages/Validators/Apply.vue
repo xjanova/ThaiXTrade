@@ -16,6 +16,9 @@ import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     // ค่าชั้นจาก NodeRegistryV2 บนเชน (ชื่อชั้นตัวเล็ก => ค่า) — อ่านไม่ได้ = {} แล้วโชว์ "—"
@@ -61,7 +64,7 @@ const tierStyles = [
         glow: 'shadow-[0_0_40px_rgba(239,68,68,0.15)]',
         badge: 'bg-red-500/20 text-red-300 border-red-500/40',
         ring: 'ring-red-500/40',
-        note: 'Company KYC required (PDPA-compliant)',
+        noteKey: 'page.validatorsApply.tier.validatorNote',
     },
     {
         id: 'guardian', name: 'Guardian Node',
@@ -95,14 +98,15 @@ const tierStyles = [
     },
 ];
 
-const tiers = computed(() => tierStyles.map((t) => {
-    const c = props.tiers?.[t.id];
+const tiers = computed(() => tierStyles.map((ts) => {
+    const c = props.tiers?.[ts.id];
     return {
-        ...t,
+        ...ts,
+        note: ts.noteKey ? t(ts.noteKey) : '',
         stake: c?.min_stake != null ? `${Number(c.min_stake).toLocaleString()} TPIX` : '—',
-        lock: c?.lock_days != null ? `${c.lock_days} days` : '—',
+        lock: c?.lock_days != null ? t('page.validatorsApply.tier.lockDays', { n: c.lock_days }) : '—',
         // เพดาน APR ต่อโหนดที่สัญญาบังคับ — ไม่ใช่ผลตอบแทนที่รับประกัน
-        apr: c?.apr_cap_bps != null ? `APR cap ${(c.apr_cap_bps / 100).toLocaleString()}%` : 'APR —',
+        apr: c?.apr_cap_bps != null ? t('page.validatorsApply.tier.aprCap', { pct: (c.apr_cap_bps / 100).toLocaleString() }) : 'APR —',
     };
 }));
 
@@ -132,7 +136,17 @@ const countries = [
     { code: 'FI', name: 'Finland' },
     { code: 'SE', name: 'Sweden' },
     { code: 'NO', name: 'Norway' },
-].sort((a, b) => a.name.localeCompare(b.name));
+];
+
+// ชื่อประเทศที่แสดงตามภาษา — ส่งชื่ออังกฤษ (c.name) ให้เซิร์ฟเวอร์เหมือนเดิม
+const countryOptions = computed(() => countries
+    .map((c) => ({ ...c, label: t(`page.validatorsApply.countries.${c.code}`) }))
+    .sort((a, b) => a.label.localeCompare(b.label)));
+
+// ข้อความผิดพลาดฝั่งเราเก็บเป็นคีย์ (แปลตอนแสดง สลับภาษาแล้วเปลี่ยนตาม) — ข้อความจากเซิร์ฟเวอร์แสดงตามที่ได้มา
+function msg(v) {
+    return typeof v === 'string' && v.startsWith('page.validatorsApply.') ? t(v) : v;
+}
 
 function flag(code) {
     if (!code || code.length !== 2) return '🌐';
@@ -148,12 +162,12 @@ function onCountryChange() {
 function validate() {
     const e = {};
     if (!/^0x[a-fA-F0-9]{40}$/.test(form.value.wallet_address)) {
-        e.wallet_address = 'Connect the wallet you want to apply with';
+        e.wallet_address = 'page.validatorsApply.errors.walletRequired';
     }
-    if (!form.value.tier) e.tier = 'Please select a node tier';
-    if (!form.value.country_code) e.country_code = 'Please select a country';
+    if (!form.value.tier) e.tier = 'page.validatorsApply.errors.tierRequired';
+    if (!form.value.country_code) e.country_code = 'page.validatorsApply.errors.countryRequired';
     if (form.value.contact_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.value.contact_email)) {
-        e.contact_email = 'Invalid email format';
+        e.contact_email = 'page.validatorsApply.errors.emailInvalid';
     }
     errors.value = e;
     return Object.keys(e).length === 0;
@@ -179,23 +193,23 @@ function withTimeout(promise, ms) {
 
 function describeError(err) {
     if (err?.code === 4001 || err?.code === 'ACTION_REJECTED') {
-        return 'You cancelled the signature in your wallet. Nothing was submitted.';
+        return 'page.validatorsApply.errors.signCancelled';
     }
     if (err?.code === 'NO_SIGNER') {
-        return 'Your wallet cannot sign right now. Unlock or reconnect it, then try again.';
+        return 'page.validatorsApply.errors.noSigner';
     }
     if (err?.code === 'WALLET_CHANGED') {
-        return 'The wallet account changed while signing. Please submit again from the account you want to apply with.';
+        return 'page.validatorsApply.errors.walletChanged';
     }
     if (err?.code === 'SIGN_TIMEOUT') {
-        return 'The wallet did not respond. Please try again.';
+        return 'page.validatorsApply.errors.signTimeout';
     }
 
     const res = err?.response;
-    if (res?.status === 429) return 'Too many attempts from your network. Please try again later.';
+    if (res?.status === 429) return 'page.validatorsApply.errors.rateLimited';
     if (res?.data?.error?.message) return res.data.error.message;
-    if (res) return 'Submission failed. Please try again.';
-    return 'Network error. Please try again.';
+    if (res) return 'page.validatorsApply.errors.submitFailed';
+    return 'page.validatorsApply.errors.network';
 }
 
 async function submitApplication() {
@@ -250,7 +264,7 @@ async function submitApplication() {
         const fieldErrors = err?.response?.status === 422 ? err.response.data?.errors : null;
         if (fieldErrors) {
             errors.value = Object.fromEntries(Object.entries(fieldErrors).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]));
-            submitError.value = 'Please check the highlighted fields.';
+            submitError.value = 'page.validatorsApply.errors.checkFields';
         } else {
             submitError.value = describeError(err);
         }
@@ -260,15 +274,15 @@ async function submitApplication() {
     }
 }
 
-const submitLabel = computed(() => ({
-    challenge: 'Preparing...',
-    sign: 'Confirm in your wallet...',
-    submit: 'Submitting...',
-}[stage.value] || 'Submitting...'));
+const submitLabel = computed(() => t({
+    challenge: 'page.validatorsApply.stage.challenge',
+    sign: 'page.validatorsApply.stage.sign',
+    submit: 'page.validatorsApply.stage.submit',
+}[stage.value] || 'page.validatorsApply.stage.submit'));
 </script>
 
 <template>
-    <Head title="Apply to Validate — TPIX Chain" />
+    <Head :title="t('page.validatorsApply.headTitle')" />
     <AppLayout>
         <div class="relative min-h-screen overflow-hidden">
 
@@ -286,7 +300,7 @@ const submitLabel = computed(() => ({
                 <!-- Back -->
                 <Link href="/validators"
                       class="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-cyan-400 transition-colors">
-                    <span aria-hidden="true">&larr;</span> Back to Validator Network
+                    <span aria-hidden="true">&larr;</span> {{ t('page.validatorsApply.back') }}
                 </Link>
 
                 <!-- ============================================================ -->
@@ -307,10 +321,10 @@ const submitLabel = computed(() => ({
                         </div>
 
                         <h1 class="text-3xl md:text-4xl font-black mb-3">
-                            <span class="text-gradient-brand">Apply to Validate</span>
+                            <span class="text-gradient-brand">{{ t('page.validatorsApply.hero.title') }}</span>
                         </h1>
                         <p class="text-sm text-gray-400 max-w-lg mx-auto">
-                            Submit your application to join the TPIX Chain validator network. Applications are reviewed by the admin team.
+                            {{ t('page.validatorsApply.hero.subtitle') }}
                         </p>
                     </div>
                 </div>
@@ -331,19 +345,18 @@ const submitLabel = computed(() => ({
                                 <span aria-hidden="true">&check;</span>
                             </div>
                         </div>
-                        <h2 class="text-2xl font-black text-green-400">Application Submitted!</h2>
+                        <h2 class="text-2xl font-black text-green-400">{{ t('page.validatorsApply.success.title') }}</h2>
                         <p class="text-sm text-gray-400 max-w-md mx-auto">
-                            Your validator application has been received. The admin team will review it and you'll be notified of the result.
-                            Make sure your node is running and synced before approval.
+                            {{ t('page.validatorsApply.success.body') }}
                         </p>
                         <div class="flex justify-center gap-3 flex-wrap pt-2">
                             <Link href="/validators"
                                   class="btn-secondary px-6 py-2.5 rounded-xl font-bold text-sm">
-                                View Network
+                                {{ t('page.validatorsApply.success.viewNetwork') }}
                             </Link>
                             <Link href="/masternode/guide"
                                   class="btn-brand px-6 py-2.5 rounded-xl font-bold text-sm hover:scale-105 transition-transform">
-                                Setup Guide
+                                {{ t('page.validatorsApply.success.setupGuide') }}
                             </Link>
                         </div>
                     </div>
@@ -363,8 +376,8 @@ const submitLabel = computed(() => ({
                                 1
                             </span>
                             <div>
-                                <h3 class="text-base font-bold text-white">Choose Node Tier</h3>
-                                <p class="text-xs text-gray-400">Pick the tier that matches your stake and hardware</p>
+                                <h3 class="text-base font-bold text-white">{{ t('page.validatorsApply.step1.title') }}</h3>
+                                <p class="text-xs text-gray-400">{{ t('page.validatorsApply.step1.desc') }}</p>
                             </div>
                         </div>
 
@@ -400,12 +413,12 @@ const submitLabel = computed(() => ({
                                     <div :class="['font-bold text-sm mb-2', tier.accent]">{{ tier.name }}</div>
                                     <div class="text-[10px] text-gray-400 space-y-1">
                                         <div class="flex justify-between">
-                                            <span class="text-gray-500">Stake</span>
+                                            <span class="text-gray-500">{{ t('page.validatorsApply.tier.stake') }}</span>
                                             <span :class="['font-bold', tier.accent]">{{ tier.stake }}</span>
                                         </div>
                                         <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                         <div class="flex justify-between">
-                                            <span class="text-gray-500">Lock</span>
+                                            <span class="text-gray-500">{{ t('page.validatorsApply.tier.lock') }}</span>
                                             <span class="text-gray-300">{{ tier.lock }}</span>
                                         </div>
                                         <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
@@ -415,7 +428,7 @@ const submitLabel = computed(() => ({
                                 </div>
                             </button>
                         </div>
-                        <p v-if="errors.tier" class="text-xs text-red-400">{{ errors.tier }}</p>
+                        <p v-if="errors.tier" class="text-xs text-red-400">{{ msg(errors.tier) }}</p>
                     </div>
 
                     <!-- ========================= -->
@@ -427,13 +440,13 @@ const submitLabel = computed(() => ({
                                 2
                             </span>
                             <div>
-                                <h3 class="text-base font-bold text-white">Wallet &amp; Node Info</h3>
-                                <p class="text-xs text-gray-400">The wallet you apply with signs the application to prove it is yours</p>
+                                <h3 class="text-base font-bold text-white">{{ t('page.validatorsApply.step2.title') }}</h3>
+                                <p class="text-xs text-gray-400">{{ t('page.validatorsApply.step2.desc') }}</p>
                             </div>
                         </div>
 
                         <div>
-                            <label class="block text-xs text-gray-400 mb-1.5">Wallet Address *</label>
+                            <label class="block text-xs text-gray-400 mb-1.5">{{ t('page.validatorsApply.step2.walletLabel') }} *</label>
                             <!-- อ่านจากกระเป๋าที่เชื่อมอยู่เท่านั้น — พิมพ์ที่อยู่ของคนอื่นไม่ได้ -->
                             <div v-if="form.wallet_address"
                                  data-test="apply-wallet"
@@ -443,16 +456,16 @@ const submitLabel = computed(() => ({
                             <button v-else type="button" data-test="apply-connect"
                                     @click="walletStore.openConnectModal()"
                                     class="btn-brand w-full py-3 rounded-xl text-sm font-bold">
-                                Connect Wallet
+                                {{ t('wallet.connect') }}
                             </button>
                             <p class="text-[11px] text-gray-500 mt-1.5">
-                                You will be asked to sign a message when you submit. Signing is free and sends no transaction.
+                                {{ t('page.validatorsApply.step2.signHint') }}
                             </p>
-                            <p v-if="errors.wallet_address" class="text-xs text-red-400 mt-1">{{ errors.wallet_address }}</p>
+                            <p v-if="errors.wallet_address" class="text-xs text-red-400 mt-1">{{ msg(errors.wallet_address) }}</p>
                         </div>
 
                         <div>
-                            <label class="block text-xs text-gray-400 mb-1.5">Node RPC Endpoint (optional)</label>
+                            <label class="block text-xs text-gray-400 mb-1.5">{{ t('page.validatorsApply.step2.endpointLabel') }}</label>
                             <input v-model="form.endpoint" type="text" placeholder="https://your-node:8545"
                                 class="w-full bg-dark-800/80 border border-white/10 text-white text-sm rounded-xl px-4 py-3 font-mono focus:border-cyan-500/50 focus:outline-none placeholder-gray-600 backdrop-blur-sm" />
                         </div>
@@ -467,24 +480,23 @@ const submitLabel = computed(() => ({
                                 3
                             </span>
                             <div>
-                                <h3 class="text-base font-bold text-white">Operator Country</h3>
+                                <h3 class="text-base font-bold text-white">{{ t('page.validatorsApply.step3.title') }}</h3>
                                 <p class="text-xs text-gray-400">
-                                    For the review team only — not shown on the public map.
-                                    Node locations on the map will come from the running node itself.
+                                    {{ t('page.validatorsApply.step3.desc') }}
                                 </p>
                             </div>
                         </div>
 
                         <div>
-                            <label class="block text-xs text-gray-400 mb-1.5">Country *</label>
+                            <label class="block text-xs text-gray-400 mb-1.5">{{ t('page.validatorsApply.step3.countryLabel') }} *</label>
                             <select v-model="form.country_code" @change="onCountryChange"
                                 class="w-full bg-dark-800/80 border border-white/10 text-white text-sm rounded-xl px-4 py-3 focus:border-cyan-500/50 focus:outline-none backdrop-blur-sm">
-                                <option value="">Select country...</option>
-                                <option v-for="c in countries" :key="c.code" :value="c.code">
-                                    {{ flag(c.code) }} {{ c.name }}
+                                <option value="">{{ t('page.validatorsApply.step3.selectCountry') }}</option>
+                                <option v-for="c in countryOptions" :key="c.code" :value="c.code">
+                                    {{ flag(c.code) }} {{ c.label }}
                                 </option>
                             </select>
-                            <p v-if="errors.country_code" class="text-xs text-red-400 mt-1">{{ errors.country_code }}</p>
+                            <p v-if="errors.country_code" class="text-xs text-red-400 mt-1">{{ msg(errors.country_code) }}</p>
                         </div>
                     </div>
 
@@ -497,24 +509,24 @@ const submitLabel = computed(() => ({
                                 4
                             </span>
                             <div>
-                                <h3 class="text-base font-bold text-white">Hardware Specs <span class="text-gray-500 font-normal">(optional)</span></h3>
-                                <p class="text-xs text-gray-400">Helps reviewers validate uptime capacity</p>
+                                <h3 class="text-base font-bold text-white">{{ t('page.validatorsApply.step4.title') }} <span class="text-gray-500 font-normal">{{ t('page.validatorsApply.optional') }}</span></h3>
+                                <p class="text-xs text-gray-400">{{ t('page.validatorsApply.step4.desc') }}</p>
                             </div>
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
-                                <label class="block text-xs text-gray-400 mb-1.5">CPU Cores</label>
+                                <label class="block text-xs text-gray-400 mb-1.5">{{ t('page.validatorsApply.step4.cpu') }}</label>
                                 <input v-model="form.hardware_cpu" type="text" placeholder="8"
                                     class="w-full bg-dark-800/80 border border-white/10 text-white text-sm rounded-xl px-4 py-3 focus:border-cyan-500/50 focus:outline-none placeholder-gray-600 backdrop-blur-sm" />
                             </div>
                             <div>
-                                <label class="block text-xs text-gray-400 mb-1.5">RAM (GB)</label>
+                                <label class="block text-xs text-gray-400 mb-1.5">{{ t('page.validatorsApply.step4.ram') }}</label>
                                 <input v-model="form.hardware_ram" type="text" placeholder="16"
                                     class="w-full bg-dark-800/80 border border-white/10 text-white text-sm rounded-xl px-4 py-3 focus:border-cyan-500/50 focus:outline-none placeholder-gray-600 backdrop-blur-sm" />
                             </div>
                             <div>
-                                <label class="block text-xs text-gray-400 mb-1.5">SSD (GB)</label>
+                                <label class="block text-xs text-gray-400 mb-1.5">{{ t('page.validatorsApply.step4.ssd') }}</label>
                                 <input v-model="form.hardware_ssd" type="text" placeholder="500"
                                     class="w-full bg-dark-800/80 border border-white/10 text-white text-sm rounded-xl px-4 py-3 focus:border-cyan-500/50 focus:outline-none placeholder-gray-600 backdrop-blur-sm" />
                             </div>
@@ -530,17 +542,17 @@ const submitLabel = computed(() => ({
                                 5
                             </span>
                             <div>
-                                <h3 class="text-base font-bold text-white">Contact Info <span class="text-gray-500 font-normal">(optional)</span></h3>
-                                <p class="text-xs text-gray-400">So we can reach you about the review</p>
+                                <h3 class="text-base font-bold text-white">{{ t('page.validatorsApply.step5.title') }} <span class="text-gray-500 font-normal">{{ t('page.validatorsApply.optional') }}</span></h3>
+                                <p class="text-xs text-gray-400">{{ t('page.validatorsApply.step5.desc') }}</p>
                             </div>
                         </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-xs text-gray-400 mb-1.5">Email</label>
+                                <label class="block text-xs text-gray-400 mb-1.5">{{ t('page.validatorsApply.step5.email') }}</label>
                                 <input v-model="form.contact_email" type="email" placeholder="you@example.com"
                                     class="w-full bg-dark-800/80 border border-white/10 text-white text-sm rounded-xl px-4 py-3 focus:border-cyan-500/50 focus:outline-none placeholder-gray-600 backdrop-blur-sm" />
-                                <p v-if="errors.contact_email" class="text-xs text-red-400 mt-1">{{ errors.contact_email }}</p>
+                                <p v-if="errors.contact_email" class="text-xs text-red-400 mt-1">{{ msg(errors.contact_email) }}</p>
                             </div>
                             <div>
                                 <label class="block text-xs text-gray-400 mb-1.5">Telegram</label>
@@ -559,18 +571,18 @@ const submitLabel = computed(() => ({
                                 6
                             </span>
                             <div>
-                                <h3 class="text-base font-bold text-white">Motivation <span class="text-gray-500 font-normal">(optional)</span></h3>
-                                <p class="text-xs text-gray-400">A short note about why you want to validate</p>
+                                <h3 class="text-base font-bold text-white">{{ t('page.validatorsApply.step6.title') }} <span class="text-gray-500 font-normal">{{ t('page.validatorsApply.optional') }}</span></h3>
+                                <p class="text-xs text-gray-400">{{ t('page.validatorsApply.step6.desc') }}</p>
                             </div>
                         </div>
 
-                        <textarea v-model="form.motivation" rows="4" placeholder="Why do you want to run a TPIX validator? Tell us about your experience..."
+                        <textarea v-model="form.motivation" rows="4" :placeholder="t('page.validatorsApply.step6.placeholder')"
                             class="w-full bg-dark-800/80 border border-white/10 text-white text-sm rounded-xl px-4 py-3 focus:border-cyan-500/50 focus:outline-none placeholder-gray-600 resize-none backdrop-blur-sm"></textarea>
                     </div>
 
                     <!-- Error banner — MasterNode-style border-l-4 -->
                     <div v-if="submitError" class="glass rounded-2xl p-4 border-l-4 border-red-500">
-                        <div class="text-red-400 text-sm">{{ submitError }}</div>
+                        <div class="text-red-400 text-sm">{{ msg(submitError) }}</div>
                     </div>
 
                     <!-- Submit -->
@@ -580,7 +592,7 @@ const submitLabel = computed(() => ({
                             <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" fill="none" stroke-dasharray="31.42" stroke-dashoffset="10"/></svg>
                             {{ submitLabel }}
                         </span>
-                        <span v-else>{{ form.wallet_address ? 'Sign and Submit Application' : 'Connect a wallet to apply' }}</span>
+                        <span v-else>{{ form.wallet_address ? t('page.validatorsApply.submit.signAndSubmit') : t('page.validatorsApply.submit.connectToApply') }}</span>
                     </button>
                 </form>
             </div>

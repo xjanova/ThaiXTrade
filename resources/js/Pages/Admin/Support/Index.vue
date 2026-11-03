@@ -5,11 +5,14 @@
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import DataTable from '@/Components/Admin/DataTable.vue';
 import StatusBadge from '@/Components/Admin/StatusBadge.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     tickets: {
@@ -34,15 +37,23 @@ const props = defineProps({
     },
 });
 
-const columns = [
+// computed — หัวตารางต้องเปลี่ยนภาษาตามทันทีเมื่อสลับ TH/EN
+const columns = computed(() => [
     { key: 'id', label: '#', sortable: true },
-    { key: 'subject', label: 'Subject', sortable: true },
-    { key: 'category', label: 'Category' },
-    { key: 'priority', label: 'Priority' },
-    { key: 'status', label: 'Status' },
-    { key: 'assigned_to', label: 'Assigned' },
-    { key: 'created_at', label: 'Date', sortable: true },
-];
+    { key: 'subject', label: t('admin.support.columns.subject'), sortable: true },
+    { key: 'category', label: t('admin.support.columns.category') },
+    { key: 'priority', label: t('admin.support.columns.priority') },
+    { key: 'status', label: t('admin.support.columns.status') },
+    { key: 'assigned_to', label: t('admin.support.columns.assigned') },
+    { key: 'created_at', label: t('admin.support.columns.date'), sortable: true },
+]);
+
+// ป้ายตัวเลือก (status/priority/category) — ค่าที่ไม่มีคำแปลให้โชว์ค่าดิบแทน key
+const optionLabel = (group, value) => {
+    const key = `admin.support.${group}.${value}`;
+    const text = t(key);
+    return text === key ? value : text;
+};
 
 const filterStatus = ref(props.filters.status || '');
 const filterPriority = ref(props.filters.priority || '');
@@ -81,14 +92,14 @@ function decodeLabel(html) {
 </script>
 
 <template>
-    <Head title="Support Tickets" />
+    <Head :title="t('admin.support.title')" />
 
-    <AdminLayout title="Support Tickets">
+    <AdminLayout :title="t('admin.support.title')">
         <!-- Header -->
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div>
-                <h2 class="text-xl font-semibold text-white">Support Tickets</h2>
-                <p class="text-sm text-dark-400 mt-1">Manage customer support requests</p>
+                <h2 class="text-xl font-semibold text-white">{{ t('admin.support.title') }}</h2>
+                <p class="text-sm text-dark-400 mt-1">{{ t('admin.support.subtitle') }}</p>
             </div>
         </div>
 
@@ -96,29 +107,29 @@ function decodeLabel(html) {
         <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 mb-6">
             <div class="flex flex-wrap items-end gap-3">
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Status</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.support.filters.status') }}</label>
                     <select v-model="filterStatus" :class="selectClass">
-                        <option value="">All Statuses</option>
-                        <option v-for="s in statusOptions" :key="s" :value="s">{{ s.charAt(0).toUpperCase() + s.slice(1).replace('_', ' ') }}</option>
+                        <option value="">{{ t('admin.support.filters.allStatuses') }}</option>
+                        <option v-for="s in statusOptions" :key="s" :value="s">{{ optionLabel('statusOptions', s) }}</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Priority</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.support.filters.priority') }}</label>
                     <select v-model="filterPriority" :class="selectClass">
-                        <option value="">All Priorities</option>
-                        <option v-for="p in priorities" :key="p" :value="p">{{ p.charAt(0).toUpperCase() + p.slice(1) }}</option>
+                        <option value="">{{ t('admin.support.filters.allPriorities') }}</option>
+                        <option v-for="p in priorities" :key="p" :value="p">{{ optionLabel('priorityOptions', p) }}</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Category</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.support.filters.category') }}</label>
                     <select v-model="filterCategory" :class="selectClass">
-                        <option value="">All Categories</option>
-                        <option v-for="c in categories" :key="c" :value="c">{{ c.charAt(0).toUpperCase() + c.slice(1) }}</option>
+                        <option value="">{{ t('admin.support.filters.allCategories') }}</option>
+                        <option v-for="c in categories" :key="c" :value="c">{{ optionLabel('categoryOptions', c) }}</option>
                     </select>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button @click="applyFilters" class="btn-primary px-4 py-2.5 text-sm">Filter</button>
-                    <button @click="resetFilters" class="px-4 py-2.5 text-sm text-dark-400 hover:text-white transition-colors">Reset</button>
+                    <button @click="applyFilters" class="btn-primary px-4 py-2.5 text-sm">{{ t('admin.support.filters.apply') }}</button>
+                    <button @click="resetFilters" class="px-4 py-2.5 text-sm text-dark-400 hover:text-white transition-colors">{{ t('admin.support.filters.reset') }}</button>
                 </div>
             </div>
         </div>
@@ -132,7 +143,7 @@ function decodeLabel(html) {
                 <span class="font-medium text-white">{{ value }}</span>
             </template>
             <template #cell-category="{ value }">
-                <span class="capitalize text-dark-300">{{ value }}</span>
+                <span class="capitalize text-dark-300">{{ optionLabel('categoryOptions', value) }}</span>
             </template>
             <template #cell-priority="{ value }">
                 <StatusBadge :status="value" type="priority" />
@@ -142,7 +153,7 @@ function decodeLabel(html) {
             </template>
             <template #cell-assigned_to="{ row }">
                 <span v-if="row.assigned_admin" class="text-dark-300">{{ row.assigned_admin.name }}</span>
-                <span v-else class="text-dark-500 italic">Unassigned</span>
+                <span v-else class="text-dark-500 italic">{{ t('admin.support.unassigned') }}</span>
             </template>
             <template #cell-created_at="{ value }">
                 <span class="text-dark-400 text-xs">{{ value }}</span>

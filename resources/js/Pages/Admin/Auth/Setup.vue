@@ -6,6 +6,9 @@
 
 import { ref } from 'vue';
 import { useForm, Head } from '@inertiajs/vue3';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const form = useForm({
     name: '',
@@ -26,7 +29,7 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="TPIX TRADE - Initial Setup" />
+    <Head :title="t('admin.authSetup.pageTitle')" />
 
     <div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-dark-950 via-dark-900 to-dark-950 p-4">
         <!-- Background Effects -->
@@ -42,7 +45,7 @@ const submit = () => {
                     <span class="text-white font-black text-xl">TX</span>
                 </div>
                 <h1 class="text-3xl font-bold text-white">TPIX TRADE</h1>
-                <p class="text-dark-400 mt-2">Initial Setup - Create Super Admin</p>
+                <p class="text-dark-400 mt-2">{{ t('admin.authSetup.subtitle') }}</p>
             </div>
 
             <!-- Setup Card -->
@@ -52,27 +55,27 @@ const submit = () => {
                         <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
                         </svg>
-                        <span class="text-sm">First-time setup. This account will have full super admin access.</span>
+                        <span class="text-sm">{{ t('admin.authSetup.notice') }}</span>
                     </div>
                 </div>
 
                 <form @submit.prevent="submit" class="space-y-5">
                     <!-- Name -->
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Full Name</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.authSetup.fullName') }}</label>
                         <input
                             v-model="form.name"
                             type="text"
                             required
                             class="w-full px-4 py-3 bg-dark-800/50 border border-dark-600 rounded-xl text-white placeholder-dark-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition"
-                            placeholder="Super Admin"
+                            :placeholder="t('admin.authSetup.fullNamePlaceholder')"
                         />
                         <p v-if="form.errors.name" class="text-red-400 text-sm mt-1">{{ form.errors.name }}</p>
                     </div>
 
                     <!-- Email -->
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Email Address</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.authSetup.email') }}</label>
                         <input
                             v-model="form.email"
                             type="email"
@@ -85,7 +88,7 @@ const submit = () => {
 
                     <!-- Password -->
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Password</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.authSetup.password') }}</label>
                         <div class="relative">
                             <input
                                 v-model="form.password"
@@ -93,7 +96,7 @@ const submit = () => {
                                 required
                                 minlength="8"
                                 class="w-full px-4 py-3 bg-dark-800/50 border border-dark-600 rounded-xl text-white placeholder-dark-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition pr-12"
-                                placeholder="Min 8 characters"
+                                :placeholder="t('admin.authSetup.passwordPlaceholder')"
                             />
                             <button
                                 type="button"
@@ -114,13 +117,13 @@ const submit = () => {
 
                     <!-- Confirm Password -->
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Confirm Password</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.authSetup.confirmPassword') }}</label>
                         <input
                             v-model="form.password_confirmation"
                             type="password"
                             required
                             class="w-full px-4 py-3 bg-dark-800/50 border border-dark-600 rounded-xl text-white placeholder-dark-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition"
-                            placeholder="Confirm password"
+                            :placeholder="t('admin.authSetup.confirmPasswordPlaceholder')"
                         />
                     </div>
 
@@ -137,14 +140,14 @@ const submit = () => {
                         <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                         </svg>
-                        {{ form.processing ? 'Creating...' : 'Create Super Admin & Login' }}
+                        {{ form.processing ? t('admin.authSetup.creating') : t('admin.authSetup.submit') }}
                     </button>
                 </form>
             </div>
 
             <!-- Footer -->
             <p class="text-center text-dark-500 text-sm mt-6">
-                TPIX TRADE Admin Panel &mdash; Powered by Xman Studio
+                {{ t('admin.authSetup.footer') }}
             </p>
         </div>
     </div>

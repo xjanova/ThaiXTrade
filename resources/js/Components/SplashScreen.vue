@@ -9,6 +9,9 @@
 import { ref, onMounted } from 'vue';
 import { playSplashSound } from '@/Composables/useSounds';
 import { TPIX_COIN_ICON } from '@/utils/brand';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const emit = defineEmits(['done']);
 
@@ -68,7 +71,7 @@ onMounted(() => {
                     :class="{ 'splash-text-in': phase === 'text' || phase === 'fade' }"
                 >
                     <h1 class="splash-title">TPIX TRADE</h1>
-                    <p class="splash-subtitle">Decentralized Exchange</p>
+                    <p class="splash-subtitle">{{ t('ui.splashScreen.subtitle') }}</p>
                 </div>
 
                 <!-- Loading indicator -->
@@ -84,7 +87,7 @@ onMounted(() => {
 
             <!-- Version -->
             <div class="splash-version" :class="{ 'splash-text-in': phase === 'text' || phase === 'fade' }">
-                Powered by Xman Studio
+                {{ t('ui.splashScreen.poweredBy') }}
             </div>
         </div>
     </Transition>

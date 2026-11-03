@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 import { useTokenSaleStore } from '@/Stores/tokenSaleStore';
+import { t } from '@/Composables/useTranslation';
 
 // Mock axios
 vi.mock('axios', () => ({
@@ -141,7 +142,7 @@ describe('TokenSaleStore', () => {
 
             await store.fetchSale();
 
-            expect(store.error).toBe('ไม่สามารถโหลดข้อมูลรอบขายได้');
+            expect(store.error).toBe(t('store.tokenSaleStore.loadSaleFailed'));
             expect(store.isLoadingSale).toBe(false);
         });
     });

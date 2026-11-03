@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { reactive } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
+import { t, setLocale } from '@/Composables/useTranslation';
 
 const wallet = reactive({
     address: null,
@@ -103,6 +104,7 @@ beforeEach(() => {
 afterEach(() => {
     while (mounted.length) mounted.pop().unmount();
     vi.restoreAllMocks();
+    setLocale('en');
 });
 
 describe('FoodPassport page — รายการของฉัน', () => {
@@ -126,14 +128,14 @@ describe('FoodPassport page — รายการของฉัน', () => {
 
         const wrapper = mountTracked(FoodPassport);
         await flushPromises();
-        await buttonWithText(wrapper, 'สินค้าของฉัน').trigger('click');
+        await buttonWithText(wrapper, t('page.foodPassport.tabs.myProducts')).trigger('click');
 
         expect(wrapper.find('[data-test="food-passport-verify"]').exists()).toBe(true);
-        expect(wrapper.text()).not.toContain('ยังไม่มีสินค้า');
+        expect(wrapper.text()).not.toContain(t('page.foodPassport.mine.empty'));
 
         routeFetch({ '/api/v1/food-passport/my-products': jsonResponse(page([product(7, 'ข้าวของเจ้าของ')])) });
         wallet.verifyOwnership.mockResolvedValue(true);
-        await buttonWithText(wrapper, 'ยืนยันกระเป๋า').trigger('click');
+        await buttonWithText(wrapper, t('page.foodPassport.verify.button')).trigger('click');
         await flushPromises();
 
         expect(wallet.verifyOwnership).toHaveBeenCalledTimes(1);
@@ -152,7 +154,7 @@ describe('FoodPassport page — รายการของฉัน', () => {
         routeFetch({ '/api/v1/food-passport/my-products': jsonResponse(page([product(8, 'ข้าวหลังเซ็น')])) });
         wallet.verifiedAt = Date.now();
         await flushPromises();
-        await buttonWithText(wrapper, 'สินค้าของฉัน').trigger('click');
+        await buttonWithText(wrapper, t('page.foodPassport.tabs.myProducts')).trigger('click');
 
         expect(wrapper.text()).toContain('ข้าวหลังเซ็น');
     });
@@ -178,7 +180,7 @@ describe('FoodPassport page — รายการของฉัน', () => {
         releaseA(jsonResponse(page([product(1, 'สินค้าของกระเป๋า A')])));
         await flushPromises();
 
-        await buttonWithText(wrapper, 'สินค้าของฉัน').trigger('click');
+        await buttonWithText(wrapper, t('page.foodPassport.tabs.myProducts')).trigger('click');
         expect(wrapper.text()).toContain('สินค้าของกระเป๋า B');
         expect(wrapper.text()).not.toContain('สินค้าของกระเป๋า A');
     });
@@ -198,10 +200,10 @@ describe('IoTDashboard — API key ของเครื่อง', () => {
                 data: { ...DEVICE, id: 9, device_id: 'TPIX-IOT-NEW00001', api_key: KEY },
             },
         });
-        await buttonWithText(wrapper, 'เพิ่ม Sensor').trigger('click');
-        await buttonWithText(wrapper, 'ถัดไป').trigger('click');
+        await buttonWithText(wrapper, t('ui.foodPassportIoTDashboard.header.addSensor')).trigger('click');
+        await buttonWithText(wrapper, t('ui.foodPassportIoTDashboard.step1.next')).trigger('click');
         await wrapper.find('input[type="text"]').setValue('Sensor รถห้องเย็น');
-        await buttonWithText(wrapper, 'สร้าง Device').trigger('click');
+        await buttonWithText(wrapper, t('ui.foodPassportIoTDashboard.step2.create')).trigger('click');
         await flushPromises();
     }
 
@@ -219,13 +221,13 @@ describe('IoTDashboard — API key ของเครื่อง', () => {
         expect(code).toContain(`API_KEY        = "${KEY}"`);
         expect(code).toContain('http.addHeader("Authorization", String("Bearer ") + API_KEY);');
 
-        await buttonWithText(wrapper, 'cURL').trigger('click');
+        await buttonWithText(wrapper, t('ui.foodPassportIoTDashboard.step3.curlTab')).trigger('click');
         expect(wrapper.find('pre').text()).toContain(`-H "Authorization: Bearer ${KEY}"`);
 
         // กุญแจไม่ไปกับรายการอุปกรณ์
         expect(wrapper.emitted('device-registered')[0][0]).not.toHaveProperty('api_key');
 
-        await buttonWithText(wrapper, 'เสร็จสิ้น').trigger('click');
+        await buttonWithText(wrapper, t('ui.foodPassportIoTDashboard.step3.done')).trigger('click');
         expect(wrapper.html()).not.toContain(KEY);
     });
 
@@ -242,13 +244,13 @@ describe('IoTDashboard — API key ของเครื่อง', () => {
         const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
         const wrapper = mountDashboard({ devices: [DEVICE] });
 
-        await buttonWithText(wrapper, 'ออกใหม่').trigger('click');
+        await buttonWithText(wrapper, t('ui.foodPassportIoTDashboard.list.reissue')).trigger('click');
         expect(confirmSpy).toHaveBeenCalledTimes(1);
         expect(post).not.toHaveBeenCalled();
 
         confirmSpy.mockReturnValue(true);
         post.mockResolvedValue({ data: { success: true, data: { device_id: DEVICE.device_id, api_key: KEY_2 } } });
-        await buttonWithText(wrapper, 'ออกใหม่').trigger('click');
+        await buttonWithText(wrapper, t('ui.foodPassportIoTDashboard.list.reissue')).trigger('click');
         await flushPromises();
 
         expect(post).toHaveBeenCalledWith(
@@ -256,7 +258,7 @@ describe('IoTDashboard — API key ของเครื่อง', () => {
             { wallet_address: WALLET_A },
         );
         expect(wrapper.find('[data-test="iot-api-key"]').text()).toContain(KEY_2);
-        expect(wrapper.text()).toContain('กุญแจเดิมใช้ไม่ได้แล้ว');
+        expect(wrapper.text()).toContain(t('ui.foodPassportIoTDashboard.step3.oldKeyRevoked'));
     });
 
     it('เครื่องเก่าที่ยังไม่มีกุญแจ — ขึ้นป้ายเตือน และออกกุญแจแรกได้โดยไม่ต้องถาม', async () => {
@@ -264,8 +266,8 @@ describe('IoTDashboard — API key ของเครื่อง', () => {
         post.mockResolvedValue({ data: { success: true, data: { device_id: LEGACY_DEVICE.device_id, api_key: KEY } } });
         const wrapper = mountDashboard({ devices: [LEGACY_DEVICE] });
 
-        expect(wrapper.text()).toContain('ยังไม่มี API key');
-        await buttonWithText(wrapper, 'ออก API key').trigger('click');
+        expect(wrapper.text()).toContain(t('ui.foodPassportIoTDashboard.list.noKey'));
+        await buttonWithText(wrapper, t('ui.foodPassportIoTDashboard.list.issueKey')).trigger('click');
         await flushPromises();
 
         expect(confirmSpy).not.toHaveBeenCalled();
@@ -274,16 +276,17 @@ describe('IoTDashboard — API key ของเครื่อง', () => {
     });
 
     it('ออกกุญแจไม่ผ่านด่านกระเป๋า — ข้อความภาษาไทย ไม่ใช่ข้อความดิบของ axios', async () => {
+        setLocale('th');
         vi.spyOn(window, 'confirm').mockReturnValue(true);
         post.mockRejectedValue(Object.assign(new Error('Request failed with status code 403'), {
             response: { status: 403, data: { success: false, error: { code: 'WALLET_IP_MISMATCH', message: 'Wallet verification session invalid.' } } },
         }));
         const wrapper = mountDashboard({ devices: [DEVICE] });
 
-        await buttonWithText(wrapper, 'ออกใหม่').trigger('click');
+        await buttonWithText(wrapper, t('ui.foodPassportIoTDashboard.list.reissue')).trigger('click');
         await flushPromises();
 
-        expect(wrapper.text()).toContain('ยืนยันกระเป๋าก่อน');
+        expect(wrapper.text()).toContain(t('ui.foodPassportIoTDashboard.errors.walletNotVerified'));
         expect(wrapper.text()).not.toContain('Request failed');
     });
 
@@ -291,13 +294,13 @@ describe('IoTDashboard — API key ของเครื่อง', () => {
         routeFetch({ '/api/v1/food-passport/iot/my-devices': jsonResponse(page([DEVICE])) });
         const wrapper = mountDashboard({ devices: [DEVICE] });
 
-        await buttonWithText(wrapper, 'ตรวจสถานะ').trigger('click');
+        await buttonWithText(wrapper, t('ui.foodPassportIoTDashboard.list.checkStatus')).trigger('click');
         await flushPromises();
 
         expect(global.fetch).toHaveBeenCalledWith(`/api/v1/food-passport/iot/my-devices?wallet_address=${WALLET_A}`);
         expect(global.fetch.mock.calls.some(([url]) => String(url).includes('/iot/ingest'))).toBe(false);
         expect(post).not.toHaveBeenCalled();
-        expect(wrapper.text()).toContain('ยังไม่เคยได้รับข้อมูล');
+        expect(wrapper.text()).toContain(t('ui.foodPassportIoTDashboard.ping.neverReceived'));
     });
 
     it('ตรวจสถานะ — เครื่องที่เพิ่งส่งข้อมูลขึ้นว่าปกติ', async () => {
@@ -305,10 +308,10 @@ describe('IoTDashboard — API key ของเครื่อง', () => {
         routeFetch({ '/api/v1/food-passport/iot/my-devices': jsonResponse(page([recent])) });
         const wrapper = mountDashboard({ devices: [DEVICE] });
 
-        await buttonWithText(wrapper, 'ตรวจสถานะ').trigger('click');
+        await buttonWithText(wrapper, t('ui.foodPassportIoTDashboard.list.checkStatus')).trigger('click');
         await flushPromises();
 
-        expect(wrapper.text()).toContain('อุปกรณ์ส่งข้อมูลล่าสุดเมื่อ 3 นาทีที่แล้ว');
+        expect(wrapper.text()).toContain(t('ui.foodPassportIoTDashboard.ping.recent', { minutes: 3 }));
         expect(wrapper.emitted('devices-updated')[0][0]).toEqual([recent]);
     });
 });

@@ -18,6 +18,7 @@ import { setActivePinia, createPinia } from 'pinia';
 import { reactive } from 'vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { isMobile } from '@/utils/mobileWallet';
+import { t } from '@/Composables/useTranslation';
 
 const page = reactive({ url: '/', props: { auth: { user: null }, app: { walletconnect_project_id: 'pid' } } });
 
@@ -165,7 +166,7 @@ describe('มือถือ — เปิดแอปกระเป๋าแ�
             .toBe(`metamask://wc?uri=${encodeURIComponent(URI)}`);
 
         // ทางสำรองแบบเดิม: เปิดเว็บนี้ในเบราว์เซอร์ของ MetaMask
-        await buttonByText(wrapper, 'MetaMask แทน').trigger('click');
+        await buttonByText(wrapper, t('ui.walletWalletModal.openInAppBrowser', { app: 'MetaMask' })).trigger('click');
         expect(openWalletApp).toHaveBeenCalled();
     });
 

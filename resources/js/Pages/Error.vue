@@ -14,8 +14,7 @@ const props = defineProps({
     status: { type: Number, default: 404 },
 });
 
-const { t, locale } = useTranslation();
-const isThai = computed(() => locale.value === 'th');
+const { t } = useTranslation();
 
 // Floating particles animation
 const particles = ref([]);
@@ -34,67 +33,67 @@ onMounted(() => {
 const errorConfig = computed(() => {
     const configs = {
         401: {
-            title: isThai.value ? 'ยังไม่ได้เข้าสู่ระบบ' : 'Unauthorized',
-            subtitle: isThai.value ? 'กรุณาเข้าสู่ระบบเพื่อเข้าถึงหน้านี้' : 'Please sign in to access this page.',
+            title: t('page.error.unauthorized.title'),
+            subtitle: t('page.error.unauthorized.subtitle'),
             icon: 'lock',
             color: 'amber',
             gradient: 'from-amber-500/20 via-orange-500/10 to-transparent',
             glowColor: 'bg-amber-500/15',
-            action: { label: isThai.value ? 'เข้าสู่ระบบ' : 'Sign In', href: '/login' },
+            action: { label: t('page.error.actions.signIn'), href: '/login' },
         },
         403: {
-            title: isThai.value ? 'ไม่มีสิทธิ์เข้าถึง' : 'Access Forbidden',
-            subtitle: isThai.value ? 'คุณไม่มีสิทธิ์เข้าถึงหน้านี้' : 'You don\'t have permission to access this resource.',
+            title: t('page.error.forbidden.title'),
+            subtitle: t('page.error.forbidden.subtitle'),
             icon: 'shield',
             color: 'red',
             gradient: 'from-red-500/20 via-rose-500/10 to-transparent',
             glowColor: 'bg-red-500/15',
-            action: { label: isThai.value ? 'กลับหน้าหลัก' : 'Go Home', href: '/' },
+            action: { label: t('page.error.actions.goHome'), href: '/' },
         },
         404: {
-            title: isThai.value ? 'ไม่พบหน้าที่ค้นหา' : 'Page Not Found',
-            subtitle: isThai.value ? 'หน้าที่คุณกำลังค้นหาอาจถูกย้ายหรือไม่มีอยู่แล้ว' : 'The page you\'re looking for has been moved or doesn\'t exist.',
+            title: t('page.error.notFound.title'),
+            subtitle: t('page.error.notFound.subtitle'),
             icon: 'search',
             color: 'cyan',
             gradient: 'from-primary-500/20 via-accent-500/10 to-transparent',
             glowColor: 'bg-primary-500/15',
-            action: { label: isThai.value ? 'กลับหน้าหลัก' : 'Go Home', href: '/' },
+            action: { label: t('page.error.actions.goHome'), href: '/' },
         },
         419: {
-            title: isThai.value ? 'เซสชันหมดอายุ' : 'Session Expired',
-            subtitle: isThai.value ? 'เซสชันของคุณหมดอายุแล้ว กรุณารีเฟรชหน้า' : 'Your session has expired. Please refresh the page.',
+            title: t('page.error.sessionExpired.title'),
+            subtitle: t('page.error.sessionExpired.subtitle'),
             icon: 'clock',
             color: 'purple',
             gradient: 'from-purple-500/20 via-violet-500/10 to-transparent',
             glowColor: 'bg-purple-500/15',
-            action: { label: isThai.value ? 'รีเฟรช' : 'Refresh', href: null, reload: true },
+            action: { label: t('page.error.actions.refresh'), href: null, reload: true },
         },
         429: {
-            title: isThai.value ? 'คำขอมากเกินไป' : 'Too Many Requests',
-            subtitle: isThai.value ? 'คุณส่งคำขอเร็วเกินไป กรุณารอสักครู่แล้วลองใหม่' : 'You\'re sending requests too fast. Please wait a moment.',
+            title: t('page.error.tooManyRequests.title'),
+            subtitle: t('page.error.tooManyRequests.subtitle'),
             icon: 'zap',
             color: 'orange',
             gradient: 'from-orange-500/20 via-amber-500/10 to-transparent',
             glowColor: 'bg-orange-500/15',
-            action: { label: isThai.value ? 'ลองใหม่' : 'Try Again', href: null, reload: true },
+            action: { label: t('page.error.actions.tryAgain'), href: null, reload: true },
         },
         500: {
-            title: isThai.value ? 'เซิร์ฟเวอร์ขัดข้อง' : 'Server Error',
-            subtitle: isThai.value ? 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์ ทีมงานกำลังแก้ไข' : 'Something went wrong on our end. Our team is working on it.',
+            title: t('page.error.serverError.title'),
+            subtitle: t('page.error.serverError.subtitle'),
             icon: 'server',
             color: 'red',
             gradient: 'from-red-500/20 via-pink-500/10 to-transparent',
             glowColor: 'bg-red-500/15',
-            action: { label: isThai.value ? 'กลับหน้าหลัก' : 'Go Home', href: '/' },
+            action: { label: t('page.error.actions.goHome'), href: '/' },
         },
         503: {
-            title: isThai.value ? 'กำลังปรับปรุงระบบ' : 'Under Maintenance',
-            subtitle: isThai.value ? 'ระบบกำลังปรับปรุง กรุณากลับมาอีกครั้ง' : 'We\'re upgrading our systems. Please check back soon.',
+            title: t('page.error.maintenance.title'),
+            subtitle: t('page.error.maintenance.subtitle'),
             icon: 'tool',
             color: 'blue',
             gradient: 'from-blue-500/20 via-indigo-500/10 to-transparent',
             glowColor: 'bg-blue-500/15',
-            action: { label: isThai.value ? 'รีเฟรช' : 'Refresh', href: null, reload: true },
+            action: { label: t('page.error.actions.refresh'), href: null, reload: true },
         },
     };
 
@@ -122,10 +121,10 @@ function handleAction() {
 
 // Quick links
 const quickLinks = [
-    { label: { th: 'หน้าหลัก', en: 'Home' }, href: '/', icon: 'home' },
-    { label: { th: 'เทรด', en: 'Trade' }, href: '/trade', icon: 'chart' },
-    { label: { th: 'ตลาด', en: 'Markets' }, href: '/markets', icon: 'market' },
-    { label: { th: 'สำรวจ', en: 'Explorer' }, href: '/explorer', icon: 'explore' },
+    { labelKey: 'page.error.links.home', href: '/', icon: 'home' },
+    { labelKey: 'page.error.links.trade', href: '/trade', icon: 'chart' },
+    { labelKey: 'page.error.links.markets', href: '/markets', icon: 'market' },
+    { labelKey: 'page.error.links.explorer', href: '/explorer', icon: 'explore' },
 ];
 </script>
 
@@ -176,7 +175,7 @@ const quickLinks = [
                 <!-- Logo -->
                 <Link href="/" class="inline-flex flex-col items-center gap-1.5 mb-10 group">
                     <BrandLogo variant="lockup" class="h-12 w-auto group-hover:scale-105 transition-transform" />
-                    <span class="block text-[10px] text-dark-400">by Xman Studio</span>
+                    <span class="block text-[10px] text-dark-400">{{ t('page.error.byXman') }}</span>
                 </Link>
 
                 <!-- Error Code (large) -->
@@ -255,7 +254,7 @@ const quickLinks = [
                 <!-- Quick Links -->
                 <div class="mt-12 pt-8 border-t border-white/5">
                     <p class="text-xs text-dark-500 mb-4">
-                        {{ isThai ? 'ลิงก์ที่อาจเป็นประโยชน์' : 'Helpful links' }}
+                        {{ t('page.error.helpfulLinks') }}
                     </p>
                     <div class="flex flex-wrap justify-center gap-3">
                         <Link
@@ -280,7 +279,7 @@ const quickLinks = [
                             <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                             </svg>
-                            {{ isThai ? link.label.th : link.label.en }}
+                            {{ t(link.labelKey) }}
                         </Link>
                     </div>
                 </div>
@@ -289,7 +288,7 @@ const quickLinks = [
                 <div class="mt-8 flex justify-center">
                     <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/5">
                         <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        <span class="text-[10px] text-dark-500">TPIX Chain (ID: 4289) — Powered by Polygon Edge</span>
+                        <span class="text-[10px] text-dark-500">{{ t('page.error.chainBadge') }}</span>
                     </div>
                 </div>
             </div>
@@ -299,7 +298,7 @@ const quickLinks = [
         <footer class="relative z-10 py-4 text-center border-t border-white/5">
             <div class="flex items-center justify-center gap-2">
                 <BrandLogo variant="icon" alt="TPIX" class="w-4 h-4 opacity-50" />
-                <span class="text-[10px] text-dark-500">&copy; {{ new Date().getFullYear() }} Xman Studio. All rights reserved.</span>
+                <span class="text-[10px] text-dark-500">&copy; {{ new Date().getFullYear() }} Xman Studio. {{ t('page.error.rightsReserved') }}</span>
             </div>
         </footer>
     </div>

@@ -7,6 +7,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import axios from 'axios';
+import { t } from '@/Composables/useTranslation';
 
 export const useTokenFactoryStore = defineStore('tokenFactory', () => {
     const tokens = ref([]);
@@ -52,7 +53,7 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
      */
     async function requestQuote(payload) {
         const { data } = await axios.post('/api/v1/token-factory/quote', payload);
-        if (!data.success) throw new Error(data.error?.message || 'ขอใบเสนอราคาไม่สำเร็จ');
+        if (!data.success) throw new Error(data.error?.message || t('store.tokenFactoryStore.errors.quoteFailed'));
         return data.data;
     }
 
@@ -73,13 +74,13 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
                 message: res.data.error.message,
             };
         }
-        throw new Error(res.data?.error?.message || 'ตรวจสถานะค่าธรรมเนียมไม่สำเร็จ');
+        throw new Error(res.data?.error?.message || t('store.tokenFactoryStore.errors.feeStatusFailed'));
     }
 
     /** ใบเสนอราคาค่ายืนยันซอร์สของเหรียญที่ deploy แล้ว (ผูกกับเหรียญและกระเป๋าเจ้าของ) */
     async function requestSourceVerifyQuote(tokenId, walletAddress) {
         const { data } = await axios.post(`/api/v1/token-factory/${tokenId}/source-verify/quote`, { wallet_address: walletAddress });
-        if (!data.success) throw new Error(data.error?.message || 'ขอใบเสนอราคาไม่สำเร็จ');
+        if (!data.success) throw new Error(data.error?.message || t('store.tokenFactoryStore.errors.quoteFailed'));
         return data.data;
     }
 
@@ -87,11 +88,11 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
     async function purchaseSourceVerify(tokenId, payload) {
         const res = await axios.post(`/api/v1/token-factory/${tokenId}/source-verify`, payload);
         if (!res.data?.success) {
-            const err = new Error(res.data?.error?.message || 'ชำระค่ายืนยันซอร์สไม่สำเร็จ');
+            const err = new Error(res.data?.error?.message || t('store.tokenFactoryStore.errors.sourceVerifyFailed'));
             err.code = res.data?.error?.code;
             throw err;
         }
-        const i = myTokens.value.findIndex((t) => t.id === res.data.data?.id);
+        const i = myTokens.value.findIndex((tok) => tok.id === res.data.data?.id);
         if (i >= 0) myTokens.value[i] = res.data.data;
         return res.data.data;
     }
@@ -105,7 +106,7 @@ export const useTokenFactoryStore = defineStore('tokenFactory', () => {
                 myTokens.value.unshift(data.data);
                 return data.data;
             }
-            const err = new Error(data.error?.message || 'Failed to create token');
+            const err = new Error(data.error?.message || t('store.tokenFactoryStore.errors.createFailed'));
             err.code = data.error?.code;
             throw err;
         } catch (e) {

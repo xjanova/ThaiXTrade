@@ -7,6 +7,9 @@
 
 import { ref, computed } from 'vue';
 import { useForm, usePage, router } from '@inertiajs/vue3';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     recentAnalyses: {
@@ -57,10 +60,10 @@ const popularSymbols = [
 ];
 
 const analysisTypes = [
-    { value: 'technical', label: 'Technical Analysis', icon: 'chart' },
-    { value: 'sentiment', label: 'Sentiment Analysis', icon: 'heart' },
-    { value: 'price_prediction', label: 'Price Prediction', icon: 'trending' },
-    { value: 'market_analysis', label: 'Market Analysis', icon: 'globe' },
+    { value: 'technical', labelKey: 'admin.aI.types.technical', icon: 'chart' },
+    { value: 'sentiment', labelKey: 'admin.aI.types.sentiment', icon: 'heart' },
+    { value: 'price_prediction', labelKey: 'admin.aI.types.pricePrediction', icon: 'trending' },
+    { value: 'market_analysis', labelKey: 'admin.aI.types.marketAnalysis', icon: 'globe' },
 ];
 
 const runAnalysis = () => {
@@ -81,7 +84,7 @@ const runAnalysis = () => {
 
 const formatDate = (date) => {
     if (!date) return '-';
-    return new Date(date).toLocaleDateString('th-TH', {
+    return new Date(date).toLocaleDateString(locale.value === 'th' ? 'th-TH' : 'en-US', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
@@ -92,12 +95,24 @@ const formatDate = (date) => {
 
 const formatNumber = (num) => {
     if (num === null || num === undefined) return '0';
-    return num.toLocaleString();
+    return num.toLocaleString(locale.value === 'th' ? 'th-TH' : 'en-US');
 };
 
 const getTypeLabel = (type) => {
-    const found = analysisTypes.find((t) => t.value === type);
-    return found ? found.label : type;
+    const found = analysisTypes.find((a) => a.value === type);
+    return found ? t(found.labelKey) : type;
+};
+
+// ป้ายสถานะ — ค่าดิบจากเซิร์ฟเวอร์ใช้เทียบสี ส่วนที่แสดงแปลตามภาษา
+const statusLabelKeys = {
+    completed: 'common.completed',
+    failed: 'common.failed',
+    processing: 'admin.aI.status.processing',
+    pending: 'common.pending',
+};
+const getStatusLabel = (status) => {
+    const key = statusLabelKeys[status];
+    return key ? t(key) : status;
 };
 
 const getTypeColor = (type) => {
@@ -140,8 +155,8 @@ const viewAnalysis = (analysis) => {
                     </svg>
                 </div>
                 <div>
-                    <h1 class="text-2xl font-bold text-white">AI Analysis</h1>
-                    <p class="text-dark-400 text-sm">Powered by Groq LLM - Market analysis and insights</p>
+                    <h1 class="text-2xl font-bold text-white">{{ t('admin.aI.title') }}</h1>
+                    <p class="text-dark-400 text-sm">{{ t('admin.aI.subtitle') }}</p>
                 </div>
             </div>
         </div>
@@ -183,7 +198,7 @@ const viewAnalysis = (analysis) => {
                     </div>
                 </div>
                 <p class="text-2xl font-bold text-white mb-1">{{ formatNumber(stats.total_analyses) }}</p>
-                <p class="text-sm text-dark-400">Total Analyses</p>
+                <p class="text-sm text-dark-400">{{ t('admin.aI.stats.totalAnalyses') }}</p>
             </div>
 
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/[0.07] transition-all duration-300">
@@ -195,7 +210,7 @@ const viewAnalysis = (analysis) => {
                     </div>
                 </div>
                 <p class="text-2xl font-bold text-white mb-1">{{ stats.success_rate }}%</p>
-                <p class="text-sm text-dark-400">Success Rate</p>
+                <p class="text-sm text-dark-400">{{ t('admin.aI.stats.successRate') }}</p>
             </div>
 
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/[0.07] transition-all duration-300">
@@ -207,7 +222,7 @@ const viewAnalysis = (analysis) => {
                     </div>
                 </div>
                 <p class="text-2xl font-bold text-white mb-1">{{ formatNumber(stats.avg_processing_time) }}ms</p>
-                <p class="text-sm text-dark-400">Avg Processing Time</p>
+                <p class="text-sm text-dark-400">{{ t('admin.aI.stats.avgProcessingTime') }}</p>
             </div>
 
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:bg-white/[0.07] transition-all duration-300">
@@ -219,7 +234,7 @@ const viewAnalysis = (analysis) => {
                     </div>
                 </div>
                 <p class="text-2xl font-bold text-white mb-1">{{ formatNumber(stats.tokens_today) }}</p>
-                <p class="text-sm text-dark-400">Tokens Used Today</p>
+                <p class="text-sm text-dark-400">{{ t('admin.aI.stats.tokensToday') }}</p>
             </div>
         </div>
 
@@ -233,7 +248,7 @@ const viewAnalysis = (analysis) => {
                             <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                             </svg>
-                            Market Analysis
+                            {{ t('admin.aI.form.title') }}
                         </h2>
                     </div>
 
@@ -241,12 +256,12 @@ const viewAnalysis = (analysis) => {
                         <form @submit.prevent="runAnalysis" class="space-y-5">
                             <!-- Symbol Selection -->
                             <div>
-                                <label class="block text-sm font-medium text-dark-300 mb-2">Symbol</label>
+                                <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.aI.form.symbol') }}</label>
                                 <div class="relative">
                                     <input
                                         v-model="analysisForm.symbol"
                                         type="text"
-                                        placeholder="e.g. BTC/USDT"
+                                        :placeholder="t('admin.aI.form.symbolPlaceholder')"
                                         class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-400 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
                                     />
                                 </div>
@@ -269,7 +284,7 @@ const viewAnalysis = (analysis) => {
 
                             <!-- Analysis Type -->
                             <div>
-                                <label class="block text-sm font-medium text-dark-300 mb-2">Analysis Type</label>
+                                <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.aI.form.type') }}</label>
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <button
                                         v-for="aType in analysisTypes"
@@ -297,14 +312,14 @@ const viewAnalysis = (analysis) => {
                                         <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                         </svg>
-                                        <span class="text-sm font-medium">{{ aType.label }}</span>
+                                        <span class="text-sm font-medium">{{ t(aType.labelKey) }}</span>
                                     </button>
                                 </div>
                             </div>
 
                             <!-- Model Selection -->
                             <div>
-                                <label class="block text-sm font-medium text-dark-300 mb-2">AI Model</label>
+                                <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.aI.form.model') }}</label>
                                 <select
                                     v-model="analysisForm.model"
                                     class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
@@ -329,7 +344,7 @@ const viewAnalysis = (analysis) => {
                                 <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                                 </svg>
-                                <span>{{ analysisForm.processing ? 'Analyzing...' : 'Run Analysis' }}</span>
+                                <span>{{ analysisForm.processing ? t('admin.aI.form.analyzing') : t('admin.aI.form.run') }}</span>
                             </button>
                         </form>
 
@@ -355,7 +370,7 @@ const viewAnalysis = (analysis) => {
                                             </span>
                                         </div>
                                         <div class="flex items-center gap-3 text-xs text-dark-400">
-                                            <span>{{ analysisResult.tokens_used }} tokens</span>
+                                            <span>{{ t('admin.aI.tokens', { n: formatNumber(analysisResult.tokens_used) }) }}</span>
                                             <span>{{ analysisResult.processing_time_ms }}ms</span>
                                         </div>
                                     </div>
@@ -377,7 +392,7 @@ const viewAnalysis = (analysis) => {
                             <svg class="w-5 h-5 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            Recent Analyses
+                            {{ t('admin.aI.recent.title') }}
                         </h2>
                     </div>
 
@@ -390,12 +405,12 @@ const viewAnalysis = (analysis) => {
                                 class="w-full px-6 py-4 text-left hover:bg-white/5 transition-colors"
                             >
                                 <div class="flex items-center justify-between mb-2">
-                                    <span class="text-sm font-medium text-white">{{ analysis.symbol || 'N/A' }}</span>
+                                    <span class="text-sm font-medium text-white">{{ analysis.symbol || t('admin.aI.notAvailable') }}</span>
                                     <span
                                         class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
                                         :class="getStatusColor(analysis.status)"
                                     >
-                                        {{ analysis.status }}
+                                        {{ getStatusLabel(analysis.status) }}
                                     </span>
                                 </div>
                                 <div class="flex items-center justify-between">
@@ -408,7 +423,7 @@ const viewAnalysis = (analysis) => {
                                     <span class="text-xs text-dark-500">{{ formatDate(analysis.created_at) }}</span>
                                 </div>
                                 <div v-if="analysis.tokens_used" class="mt-2 flex items-center gap-3 text-xs text-dark-500">
-                                    <span>{{ formatNumber(analysis.tokens_used) }} tokens</span>
+                                    <span>{{ t('admin.aI.tokens', { n: formatNumber(analysis.tokens_used) }) }}</span>
                                     <span>{{ formatNumber(analysis.processing_time_ms) }}ms</span>
                                 </div>
                             </button>
@@ -418,8 +433,8 @@ const viewAnalysis = (analysis) => {
                             <svg class="w-12 h-12 text-dark-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                             </svg>
-                            <p class="text-dark-400 text-sm">No analyses yet</p>
-                            <p class="text-dark-500 text-xs mt-1">Run your first analysis to see results here</p>
+                            <p class="text-dark-400 text-sm">{{ t('admin.aI.recent.empty') }}</p>
+                            <p class="text-dark-500 text-xs mt-1">{{ t('admin.aI.recent.emptyHint') }}</p>
                         </div>
                     </div>
                 </div>
@@ -431,13 +446,13 @@ const viewAnalysis = (analysis) => {
                             <svg class="w-5 h-5 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
                             </svg>
-                            AI News
+                            {{ t('admin.aI.news.title') }}
                         </h2>
                         <a
                             :href="route('admin.ai.news')"
                             class="text-xs text-primary-400 hover:text-primary-300 transition-colors"
                         >
-                            View All
+                            {{ t('common.viewAll') }}
                         </a>
                     </div>
 
@@ -458,7 +473,7 @@ const viewAnalysis = (analysis) => {
                         </template>
 
                         <div v-else class="px-6 py-8 text-center">
-                            <p class="text-dark-400 text-sm">No AI news articles yet</p>
+                            <p class="text-dark-400 text-sm">{{ t('admin.aI.news.empty') }}</p>
                         </div>
                     </div>
                 </div>

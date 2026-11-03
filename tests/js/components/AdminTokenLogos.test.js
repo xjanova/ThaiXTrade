@@ -12,6 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { t } from '@/Composables/useTranslation';
 
 const routerPost = vi.fn();
 
@@ -89,17 +90,18 @@ describe('Admin/Tokens/Index — สิทธิ์และกติกาโ�
         expect(input.attributes('accept')).toBe('image/png,image/webp');
 
         await pick(input, fileOf('logo.jpg', 'image/jpeg'));
-        expect(wrapper.find('[data-test="logo-file-error"]').text()).toContain('PNG หรือ WebP');
+        expect(wrapper.find('[data-test="logo-file-error"]').text()).toContain(t('admin.tokens.logo.errorType'));
 
         await pick(input, fileOf('logo.svg', 'image/svg+xml'));
-        expect(wrapper.find('[data-test="logo-file-error"]').text()).toContain('PNG หรือ WebP');
+        expect(wrapper.find('[data-test="logo-file-error"]').text()).toContain(t('admin.tokens.logo.errorType'));
 
         await pick(input, fileOf('big.png', 'image/png', 600 * 1024));
+        expect(wrapper.find('[data-test="logo-file-error"]').text()).toContain(t('admin.tokens.logo.errorSize', { kb: 512 }));
         expect(wrapper.find('[data-test="logo-file-error"]').text()).toContain('512 KB');
 
         // ไม่มีไฟล์ไหนถูกแนบ — ปุ่มยังเป็น "อัปโหลดรูป" ไม่ใช่ "เปลี่ยนไฟล์"
-        expect(wrapper.text()).toContain('อัปโหลดรูป');
-        expect(wrapper.text()).not.toContain('เปลี่ยนไฟล์');
+        expect(wrapper.text()).toContain(t('admin.tokens.logo.upload'));
+        expect(wrapper.text()).not.toContain(t('admin.tokens.logo.changeFile'));
     });
 });
 
@@ -136,10 +138,10 @@ describe('Admin/TokenFactory/Index — ปุ่มตั้งโลโก้',
     it('มีปุ่มเฉพาะเหรียญที่ deploy แล้ว และเฉพาะคนที่มีสิทธิ์', () => {
         const page = mountPage([token(), token({ id: 2, symbol: 'PEND', status: 'pending', contract_address: null })]);
         expect(page.findAll('[data-test="logo-button"]')).toHaveLength(1);
-        expect(page.find('[data-test="logo-button"]').text()).toBe('ตั้งโลโก้');
+        expect(page.find('[data-test="logo-button"]').text()).toBe(t('admin.tokenFactory.actions.setLogo'));
 
         const withLogo = mountPage([token({ logo_url: '/storage/token-logos/4289/x.png' })]);
-        expect(withLogo.find('[data-test="logo-button"]').text()).toBe('เปลี่ยนโลโก้');
+        expect(withLogo.find('[data-test="logo-button"]').text()).toBe(t('admin.tokenFactory.actions.changeLogo'));
 
         expect(mountPage([token()], false).find('[data-test="logo-button"]').exists()).toBe(false);
     });
@@ -152,9 +154,10 @@ describe('Admin/TokenFactory/Index — ปุ่มตั้งโลโก้',
         expect(input.attributes('accept')).toBe('image/png,image/webp');
 
         await pick(input, fileOf('logo.gif', 'image/gif'));
-        expect(page.find('[data-test="logo-error"]').text()).toContain('PNG หรือ WebP');
+        expect(page.find('[data-test="logo-error"]').text()).toContain(t('admin.tokenFactory.logo.errType', { symbol: 'FAC' }));
 
         await pick(input, fileOf('big.webp', 'image/webp', 513 * 1024));
+        expect(page.find('[data-test="logo-error"]').text()).toContain(t('admin.tokenFactory.logo.errSize', { symbol: 'FAC', kb: 512 }));
         expect(page.find('[data-test="logo-error"]').text()).toContain('512 KB');
 
         expect(routerPost).not.toHaveBeenCalled();
@@ -192,9 +195,9 @@ describe('Admin/TokenFactory/Index — คืนค่าธรรมเนี�
         ]);
 
         const statuses = page.findAll('[data-test="refund-status"]');
-        expect(statuses[0].text()).toContain('รอคืนค่าธรรมเนียม · 50 TPIX');
-        expect(statuses[1].text()).toContain('คืนค่าธรรมเนียมแล้ว');
-        expect(statuses[2].text()).toContain('คิวจ่าย #3');
+        expect(statuses[0].text()).toContain(`${t('admin.tokenFactory.refund.pending')} · 50 TPIX`);
+        expect(statuses[1].text()).toContain(t('admin.tokenFactory.refund.refunded'));
+        expect(statuses[2].text()).toContain(t('admin.tokenFactory.refund.queue', { id: 3 }));
         expect(page.findAll('[data-test="refund-manual-button"]')).toHaveLength(1);
         expect(page.findAll('[data-test="refund-auto-button"]')).toHaveLength(1);
 
@@ -224,7 +227,7 @@ describe('Admin/TokenFactory/Index — คืนค่าธรรมเนี�
         const page = mountPage([rejected({ refund_status: 'failed', metadata: { refund_error: 'เกินวงเงิน' } })]);
 
         expect(page.text()).toContain('เกินวงเงิน');
-        expect(page.find('[data-test="refund-auto-button"]').text()).toBe('สั่งจ่ายคืนอีกครั้ง');
+        expect(page.find('[data-test="refund-auto-button"]').text()).toBe(t('admin.tokenFactory.actions.refundAutoRetry'));
 
         await page.find('[data-test="refund-auto-button"]').trigger('click');
         expect(routerPost).not.toHaveBeenCalled();

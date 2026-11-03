@@ -14,6 +14,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { reactive, ref, computed } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
+import { t } from '@/Composables/useTranslation';
 
 const transfer = vi.fn(async () => ({ hash: '0x' + 'ab'.repeat(32) }));
 vi.mock('ethers', () => ({
@@ -143,7 +144,7 @@ describe('BuyForm — USDT payment', () => {
         expect(wrapper.find('[data-testid="fee-row"]').exists()).toBe(false);
         expect(wrapper.find('[data-testid="crypto-fee-row"]').exists()).toBe(true);
         expect(wrapper.find('[data-testid="total-usd"]').text()).toBe('$100');
-        expect(wrapper.find('[data-testid="submit-order"]').text()).toContain('รับยอดโอน USDT');
+        expect(wrapper.find('[data-testid="submit-order"]').text()).toContain(t('ui.tokenSaleBuyForm.form.submitCrypto'));
 
         await wrapper.find('[data-testid="submit-order"]').trigger('click');
         await flushPromises();
@@ -192,7 +193,7 @@ describe('BuyForm — USDT payment', () => {
         await wrapper.find('[data-testid="crypto-pay-wallet"]').trigger('click');
         await flushPromises();
 
-        expect(wrapper.text()).toContain('ยังไม่มีเงินออก');
+        expect(wrapper.text()).toContain(t('ui.tokenSaleBuyForm.err.rejected'));
         expect(wrapper.find('[data-testid="crypto-sent"]').exists()).toBe(false);
         wrapper.unmount();
     });

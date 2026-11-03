@@ -5,6 +5,9 @@
  * Developed by Xman Studio
  */
 import { computed } from 'vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     /** รายการ vesting entries จาก API */
@@ -34,11 +37,16 @@ function formatNumber(n) {
 
 function formatDate(dateStr) {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return new Date(dateStr).toLocaleDateString(locale.value === 'th' ? 'th-TH' : 'en-US', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
     });
+}
+
+// แปลสถานะ — ค่าที่ไม่รู้จักแสดงตามข้อมูลจากเซิร์ฟเวอร์
+function statusLabel(status) {
+    return ['confirmed', 'pending', 'claimed'].includes(status) ? t(`ui.tokenSaleVestingSchedule.status.${status}`) : status;
 }
 
 function statusBadge(status) {
@@ -53,17 +61,17 @@ function statusBadge(status) {
 
 <template>
     <div class="vesting-schedule">
-        <h3 class="text-xl font-bold text-white mb-4">My Vesting Schedule</h3>
+        <h3 class="text-xl font-bold text-white mb-4">{{ t('ui.tokenSaleVestingSchedule.title') }}</h3>
 
         <!-- Loading -->
         <div v-if="loading" class="text-center py-8 text-gray-400">
-            Loading vesting data...
+            {{ t('ui.tokenSaleVestingSchedule.loading') }}
         </div>
 
         <!-- ไม่มีข้อมูล -->
         <div v-else-if="entries.length === 0" class="text-center py-8 text-gray-400">
-            <p>No purchases found for this wallet.</p>
-            <p class="text-sm mt-1">Buy TPIX tokens to see your vesting schedule here.</p>
+            <p>{{ t('ui.tokenSaleVestingSchedule.emptyTitle') }}</p>
+            <p class="text-sm mt-1">{{ t('ui.tokenSaleVestingSchedule.emptyHint') }}</p>
         </div>
 
         <!-- มีข้อมูล -->
@@ -71,19 +79,19 @@ function statusBadge(status) {
             <!-- Summary cards -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                 <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-                    <span class="text-xs text-gray-400">Total Allocated</span>
+                    <span class="text-xs text-gray-400">{{ t('ui.tokenSaleVestingSchedule.totalAllocated') }}</span>
                     <p class="text-lg font-bold text-white">{{ formatNumber(totalAllocated) }}</p>
                 </div>
                 <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-                    <span class="text-xs text-gray-400">Claimable Now</span>
+                    <span class="text-xs text-gray-400">{{ t('ui.tokenSaleVestingSchedule.claimableNow') }}</span>
                     <p class="text-lg font-bold text-trading-green">{{ formatNumber(totalClaimable) }}</p>
                 </div>
                 <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-                    <span class="text-xs text-gray-400">Claimed</span>
+                    <span class="text-xs text-gray-400">{{ t('ui.tokenSaleVestingSchedule.claimed') }}</span>
                     <p class="text-lg font-bold text-primary-400">{{ formatNumber(totalClaimed) }}</p>
                 </div>
                 <div class="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-                    <span class="text-xs text-gray-400">Locked</span>
+                    <span class="text-xs text-gray-400">{{ t('ui.tokenSaleVestingSchedule.locked') }}</span>
                     <p class="text-lg font-bold text-yellow-400">{{ formatNumber(totalLocked) }}</p>
                 </div>
             </div>
@@ -93,11 +101,11 @@ function statusBadge(status) {
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="text-gray-400 border-b border-white/10">
-                            <th class="text-left py-2 px-3">Date</th>
+                            <th class="text-left py-2 px-3">{{ t('ui.tokenSaleVestingSchedule.table.date') }}</th>
                             <th class="text-right py-2 px-3">TPIX</th>
-                            <th class="text-right py-2 px-3">Paid</th>
-                            <th class="text-right py-2 px-3">Claimable</th>
-                            <th class="text-center py-2 px-3">Status</th>
+                            <th class="text-right py-2 px-3">{{ t('ui.tokenSaleVestingSchedule.table.paid') }}</th>
+                            <th class="text-right py-2 px-3">{{ t('ui.tokenSaleVestingSchedule.table.claimable') }}</th>
+                            <th class="text-center py-2 px-3">{{ t('ui.tokenSaleVestingSchedule.table.status') }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -123,7 +131,7 @@ function statusBadge(status) {
                                     class="px-2 py-0.5 text-xs rounded-full"
                                     :class="statusBadge(entry.status)"
                                 >
-                                    {{ entry.status }}
+                                    {{ statusLabel(entry.status) }}
                                 </span>
                             </td>
                         </tr>

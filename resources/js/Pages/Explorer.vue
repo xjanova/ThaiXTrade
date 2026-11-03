@@ -5,7 +5,7 @@
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTranslation } from '@/Composables/useTranslation';
@@ -15,21 +15,26 @@ const { t } = useTranslation();
 // URL ของ Blockscout explorer (ดึงจาก env หรือ hardcode)
 const explorerUrl = ref(import.meta.env.VITE_TPIX_EXPLORER_URL || 'https://explorer.tpix.online');
 
-const features = [
-    { title: 'Transactions', description: 'View all transactions on TPIX Chain in real-time', icon: '⟐', link: '/txs' },
-    { title: 'Blocks', description: 'Browse confirmed blocks and validator activity', icon: '▣', link: '/blocks' },
-    { title: 'Tokens', description: 'Explore all ERC-20 tokens deployed on TPIX Chain', icon: '◎', link: '/tokens' },
-    { title: 'Accounts', description: 'Search wallet addresses and check balances', icon: '◈', link: '/accounts' },
-    { title: 'Contracts', description: 'Verify and interact with smart contracts', icon: '⬡', link: '/verified-contracts' },
-    { title: 'API', description: 'Access the Blockscout REST and GraphQL API', icon: '⟁', link: '/api-docs' },
-];
+// เก็บคีย์ไว้ แล้วแปลใน computed — สลับภาษาแล้วการ์ด/สถิติเปลี่ยนตามทันที
+const features = computed(() => [
+    { id: 'txs', icon: '⟐', link: '/txs' },
+    { id: 'blocks', icon: '▣', link: '/blocks' },
+    { id: 'tokens', icon: '◎', link: '/tokens' },
+    { id: 'accounts', icon: '◈', link: '/accounts' },
+    { id: 'contracts', icon: '⬡', link: '/verified-contracts' },
+    { id: 'api', icon: '⟁', link: '/api-docs' },
+].map((f) => ({
+    ...f,
+    title: t(`page.explorer.features.${f.id}.title`),
+    description: t(`page.explorer.features.${f.id}.desc`),
+})));
 
-const chainStats = [
-    { label: 'Chain ID', value: '4289' },
-    { label: 'Consensus', value: 'IBFT PoA' },
-    { label: 'Block Time', value: '~2 seconds' },
-    { label: 'Gas Price', value: '0 (Free)' },
-];
+const chainStats = computed(() => [
+    { id: 'chainId', label: t('explorer.chainId'), value: '4289' },
+    { id: 'consensus', label: t('page.explorer.stats.consensus'), value: 'IBFT PoA' },
+    { id: 'blockTime', label: t('explorer.blockTime'), value: t('page.explorer.stats.blockTimeValue') },
+    { id: 'gasPrice', label: t('explorer.gasPrice'), value: t('page.explorer.stats.gasPriceValue') },
+]);
 </script>
 
 <template>
@@ -46,7 +51,7 @@ const chainStats = [
                 <img src="/images/logotpixexplorer.webp" alt="TPIX Explorer" class="h-28 sm:h-40 w-auto mx-auto mb-8 object-contain rounded-2xl drop-shadow-[0_0_32px_rgba(6,182,212,0.5)]" />
                 <h1 class="text-4xl sm:text-5xl font-bold text-white mb-3">{{ t('explorer.title') }}</h1>
                 <p class="text-lg text-gray-400 mb-8">
-                    Powered by Blockscout — explore transactions, blocks, tokens, and contracts on TPIX Chain.
+                    {{ t('page.explorer.subtitle') }}
                 </p>
 
                 <!-- Search -->
@@ -55,18 +60,18 @@ const chainStats = [
                         <input
                             name="q"
                             type="text"
-                            placeholder="Search by address, tx hash, block, or token..."
+                            :placeholder="t('page.explorer.searchPlaceholder')"
                             class="trading-input flex-1"
                         />
                         <button type="submit" class="btn-primary px-6 py-2.5 font-semibold">
-                            Search
+                            {{ t('common.search') }}
                         </button>
                     </form>
                 </div>
 
                 <!-- Chain Stats -->
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto">
-                    <div v-for="stat in chainStats" :key="stat.label" class="glass-dark p-3 rounded-lg border border-white/10">
+                    <div v-for="stat in chainStats" :key="stat.id" class="glass-dark p-3 rounded-lg border border-white/10">
                         <span class="text-xs text-gray-400">{{ stat.label }}</span>
                         <p class="text-lg font-bold text-white">{{ stat.value }}</p>
                     </div>
@@ -79,7 +84,7 @@ const chainStats = [
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 <a
                     v-for="feature in features"
-                    :key="feature.title"
+                    :key="feature.id"
                     :href="explorerUrl + feature.link"
                     target="_blank"
                     rel="noopener"
@@ -102,7 +107,7 @@ const chainStats = [
                 rel="noopener"
                 class="btn-brand px-10 py-4 text-lg font-bold inline-flex items-center gap-2"
             >
-                Open Full Explorer
+                {{ t('page.explorer.openFull') }}
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>

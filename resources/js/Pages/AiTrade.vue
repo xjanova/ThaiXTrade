@@ -896,7 +896,7 @@ bot.keepBrowserBotsRunning();
                     <p class="text-[11px] text-dark-300 mt-0.5">
                         {{ t('aiTrade.browserBotWarning') }}
                         <span v-if="bot.lastBrowserTick.value" class="text-dark-500 font-mono ml-1">
-                            · {{ t('aiTrade.lastTickAt') }} {{ new Date(bot.lastBrowserTick.value).toLocaleTimeString() }}
+                            · {{ t('aiTrade.lastTickAt') }} {{ new Date(bot.lastBrowserTick.value).toLocaleTimeString(locale === 'th' ? 'th-TH' : 'en-US') }}
                         </span>
                     </p>
                     <!-- รอบล่าสุดถูกปฏิเสธ — ต้องเห็น ไม่ใช่ปล่อยให้ดูเหมือนบอทเดินปกติ -->

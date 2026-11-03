@@ -3,6 +3,9 @@
  * ProductExplorer — สำรวจสินค้าทั้งหมดในระบบ
  */
 import { ref, onMounted, watch } from 'vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     categories: { type: Object, required: true },
@@ -37,19 +40,26 @@ watch([selectedCategory, selectedStatus], () => {
 });
 
 onMounted(fetchProducts);
+
+// แปลสถานะสินค้า — ค่าที่ไม่รู้จักแสดงตามข้อมูลจากเซิร์ฟเวอร์
+const statusKeys = { registered: 'registered', in_transit: 'inTransit', certified: 'certified' };
+function statusLabel(status) {
+    if (!status) return t('ui.foodPassportProductExplorer.status.all');
+    return statusKeys[status] ? t(`ui.foodPassportProductExplorer.status.${statusKeys[status]}`) : status;
+}
 </script>
 
 <template>
     <div>
         <div class="flex items-center justify-between mb-6">
-            <h2 class="text-xl font-bold text-white">สำรวจสินค้า FoodPassport</h2>
+            <h2 class="text-xl font-bold text-white">{{ t('ui.foodPassportProductExplorer.title') }}</h2>
         </div>
 
         <!-- Filters -->
         <div class="flex flex-wrap gap-2 mb-6">
             <button @click="selectedCategory = ''"
                 :class="['px-3 py-1.5 rounded-lg text-sm transition-all', !selectedCategory ? 'bg-primary-500 text-white' : 'bg-dark-800 text-dark-400 hover:text-white']">
-                ทั้งหมด
+                {{ t('ui.foodPassportProductExplorer.allCategories') }}
             </button>
             <button v-for="(cat, key) in categories" :key="key"
                 @click="selectedCategory = key"
@@ -62,7 +72,7 @@ onMounted(fetchProducts);
             <button v-for="status in ['', 'registered', 'in_transit', 'certified']" :key="status"
                 @click="selectedStatus = status"
                 :class="['px-3 py-1.5 rounded-lg text-xs transition-all', selectedStatus === status ? 'bg-accent-500 text-white' : 'bg-dark-800 text-dark-500 hover:text-white']">
-                {{ status || 'All Status' }}
+                {{ statusLabel(status) }}
             </button>
         </div>
 
@@ -82,7 +92,7 @@ onMounted(fetchProducts);
                 </div>
                 <div class="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
                     <div class="flex gap-2">
-                        <span class="text-dark-600 text-xs">Batch: {{ product.batch_number }}</span>
+                        <span class="text-dark-600 text-xs">{{ t('ui.foodPassportProductExplorer.batch', { batch: product.batch_number }) }}</span>
                     </div>
                     <span :class="[
                         'text-[10px] px-2 py-0.5 rounded-full',
@@ -90,17 +100,17 @@ onMounted(fetchProducts);
                         product.status === 'in_transit' ? 'bg-blue-500/10 text-blue-400' :
                         'bg-dark-700 text-dark-400'
                     ]">
-                        {{ product.status }}
+                        {{ statusLabel(product.status) }}
                     </span>
                 </div>
                 <div v-if="product.traces_count" class="mt-2 text-dark-600 text-[10px]">
-                    {{ product.traces_count }} checkpoints recorded
+                    {{ t('ui.foodPassportProductExplorer.checkpoints', { n: product.traces_count }) }}
                 </div>
             </div>
         </div>
         <div v-else class="glass-card rounded-2xl p-12 text-center">
             <p class="text-4xl mb-3">🔍</p>
-            <p class="text-dark-400">ไม่พบสินค้าในหมวดหมู่นี้</p>
+            <p class="text-dark-400">{{ t('ui.foodPassportProductExplorer.empty') }}</p>
         </div>
     </div>
 </template>

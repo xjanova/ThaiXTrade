@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { reactive } from 'vue';
+import { t } from '@/Composables/useTranslation';
 
 const formErrors = reactive({});
 
@@ -71,15 +72,15 @@ describe('ค่าบริการวางไม้ — ค่าตั้�
     it('super_admin แก้และบันทึกได้', () => {
         const wrapper = mount(TradingFees, { props: { canManageMoney: true } });
 
-        expect(wrapper.text()).toContain('บันทึกการตั้งค่า');
+        expect(wrapper.text()).toContain(t('admin.tradingFees.settings.save'));
         expect(settingsForm(wrapper).attributes('inert')).toBeUndefined();
     });
 
     it('แอดมินระดับล่างเห็นได้แต่แก้ไม่ได้ และรู้ว่าเพราะอะไร', () => {
         const wrapper = mount(TradingFees, { props: { canManageMoney: false } });
 
-        expect(wrapper.text()).not.toContain('บันทึกการตั้งค่า');
+        expect(wrapper.text()).not.toContain(t('admin.tradingFees.settings.save'));
         expect(settingsForm(wrapper).attributes('inert')).toBeDefined();
-        expect(wrapper.text()).toContain('แก้ได้เฉพาะ Super Admin');
+        expect(wrapper.text()).toContain(t('admin.tradingFees.settings.superAdminOnly'));
     });
 });

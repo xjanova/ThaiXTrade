@@ -50,6 +50,7 @@ vi.mock('@/Composables/useInjectedOwnerWallet', async () => {
 });
 
 import Kyc from '@/Pages/Admin/Validators/Kyc.vue';
+import { t } from '@/Composables/useTranslation';
 
 function row(status, extra = {}) {
     return {
@@ -81,21 +82,21 @@ describe('Admin/Validators/Kyc', () => {
     it('keeps action buttons disabled until the owner wallet is connected', async () => {
         signerAddress = '0x' + '9'.repeat(40);
         const w = mountPage([row('ConsentGiven')]);
-        expect(buttonByText(w, 'บันทึกเอกสารขึ้นเชน').attributes('disabled')).toBeDefined();
+        expect(buttonByText(w, t('admin.validatorsKyc.actions.submit')).attributes('disabled')).toBeDefined();
 
-        await buttonByText(w, 'เชื่อมกระเป๋า owner').trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.connectOwner')).trigger('click');
         await flushPromises();
-        expect(w.text()).toContain('ไม่ใช่ owner');
-        expect(buttonByText(w, 'บันทึกเอกสารขึ้นเชน').attributes('disabled')).toBeDefined();
+        expect(w.text()).toContain(t('admin.validatorsKyc.notOwner'));
+        expect(buttonByText(w, t('admin.validatorsKyc.actions.submit')).attributes('disabled')).toBeDefined();
     });
 
     it('submits the site KYC hash, then asks the server to verify the tx', async () => {
         const w = mountPage([row('ConsentGiven')]);
-        await buttonByText(w, 'เชื่อมกระเป๋า owner').trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.connectOwner')).trigger('click');
         await flushPromises();
 
-        await buttonByText(w, 'บันทึกเอกสารขึ้นเชน').trigger('click');
-        await buttonByText(w, 'เซ็นและส่ง').trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.actions.submit')).trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.submit.sign')).trigger('click');
         await flushPromises();
 
         expect(sentTxs).toHaveLength(1);
@@ -110,19 +111,19 @@ describe('Admin/Validators/Kyc', () => {
 
     it('a manual hash needs a reason and is sent with it', async () => {
         const w = mountPage([row('ConsentGiven', { site_kyc: { status: 'none', doc_hash: null, uuid: null } })]);
-        await buttonByText(w, 'เชื่อมกระเป๋า owner').trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.connectOwner')).trigger('click');
         await flushPromises();
-        await buttonByText(w, 'บันทึกเอกสารขึ้นเชน').trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.actions.submit')).trigger('click');
 
         const inputs = w.findAll('input');
         await inputs[0].setValue('0x' + 'cd'.repeat(32));
-        await buttonByText(w, 'เซ็นและส่ง').trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.submit.sign')).trigger('click');
         await flushPromises();
         expect(sentTxs).toHaveLength(0);
-        expect(w.text()).toContain('เหตุผล');
+        expect(w.text()).toContain(t('util.validatorKyc.error.manualNoteRequired'));
 
         await inputs[1].setValue('ตรวจเอกสารตัวจริงที่สำนักงาน');
-        await buttonByText(w, 'เซ็นและส่ง').trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.submit.sign')).trigger('click');
         await flushPromises();
         expect(sentTxs).toHaveLength(1);
         expect(axiosPost.mock.calls[0][1]).toEqual({ action: 'submit', tx_hash: TX, note: 'ตรวจเอกสารตัวจริงที่สำนักงาน' });
@@ -131,26 +132,26 @@ describe('Admin/Validators/Kyc', () => {
     it('shows the server refusal and keeps a re-check button', async () => {
         axiosPost.mockRejectedValue({ response: { data: { error: { message: 'สถานะบนสัญญายังไม่ตรงกับรายการนี้' } } } });
         const w = mountPage([row('Submitted')]);
-        await buttonByText(w, 'เชื่อมกระเป๋า owner').trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.connectOwner')).trigger('click');
         await flushPromises();
 
-        await buttonByText(w, 'อนุมัติ').trigger('click');
-        await buttonByText(w, 'เซ็นอนุมัติ').trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.actions.approve')).trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.approve.sign')).trigger('click');
         await flushPromises();
 
         expect(w.text()).toContain('สถานะบนสัญญายังไม่ตรงกับรายการนี้');
-        expect(buttonByText(w, 'ตรวจอีกครั้ง')).toBeTruthy();
+        expect(buttonByText(w, t('admin.validatorsKyc.recheck'))).toBeTruthy();
     });
 
     it('reject needs a reason before anything is signed', async () => {
         const w = mountPage([row('Submitted')]);
-        await buttonByText(w, 'เชื่อมกระเป๋า owner').trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.connectOwner')).trigger('click');
         await flushPromises();
 
-        await buttonByText(w, 'ไม่ผ่าน').trigger('click');
-        await buttonByText(w, 'เซ็นไม่ผ่าน').trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.actions.reject')).trigger('click');
+        await buttonByText(w, t('admin.validatorsKyc.reject.sign')).trigger('click');
         await flushPromises();
         expect(sentTxs).toHaveLength(0);
-        expect(w.text()).toContain('ต้องใส่เหตุผลที่ไม่ผ่าน');
+        expect(w.text()).toContain(t('admin.validatorsKyc.errors.reasonRequired'));
     });
 });

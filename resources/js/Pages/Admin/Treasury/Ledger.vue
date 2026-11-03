@@ -8,6 +8,9 @@ import { ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import axios from 'axios';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     entries: { type: Object, default: () => ({ data: [] }) },
@@ -25,8 +28,8 @@ function fmtTpix(v) {
     const neg = String(v).startsWith('-');
     const [i, f] = String(v).replace('-', '').split('.');
     const withCommas = i.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    const t = f ? f.replace(/0+$/, '').slice(0, 6) : '';
-    return (neg ? '-' : '') + (t ? `${withCommas}.${t}` : withCommas);
+    const frac = f ? f.replace(/0+$/, '').slice(0, 6) : '';
+    return (neg ? '-' : '') + (frac ? `${withCommas}.${frac}` : withCommas);
 }
 
 const shortAddr = (a) => (a ? `${a.slice(0, 10)}…${a.slice(-8)}` : '—');
@@ -42,30 +45,40 @@ async function recheck() {
     finally { isChecking.value = false; }
 }
 
+// ชื่อกระเป๋า: server ส่งมาทั้ง role (EN) และ role_th — เลือกตามภาษาที่ใช้อยู่
+const roleLabel = (r) => (locale.value === 'th' ? (r.role_th || r.role) : (r.role || r.role_th));
+// wallet_key ในสมุดเป็นคีย์ภายใน — แสดงเป็นชื่อกระเป๋าตามภาษา ถ้าไม่รู้จักแสดงคีย์ดิบ
+function walletKeyLabel(key) {
+    if (key === 'hot_wallet') return t('admin.treasuryLedger.filter.hotWallet');
+    const pool = props.pools.find((p) => p.key === key);
+    return pool ? roleLabel(pool) : key;
+}
+const dateLocale = () => (locale.value === 'th' ? 'th-TH' : 'en-US');
+
 function filterWallet(key) {
     router.get('/admin/treasury/ledger', key ? { wallet: key } : {}, { preserveState: true, replace: true });
 }
 </script>
 
 <template>
-    <Head title="สมุดบัญชีคลัง" />
+    <Head :title="t('admin.treasuryLedger.title')" />
     <AdminLayout>
         <div class="space-y-6">
             <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <h1 class="text-2xl font-bold text-white">สมุดบัญชีคลัง</h1>
+                    <h1 class="text-2xl font-bold text-white">{{ t('admin.treasuryLedger.title') }}</h1>
                     <p class="text-sm text-gray-400 mt-1">
-                        เชนคือแหล่งความจริง สมุดนี้มีไว้เทียบว่าระบบรู้เห็นครบไหม
+                        {{ t('admin.treasuryLedger.subtitle') }}
                     </p>
                 </div>
                 <div class="flex items-center gap-3">
                     <Link href="/admin/treasury"
                           class="px-4 py-2 text-sm font-medium rounded-xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all">
-                        กลับหน้าคลัง
+                        {{ t('admin.treasuryLedger.backToTreasury') }}
                     </Link>
                     <button @click="recheck" :disabled="isChecking"
                             class="px-4 py-2 text-sm font-medium rounded-xl bg-primary-500/20 text-primary-400 border border-primary-500/30 hover:bg-primary-500/30 transition-all disabled:opacity-50">
-                        {{ isChecking ? 'กำลังกระทบยอด…' : 'กระทบยอดใหม่' }}
+                        {{ isChecking ? t('admin.treasuryLedger.reconciling') : t('admin.treasuryLedger.reconcileAgain') }}
                     </button>
                 </div>
             </div>
@@ -79,15 +92,15 @@ function filterWallet(key) {
                     <span class="text-2xl leading-none">{{ recon.all_in_sync ? '&#10003;' : '&#9888;' }}</span>
                     <div class="flex-1">
                         <h3 :class="['font-bold', recon.all_in_sync ? 'text-emerald-300' : 'text-red-300']">
-                            <template v-if="recon.all_in_sync">ยอดตรงกันทุกใบ</template>
+                            <template v-if="recon.all_in_sync">{{ t('admin.treasuryLedger.recon.allInSync') }}</template>
                             <template v-else-if="recon.drift_count">
-                                ยอดไม่ตรง {{ recon.drift_count }} ใบ — มีเงินเคลื่อนโดยที่ระบบไม่รู้เห็น
+                                {{ t('admin.treasuryLedger.recon.drift', { n: recon.drift_count }) }}
                             </template>
-                            <template v-else>อ่านยอดไม่ได้ {{ recon.unreadable_count }} ใบ</template>
+                            <template v-else>{{ t('admin.treasuryLedger.recon.unreadable', { n: recon.unreadable_count }) }}</template>
                         </h3>
                         <p class="text-sm text-gray-400 mt-1">
-                            ยอดที่ควรเป็น = ยอดตอน genesis + ยอดสุทธิที่สมุดบันทึกไว้
-                            <span v-if="recon.tolerance_wei === '0'">· ต้องตรงเป๊ะทุก wei</span>
+                            {{ t('admin.treasuryLedger.recon.formula') }}
+                            <span v-if="recon.tolerance_wei === '0'">{{ t('admin.treasuryLedger.recon.exactWei') }}</span>
                         </p>
                     </div>
                 </div>
@@ -96,17 +109,17 @@ function filterWallet(key) {
                     <table class="w-full text-sm">
                         <thead class="text-xs text-gray-500 uppercase tracking-wider">
                             <tr>
-                                <th class="text-left py-2">กระเป๋า</th>
-                                <th class="text-right py-2">ยอดจริงบนเชน</th>
-                                <th class="text-right py-2">ยอดที่ควรเป็น</th>
-                                <th class="text-right py-2">ส่วนต่าง</th>
-                                <th class="text-center py-2">ผล</th>
+                                <th class="text-left py-2">{{ t('admin.treasuryLedger.recon.table.wallet') }}</th>
+                                <th class="text-right py-2">{{ t('admin.treasuryLedger.recon.table.onChain') }}</th>
+                                <th class="text-right py-2">{{ t('admin.treasuryLedger.recon.table.expected') }}</th>
+                                <th class="text-right py-2">{{ t('admin.treasuryLedger.recon.table.drift') }}</th>
+                                <th class="text-center py-2">{{ t('admin.treasuryLedger.recon.table.result') }}</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
                             <tr v-for="r in recon.rows" :key="r.key">
                                 <td class="py-2">
-                                    <div class="text-gray-200">{{ r.role_th }}</div>
+                                    <div class="text-gray-200">{{ roleLabel(r) }}</div>
                                     <div class="font-mono text-xs text-gray-600">{{ shortAddr(r.address) }}</div>
                                 </td>
                                 <td class="py-2 text-right font-mono text-white">
@@ -121,7 +134,7 @@ function filterWallet(key) {
                                     {{ r.readable ? fmtTpix(r.drift_tpix) : '—' }}
                                 </td>
                                 <td class="py-2 text-center">
-                                    <span v-if="!r.readable" class="text-xs text-gray-500">อ่านไม่ได้</span>
+                                    <span v-if="!r.readable" class="text-xs text-gray-500">{{ t('admin.treasuryLedger.recon.unreadableBadge') }}</span>
                                     <span v-else-if="r.in_sync" class="text-emerald-400">&#10003;</span>
                                     <span v-else class="text-red-400 font-bold">&#9888;</span>
                                 </td>
@@ -137,19 +150,19 @@ function filterWallet(key) {
                         :class="['px-3 py-1.5 text-xs font-medium rounded-lg border transition-all',
                                  !filters.wallet ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
                                                  : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10']">
-                    ทั้งหมด
+                    {{ t('admin.treasuryLedger.filter.all') }}
                 </button>
                 <button v-for="p in pools" :key="p.key" @click="filterWallet(p.key)"
                         :class="['px-3 py-1.5 text-xs font-medium rounded-lg border transition-all',
                                  filters.wallet === p.key ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
                                                           : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10']">
-                    {{ p.role_th }}
+                    {{ roleLabel(p) }}
                 </button>
                 <button @click="filterWallet('hot_wallet')"
                         :class="['px-3 py-1.5 text-xs font-medium rounded-lg border transition-all',
                                  filters.wallet === 'hot_wallet' ? 'bg-primary-500/20 text-primary-400 border-primary-500/30'
                                                                  : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10']">
-                    กระเป๋าร้อน
+                    {{ t('admin.treasuryLedger.filter.hotWallet') }}
                 </button>
             </div>
 
@@ -159,27 +172,27 @@ function filterWallet(key) {
                     <table class="w-full text-sm">
                         <thead class="bg-white/5 text-xs text-gray-500 uppercase tracking-wider">
                             <tr>
-                                <th class="text-left px-4 py-3">เวลา</th>
-                                <th class="text-left px-4 py-3">กระเป๋า</th>
-                                <th class="text-left px-4 py-3">ทิศทาง</th>
-                                <th class="text-right px-4 py-3">จำนวน</th>
-                                <th class="text-left px-4 py-3">ที่มา</th>
-                                <th class="text-left px-4 py-3">ธุรกรรม</th>
-                                <th class="text-left px-4 py-3">บันทึกโดย</th>
+                                <th class="text-left px-4 py-3">{{ t('admin.treasuryLedger.table.time') }}</th>
+                                <th class="text-left px-4 py-3">{{ t('admin.treasuryLedger.table.wallet') }}</th>
+                                <th class="text-left px-4 py-3">{{ t('admin.treasuryLedger.table.direction') }}</th>
+                                <th class="text-right px-4 py-3">{{ t('admin.treasuryLedger.table.amount') }}</th>
+                                <th class="text-left px-4 py-3">{{ t('admin.treasuryLedger.table.source') }}</th>
+                                <th class="text-left px-4 py-3">{{ t('admin.treasuryLedger.table.tx') }}</th>
+                                <th class="text-left px-4 py-3">{{ t('admin.treasuryLedger.table.recordedBy') }}</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
                             <tr v-for="e in entries.data" :key="e.id" class="hover:bg-white/[0.02]">
                                 <td class="px-4 py-3 text-xs text-gray-500">
-                                    {{ new Date(e.created_at).toLocaleString('th-TH') }}
+                                    {{ new Date(e.created_at).toLocaleString(dateLocale()) }}
                                 </td>
-                                <td class="px-4 py-3 text-xs text-gray-300">{{ e.wallet_key }}</td>
+                                <td class="px-4 py-3 text-xs text-gray-300">{{ walletKeyLabel(e.wallet_key) }}</td>
                                 <td class="px-4 py-3">
                                     <span :class="['px-2 py-1 text-xs rounded-md border',
                                                    e.direction === 'credit'
                                                     ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                                                     : 'bg-amber-500/20 text-amber-400 border-amber-500/30']">
-                                        {{ e.direction === 'credit' ? 'เข้า' : 'ออก' }}
+                                        {{ e.direction === 'credit' ? t('admin.treasuryLedger.direction.in') : t('admin.treasuryLedger.direction.out') }}
                                     </span>
                                 </td>
                                 <td class="px-4 py-3 text-right font-mono text-white">{{ fmtTpix(e.amount_tpix) }}</td>
@@ -192,13 +205,13 @@ function filterWallet(key) {
                                        class="font-mono text-xs text-primary-400 hover:underline">{{ shortHash(e.tx_hash) }}</a>
                                     <span v-else class="text-xs text-gray-600">—</span>
                                 </td>
-                                <td class="px-4 py-3 text-xs text-gray-500">{{ e.recorder?.name ?? 'ระบบ' }}</td>
+                                <td class="px-4 py-3 text-xs text-gray-500">{{ e.recorder?.name ?? t('admin.treasuryLedger.system') }}</td>
                             </tr>
                             <tr v-if="!entries.data.length">
                                 <td colspan="7" class="px-4 py-12 text-center">
-                                    <div class="text-gray-500">ยังไม่มีรายการเคลื่อนไหว</div>
+                                    <div class="text-gray-500">{{ t('admin.treasuryLedger.empty.title') }}</div>
                                     <div class="text-xs text-gray-600 mt-1">
-                                        สมุดจะเริ่มบันทึกเมื่อมีการจ่ายเงินผ่านคิว หรือบันทึกรายการมือ
+                                        {{ t('admin.treasuryLedger.empty.hint') }}
                                     </div>
                                 </td>
                             </tr>

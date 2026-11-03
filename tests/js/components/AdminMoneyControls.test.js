@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { reactive } from 'vue';
+import { t } from '@/Composables/useTranslation';
 
 const inertia = vi.hoisted(() => ({
     patch: vi.fn(),
@@ -199,31 +200,35 @@ describe('หน้า Token Sales', () => {
         return wrapper;
     }
 
-    it('แอดมินระดับล่างไม่เห็นปุ่มเพิ่มและแก้เฟส', async () => {
-        const labels = buttons(await openTab(false, 'Sales & Phases'));
+    // ปุ่มแก้ไขระดับรอบขายเปิดให้ทุกคน (ชื่อเดียวกันได้) จึงนับเฉพาะปุ่มในตารางเฟส
+    const phaseEditButtons = (wrapper) => wrapper.findAll('table button')
+        .filter((button) => button.text() === t('admin.tokenSales.phases.edit'));
 
-        expect(labels).not.toContain('+ Phase');
-        expect(labels).not.toContain('แก้ไข');
+    it('แอดมินระดับล่างไม่เห็นปุ่มเพิ่มและแก้เฟส', async () => {
+        const wrapper = await openTab(false, t('admin.tokenSales.tabs.sales'));
+
+        expect(buttons(wrapper)).not.toContain(t('admin.tokenSales.sales.addPhase'));
+        expect(phaseEditButtons(wrapper)).toHaveLength(0);
     });
 
     it('แอดมินระดับล่างไม่เห็นปุ่มยืนยันเงินโอน แต่ยังเห็นรหัสอ้างอิง', async () => {
-        const wrapper = await openTab(false, 'Transactions');
+        const wrapper = await openTab(false, t('admin.tokenSales.tabs.transactions'));
 
         expect(wrapper.text()).toContain('TPIX-ABC234');
-        expect(buttons(wrapper)).not.toContain('ได้รับเงินแล้ว');
-        expect(buttons(wrapper)).not.toContain('ปฏิเสธ');
+        expect(buttons(wrapper)).not.toContain(t('admin.tokenSales.tx.received'));
+        expect(buttons(wrapper)).not.toContain(t('admin.tokenSales.tx.reject'));
     });
 
     it('super_admin เห็นปุ่มครบ', async () => {
-        const labels = buttons(await openTab(true, 'Sales & Phases'));
+        const sales = await openTab(true, t('admin.tokenSales.tabs.sales'));
 
-        expect(labels).toContain('+ Phase');
-        expect(labels).toContain('แก้ไข');
+        expect(buttons(sales)).toContain(t('admin.tokenSales.sales.addPhase'));
+        expect(phaseEditButtons(sales)).toHaveLength(sale.phases.length);
 
-        const transactions = buttons(await openTab(true, 'Transactions'));
+        const transactions = buttons(await openTab(true, t('admin.tokenSales.tabs.transactions')));
 
-        expect(transactions).toContain('ได้รับเงินแล้ว');
-        expect(transactions).toContain('ปฏิเสธ');
+        expect(transactions).toContain(t('admin.tokenSales.tx.received'));
+        expect(transactions).toContain(t('admin.tokenSales.tx.reject'));
     });
 });
 
@@ -241,24 +246,24 @@ describe('กล่องเปิดรอบขาย', () => {
         const wrapper = mount(SaleLaunchPanel, { props: { launch, canManage: false } });
 
         expect(wrapper.text()).toContain('กระเป๋า');
-        expect(wrapper.text()).toContain('Super Admin');
+        expect(wrapper.text()).toContain(t('admin.saleLaunchPanel.superAdminOnly'));
         expect(wrapper.find('input').exists()).toBe(false);
 
         const labels = buttons(wrapper);
 
-        ['เปิดรอบขาย', 'บันทึก', 'ยกเลิกวันจบ'].forEach((label) => expect(labels).not.toContain(label));
+        [t('admin.saleLaunchPanel.launch'), t('admin.saleLaunchPanel.roundEnd.save'), t('admin.saleLaunchPanel.roundEnd.clear')].forEach((label) => expect(labels).not.toContain(label));
         expect(wrapper.find('[role="switch"]').attributes('disabled')).toBeDefined();
     });
 
     it('ไม่ส่ง prop = ถือว่าไม่มีสิทธิ์', () => {
-        expect(buttons(mount(SaleLaunchPanel, { props: { launch } }))).not.toContain('เปิดรอบขาย');
+        expect(buttons(mount(SaleLaunchPanel, { props: { launch } }))).not.toContain(t('admin.saleLaunchPanel.launch'));
     });
 
     it('super_admin สั่งได้ครบ', () => {
         const wrapper = mount(SaleLaunchPanel, { props: { launch, canManage: true } });
         const labels = buttons(wrapper);
 
-        ['เปิดรอบขาย', 'บันทึก', 'ยกเลิกวันจบ'].forEach((label) => expect(labels).toContain(label));
+        [t('admin.saleLaunchPanel.launch'), t('admin.saleLaunchPanel.roundEnd.save'), t('admin.saleLaunchPanel.roundEnd.clear')].forEach((label) => expect(labels).toContain(label));
         expect(wrapper.find('[role="switch"]').attributes('disabled')).toBeUndefined();
     });
 });
@@ -283,7 +288,7 @@ describe('กล่องชำระด้วย USDT', () => {
 
         expect(wrapper.find('[data-testid="crypto-review-row"]').text()).toContain('TPX-ABCDEFG');
         expect(buttons(wrapper)).toEqual([]);
-        expect(wrapper.text()).toContain('เฉพาะ Super Admin');
+        expect(wrapper.text()).toContain(t('admin.saleCryptoPanel.superAdminOnly'));
     });
 
     it('ไม่ส่ง prop = ถือว่าไม่มีสิทธิ์', () => {
@@ -295,14 +300,14 @@ describe('กล่องชำระด้วย USDT', () => {
             props: { crypto: { ...crypto, review: [payment(), payment({ id: 2, reason: 'wrong_token' })] }, canManage: true },
         });
 
-        expect(buttons(wrapper)).toEqual(['ออกเหรียญตามยอดที่ได้รับ', 'บันทึกว่าคืนเงิน/จัดการแล้ว', 'บันทึกว่าคืนเงิน/จัดการแล้ว']);
-        expect(wrapper.text()).not.toContain('เฉพาะ Super Admin');
+        expect(buttons(wrapper)).toEqual([t('admin.saleCryptoPanel.creditButton'), t('admin.saleCryptoPanel.resolveButton'), t('admin.saleCryptoPanel.resolveButton')]);
+        expect(wrapper.text()).not.toContain(t('admin.saleCryptoPanel.superAdminOnly'));
     });
 
     it('หน้า Token Sales ส่งสิทธิ์ลงกล่องนี้', async () => {
         for (const [canManageMoney, count] of [[false, 0], [true, 2]]) {
             const wrapper = mount(TokenSalesIndex, { props: { crypto, canManageMoney }, global });
-            await wrapper.findAll('button').find((button) => button.text().includes('Sales & Phases')).trigger('click');
+            await wrapper.findAll('button').find((button) => button.text().includes(t('admin.tokenSales.tabs.sales'))).trigger('click');
 
             expect(wrapper.findComponent(SaleCryptoPanel).findAll('button')).toHaveLength(count);
         }

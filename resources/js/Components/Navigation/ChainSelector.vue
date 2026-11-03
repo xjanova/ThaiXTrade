@@ -86,10 +86,10 @@ const defaultChain = computed(() => {
 });
 
 const currentChainName = computed(() => {
-    if (!isConnected.value) return 'Select Network';
+    if (!isConnected.value) return t('ui.navigationChainSelector.selectNetwork');
     if (currentChain.value) return currentChain.value.shortName;
     // (เชนยังไม่เปิดก็โชว์ชื่อ แต่ป้ายเป็นสีเหลืองตาม isOnSupportedChain)
-    return 'Unsupported';
+    return t('ui.navigationChainSelector.unsupported');
 });
 
 const currentChainColor = computed(() => {
@@ -154,6 +154,9 @@ async function fetchChains() {
  * ในกระเป๋าแล้วจะไม่เห็นอะไรเลย ป้ายยังเป็นเชนเดิม ไม่รู้ว่ากดพลาดหรือระบบพัง
  */
 const switchError = ref(null);
+// ข้อความสำรองเก็บเป็น sentinel แล้วแปลตอน render — ค้างบนจอได้ ต้องเปลี่ยนภาษาตามเมื่อสลับ TH/EN
+const SWITCH_FAILED = Symbol('switchFailed');
+const switchErrorText = computed(() => (switchError.value === SWITCH_FAILED ? t('ui.navigationChainSelector.switchFailed') : switchError.value));
 const switchingTo = ref(null);
 
 async function selectChain(chain) {
@@ -180,7 +183,7 @@ async function selectChain(chain) {
         showDropdown.value = false;   // ปิดเฉพาะตอนสำเร็จจริง
     } catch (err) {
         // ข้อความที่ store เตรียมไว้อ่านรู้เรื่องกว่า err.message ดิบๆ
-        switchError.value = walletStore.error || err?.message || 'สลับเครือข่ายไม่สำเร็จ';
+        switchError.value = walletStore.error || err?.message || SWITCH_FAILED;
     } finally {
         switchingTo.value = null;
     }
@@ -195,7 +198,7 @@ async function switchToDefault() {
     try {
         await walletStore.switchChain(defaultChain.value.chainId);
     } catch (err) {
-        switchError.value = walletStore.error || err?.message || 'สลับเครือข่ายไม่สำเร็จ';
+        switchError.value = walletStore.error || err?.message || SWITCH_FAILED;
     } finally {
         switchingTo.value = null;
     }
@@ -275,13 +278,13 @@ onUnmounted(() => {
             >
                 <!-- Header -->
                 <div class="px-4 py-2 border-b border-white/5">
-                    <p class="text-xs text-dark-400 font-medium">Select Network</p>
+                    <p class="text-xs text-dark-400 font-medium">{{ t('ui.navigationChainSelector.selectNetwork') }}</p>
                 </div>
 
                 <!-- กำลังรอกระเป๋าตอบ — ไม่งั้นผู้ใช้ไม่รู้ว่ากดติดหรือยัง -->
                 <div v-if="switchingTo !== null" class="mx-3 mt-2 mb-1 px-3 py-2 rounded-lg bg-primary-500/10 border border-primary-500/20 flex items-center gap-2">
                     <span class="w-3 h-3 rounded-full border-2 border-primary-400 border-t-transparent animate-spin shrink-0"></span>
-                    <p class="text-[11px] text-primary-300">กำลังสลับเครือข่าย — ยืนยันในกระเป๋าของคุณ</p>
+                    <p class="text-[11px] text-primary-300">{{ t('ui.navigationChainSelector.switching') }}</p>
                 </div>
 
                 <!-- ผลลัพธ์ของการสลับที่ล้มเหลว — ต้องเห็นตรงนี้ ไม่ใช่ใน console -->
@@ -290,14 +293,14 @@ onUnmounted(() => {
                         <svg class="w-3.5 h-3.5 text-trading-red shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                         </svg>
-                        <p class="text-[11px] text-trading-red leading-snug">{{ switchError }}</p>
+                        <p class="text-[11px] text-trading-red leading-snug">{{ switchErrorText }}</p>
                     </div>
                 </div>
 
                 <!-- Unsupported Chain Warning — เชนที่ยังไม่เปิด (coming_soon) บอกให้ตรงว่า "ยังไม่เปิด" -->
                 <div v-if="isConnected && !isOnSupportedChain" data-test="chain-unsupported" class="mx-3 mt-2 mb-1 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-                    <p class="text-xs text-yellow-400 font-medium">{{ isOnComingSoonChain ? t('chainSelector.notOpenTitle') : 'Unsupported Network' }}</p>
-                    <p class="text-xs text-yellow-400/70 mt-0.5">{{ isOnComingSoonChain ? t('chainSelector.notOpenBody') : 'Switch to a supported chain below.' }}</p>
+                    <p class="text-xs text-yellow-400 font-medium">{{ isOnComingSoonChain ? t('chainSelector.notOpenTitle') : t('ui.navigationChainSelector.unsupportedTitle') }}</p>
+                    <p class="text-xs text-yellow-400/70 mt-0.5">{{ isOnComingSoonChain ? t('chainSelector.notOpenBody') : t('ui.navigationChainSelector.unsupportedBody') }}</p>
                 </div>
 
                 <!-- Auto-switch suggestion — ไปเชนปริยายตามเซิร์ฟเวอร์ (ไม่ใช่ BSC ตายตัว) -->
@@ -346,7 +349,7 @@ onUnmounted(() => {
                         <!-- Chain info -->
                         <div class="flex-1 text-left">
                             <p class="text-white font-medium text-sm">{{ chain.name }}</p>
-                            <p class="text-dark-500 text-xs">{{ isComingSoon(chain) ? 'Coming soon' : chain.nativeCurrency?.symbol }}</p>
+                            <p class="text-dark-500 text-xs">{{ isComingSoon(chain) ? t('ui.navigationChainSelector.comingSoon') : chain.nativeCurrency?.symbol }}</p>
                         </div>
 
                         <!-- Current chain indicator -->
@@ -357,7 +360,7 @@ onUnmounted(() => {
                             v-if="isComingSoon(chain)"
                             class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 font-medium"
                         >
-                            Soon
+                            {{ t('ui.navigationChainSelector.soonBadge') }}
                         </span>
 
                         <!-- Default badge -->
@@ -366,14 +369,14 @@ onUnmounted(() => {
                             data-test="chain-main-badge"
                             class="text-[10px] px-1.5 py-0.5 rounded bg-primary-500/20 text-primary-400 font-medium"
                         >
-                            Main
+                            {{ t('ui.navigationChainSelector.mainBadge') }}
                         </span>
                     </button>
                 </div>
 
                 <!-- Not connected hint -->
                 <div v-if="!isConnected" class="px-4 py-2 border-t border-white/5">
-                    <p class="text-xs text-dark-500">Connect wallet to switch networks</p>
+                    <p class="text-xs text-dark-500">{{ t('ui.navigationChainSelector.connectHint') }}</p>
                 </div>
             </div>
         </Transition>

@@ -5,12 +5,15 @@
  * Developed by Xman Studio
  */
 
-import { ref, reactive } from 'vue';
+import { ref, reactive, computed } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import DataTable from '@/Components/Admin/DataTable.vue';
 import Modal from '@/Components/Admin/Modal.vue';
 import ConfirmDialog from '@/Components/Admin/ConfirmDialog.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     users: {
@@ -23,14 +26,14 @@ const props = defineProps({
     },
 });
 
-const columns = [
-    { key: 'name', label: 'Name', sortable: true },
-    { key: 'email', label: 'Email', sortable: true },
-    { key: 'role', label: 'Role' },
-    { key: 'is_active', label: 'Status' },
-    { key: 'last_login_at', label: 'Last Login', sortable: true },
-    { key: 'actions', label: 'Actions', align: 'right' },
-];
+const columns = computed(() => [
+    { key: 'name', label: t('admin.users.columns.name'), sortable: true },
+    { key: 'email', label: t('admin.users.columns.email'), sortable: true },
+    { key: 'role', label: t('admin.users.columns.role') },
+    { key: 'is_active', label: t('common.status') },
+    { key: 'last_login_at', label: t('admin.users.columns.lastLogin'), sortable: true },
+    { key: 'actions', label: t('admin.users.columns.actions'), align: 'right' },
+]);
 
 const roleColors = {
     super_admin: 'bg-red-500/10 text-red-400 border-red-500/20',
@@ -39,12 +42,14 @@ const roleColors = {
     support: 'bg-green-500/10 text-green-400 border-green-500/20',
 };
 
-const roleLabels = {
-    super_admin: 'Super Admin',
-    admin: 'Admin',
-    moderator: 'Moderator',
-    support: 'Support',
+// เก็บ key แล้วแปลตอน render เพื่อให้เปลี่ยนภาษาได้ทันที
+const roleLabelKeys = {
+    super_admin: 'admin.users.roles.superAdmin',
+    admin: 'admin.users.roles.admin',
+    moderator: 'admin.users.roles.moderator',
+    support: 'admin.users.roles.support',
 };
+const roleLabel = (role) => (roleLabelKeys[role] ? t(roleLabelKeys[role]) : role);
 
 // Filters
 const filterRole = ref(props.filters.role || '');
@@ -181,23 +186,31 @@ function decodeLabel(html) {
     txt.innerHTML = html;
     return txt.value;
 }
+
+// ป้าย « Previous / Next » ของ Laravel มาเป็นภาษาอังกฤษเสมอ — แปลฝั่งหน้าเว็บให้ตามภาษาที่เลือก
+function pageLabel(label) {
+    const s = decodeLabel(label);
+    if (/previous/i.test(s) || s.includes('«')) return '« ' + t('common.previous');
+    if (/next/i.test(s) || s.includes('»')) return t('common.next') + ' »';
+    return s;
+}
 </script>
 
 <template>
-    <Head title="User Management" />
+    <Head :title="t('admin.users.pageTitle')" />
 
-    <AdminLayout title="User Management">
+    <AdminLayout :title="t('admin.users.pageTitle')">
         <!-- Header -->
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div>
-                <h2 class="text-xl font-semibold text-white">Admin Users</h2>
-                <p class="text-sm text-dark-400 mt-1">Manage admin panel accounts and permissions</p>
+                <h2 class="text-xl font-semibold text-white">{{ t('admin.users.header.title') }}</h2>
+                <p class="text-sm text-dark-400 mt-1">{{ t('admin.users.header.subtitle') }}</p>
             </div>
             <button @click="openCreateModal" class="btn-primary px-4 py-2.5 text-sm">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                 </svg>
-                Add User
+                {{ t('admin.users.addUser') }}
             </button>
         </div>
 
@@ -205,29 +218,29 @@ function decodeLabel(html) {
         <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 mb-6">
             <div class="flex flex-wrap items-end gap-3">
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Search</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('common.search') }}</label>
                     <input
                         v-model="filterSearch"
                         type="text"
-                        placeholder="Name or email..."
+                        :placeholder="t('admin.users.searchPlaceholder')"
                         :class="inputClass"
                         class="!w-64"
                         @keyup.enter="applyFilters"
                     />
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Role</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.users.columns.role') }}</label>
                     <select v-model="filterRole" :class="selectClass" class="!w-44">
-                        <option value="">All Roles</option>
-                        <option value="super_admin">Super Admin</option>
-                        <option value="admin">Admin</option>
-                        <option value="moderator">Moderator</option>
-                        <option value="support">Support</option>
+                        <option value="">{{ t('admin.users.allRoles') }}</option>
+                        <option value="super_admin">{{ t('admin.users.roles.superAdmin') }}</option>
+                        <option value="admin">{{ t('admin.users.roles.admin') }}</option>
+                        <option value="moderator">{{ t('admin.users.roles.moderator') }}</option>
+                        <option value="support">{{ t('admin.users.roles.support') }}</option>
                     </select>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button @click="applyFilters" class="btn-primary px-4 py-2.5 text-sm">Filter</button>
-                    <button @click="resetFilters" class="px-4 py-2.5 text-sm text-dark-400 hover:text-white transition-colors">Reset</button>
+                    <button @click="applyFilters" class="btn-primary px-4 py-2.5 text-sm">{{ t('common.filter') }}</button>
+                    <button @click="resetFilters" class="px-4 py-2.5 text-sm text-dark-400 hover:text-white transition-colors">{{ t('admin.users.reset') }}</button>
                 </div>
             </div>
         </div>
@@ -250,7 +263,7 @@ function decodeLabel(html) {
                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border"
                     :class="roleColors[value] || roleColors.support"
                 >
-                    {{ roleLabels[value] || value }}
+                    {{ roleLabel(value) }}
                 </span>
             </template>
             <template #cell-is_active="{ value }">
@@ -259,18 +272,18 @@ function decodeLabel(html) {
                     :class="value ? 'text-green-400' : 'text-red-400'"
                 >
                     <span class="w-1.5 h-1.5 rounded-full" :class="value ? 'bg-green-400' : 'bg-red-400'"></span>
-                    {{ value ? 'Active' : 'Inactive' }}
+                    {{ value ? t('common.active') : t('common.inactive') }}
                 </span>
             </template>
             <template #cell-last_login_at="{ value }">
-                <span class="text-dark-400 text-xs">{{ value || 'Never' }}</span>
+                <span class="text-dark-400 text-xs">{{ value || t('admin.users.never') }}</span>
             </template>
             <template #cell-actions="{ row }">
                 <div class="flex items-center justify-end gap-1">
                     <button
                         @click.stop="openEditModal(row)"
                         class="p-1.5 rounded-lg text-dark-400 hover:text-white hover:bg-white/10 transition-colors"
-                        title="Edit"
+                        :title="t('common.edit')"
                     >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -279,7 +292,7 @@ function decodeLabel(html) {
                     <button
                         @click.stop="openResetPassword(row)"
                         class="p-1.5 rounded-lg text-dark-400 hover:text-yellow-400 hover:bg-yellow-500/10 transition-colors"
-                        title="Reset Password"
+                        :title="t('admin.users.resetPassword')"
                     >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
@@ -288,7 +301,7 @@ function decodeLabel(html) {
                     <button
                         @click.stop="confirmDelete(row)"
                         class="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                        title="Delete"
+                        :title="t('common.delete')"
                     >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -306,38 +319,38 @@ function decodeLabel(html) {
                     :href="link.url"
                     class="px-3 py-2 rounded-lg text-sm transition-colors"
                     :class="link.active ? 'bg-primary-500/10 text-primary-400' : 'text-dark-400 hover:text-white hover:bg-white/5'"
-                    v-text="decodeLabel(link.label)"
+                    v-text="pageLabel(link.label)"
                     preserve-scroll
                 />
-                <span v-else class="px-3 py-2 text-sm text-dark-600" v-text="decodeLabel(link.label)" />
+                <span v-else class="px-3 py-2 text-sm text-dark-600" v-text="pageLabel(link.label)" />
             </template>
         </div>
 
         <!-- Create/Edit Modal -->
-        <Modal :show="showModal" :title="editingUser ? 'Edit User' : 'Create User'" max-width="md" @close="showModal = false">
+        <Modal :show="showModal" :title="editingUser ? t('admin.users.modal.editTitle') : t('admin.users.modal.createTitle')" max-width="md" @close="showModal = false">
             <form @submit.prevent="submitForm" class="space-y-4">
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Name</label>
-                    <input v-model="form.name" type="text" :class="inputClass" placeholder="Full name" />
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.users.columns.name') }}</label>
+                    <input v-model="form.name" type="text" :class="inputClass" :placeholder="t('admin.users.modal.fullName')" />
                     <p v-if="formErrors.name" class="text-red-400 text-xs mt-1">{{ formErrors.name }}</p>
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Email</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.users.columns.email') }}</label>
                     <input v-model="form.email" type="email" :class="inputClass" placeholder="email@example.com" />
                     <p v-if="formErrors.email" class="text-red-400 text-xs mt-1">{{ formErrors.email }}</p>
                 </div>
                 <div v-if="!editingUser">
-                    <label class="block text-xs text-dark-400 mb-1.5">Password</label>
-                    <input v-model="form.password" type="password" :class="inputClass" placeholder="Min 8 characters" />
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.users.modal.password') }}</label>
+                    <input v-model="form.password" type="password" :class="inputClass" :placeholder="t('admin.users.modal.minChars')" />
                     <p v-if="formErrors.password" class="text-red-400 text-xs mt-1">{{ formErrors.password }}</p>
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Role</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.users.columns.role') }}</label>
                     <select v-model="form.role" :class="selectClass">
-                        <option value="super_admin">Super Admin</option>
-                        <option value="admin">Admin</option>
-                        <option value="moderator">Moderator</option>
-                        <option value="support">Support</option>
+                        <option value="super_admin">{{ t('admin.users.roles.superAdmin') }}</option>
+                        <option value="admin">{{ t('admin.users.roles.admin') }}</option>
+                        <option value="moderator">{{ t('admin.users.roles.moderator') }}</option>
+                        <option value="support">{{ t('admin.users.roles.support') }}</option>
                     </select>
                     <p v-if="formErrors.role" class="text-red-400 text-xs mt-1">{{ formErrors.role }}</p>
                 </div>
@@ -346,7 +359,7 @@ function decodeLabel(html) {
                         <input type="checkbox" v-model="form.is_active" class="sr-only peer" />
                         <div class="w-9 h-5 bg-dark-700 peer-focus:ring-2 peer-focus:ring-primary-500/30 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500"></div>
                     </label>
-                    <span class="text-sm text-dark-300">Active</span>
+                    <span class="text-sm text-dark-300">{{ t('common.active') }}</span>
                 </div>
             </form>
 
@@ -355,13 +368,13 @@ function decodeLabel(html) {
                     <button
                         @click="showModal = false"
                         class="px-4 py-2 rounded-xl text-sm text-dark-400 hover:text-white transition-colors"
-                    >Cancel</button>
+                    >{{ t('common.cancel') }}</button>
                     <button
                         @click="submitForm"
                         :disabled="formProcessing"
                         class="btn-primary px-6 py-2 text-sm disabled:opacity-50"
                     >
-                        {{ formProcessing ? 'Saving...' : (editingUser ? 'Update' : 'Create') }}
+                        {{ formProcessing ? t('admin.users.modal.saving') : (editingUser ? t('admin.users.modal.update') : t('admin.users.modal.create')) }}
                     </button>
                 </div>
             </template>
@@ -370,9 +383,9 @@ function decodeLabel(html) {
         <!-- Delete Confirm -->
         <ConfirmDialog
             :show="showDeleteDialog"
-            title="Delete Admin User"
-            :message="`Are you sure you want to delete ${deletingUser?.name}? This action can be reversed by a database admin.`"
-            confirm-text="Delete"
+            :title="t('admin.users.delete.title')"
+            :message="t('admin.users.delete.message', { name: deletingUser?.name ?? '' })"
+            :confirm-text="t('common.delete')"
             :danger="true"
             :loading="deleteProcessing"
             @confirm="handleDelete"
@@ -380,24 +393,24 @@ function decodeLabel(html) {
         />
 
         <!-- Reset Password Modal -->
-        <Modal :show="showResetDialog" title="Reset Password" max-width="sm" @close="showResetDialog = false">
+        <Modal :show="showResetDialog" :title="t('admin.users.resetPassword')" max-width="sm" @close="showResetDialog = false">
             <div class="space-y-4">
-                <p class="text-sm text-dark-400">Set a new password for <strong class="text-white">{{ resetUser?.name }}</strong></p>
+                <p class="text-sm text-dark-400">{{ t('admin.users.resetModal.setFor') }} <strong class="text-white">{{ resetUser?.name }}</strong></p>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">New Password</label>
-                    <input v-model="newPassword" type="password" :class="inputClass" placeholder="Min 8 characters" />
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.users.resetModal.newPassword') }}</label>
+                    <input v-model="newPassword" type="password" :class="inputClass" :placeholder="t('admin.users.modal.minChars')" />
                 </div>
             </div>
 
             <template #footer>
                 <div class="flex items-center justify-end gap-3">
-                    <button @click="showResetDialog = false" class="px-4 py-2 rounded-xl text-sm text-dark-400 hover:text-white transition-colors">Cancel</button>
+                    <button @click="showResetDialog = false" class="px-4 py-2 rounded-xl text-sm text-dark-400 hover:text-white transition-colors">{{ t('common.cancel') }}</button>
                     <button
                         @click="handleResetPassword"
                         :disabled="resetProcessing || newPassword.length < 8"
                         class="btn-primary px-6 py-2 text-sm disabled:opacity-50"
                     >
-                        {{ resetProcessing ? 'Resetting...' : 'Reset Password' }}
+                        {{ resetProcessing ? t('admin.users.resetModal.resetting') : t('admin.users.resetPassword') }}
                     </button>
                 </div>
             </template>
