@@ -134,12 +134,12 @@ class ContractRegistry
     public function set(string $key, string $address, bool $force = false): array
     {
         if (! isset(self::CONTRACTS[$key])) {
-            return ['ok' => false, 'previous' => null, 'message' => "ไม่รู้จักสัญญาชื่อ {$key}"];
+            return ['ok' => false, 'previous' => null, 'message' => __('ไม่รู้จักสัญญาชื่อ :key', ['key' => $key])];
         }
 
         $address = trim($address);
         if (! $this->looksLikeAddress($address)) {
-            return ['ok' => false, 'previous' => null, 'message' => 'รูปแบบที่อยู่ไม่ถูกต้อง'];
+            return ['ok' => false, 'previous' => null, 'message' => __('รูปแบบที่อยู่ไม่ถูกต้อง')];
         }
 
         $previous = $this->address($key);
@@ -167,7 +167,7 @@ class ContractRegistry
                 return [
                     'ok' => false,
                     'previous' => $previous,
-                    'message' => "ที่อยู่ {$address} ไม่มี bytecode อยู่บนเชน",
+                    'message' => __('ที่อยู่ :address ไม่มี bytecode อยู่บนเชน', ['address' => $address]),
                 ];
             }
 
@@ -181,8 +181,8 @@ class ContractRegistry
                 return [
                     'ok' => false,
                     'previous' => $previous,
-                    'message' => 'bytecode ไม่ตรงกับสัญญาที่ลงทะเบียนไว้เดิม '
-                        .'ถ้าตั้งใจเปลี่ยนเป็นสัญญาคนละตัวจริง ให้รัน tpix:contract-registry-set --force บนเซิร์ฟเวอร์',
+                    'message' => __('bytecode ไม่ตรงกับสัญญาที่ลงทะเบียนไว้เดิม '
+                        .'ถ้าตั้งใจเปลี่ยนเป็นสัญญาคนละตัวจริง ให้รัน tpix:contract-registry-set --force บนเซิร์ฟเวอร์'),
                 ];
             }
         }
@@ -329,7 +329,7 @@ class ContractRegistry
 
             $out[$key] = [
                 'key' => $key,
-                'label' => $meta['label'],
+                'label' => __($meta['label']),
                 'address' => $address,
                 'live' => $address !== null && $this->isLive($key),
                 'source' => $address === null ? 'none' : ($fromSetting ? 'registry' : 'env'),

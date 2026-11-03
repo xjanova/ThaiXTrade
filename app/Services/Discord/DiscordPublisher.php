@@ -68,11 +68,11 @@ class DiscordPublisher
     public function sync(bool $dryRun = false): array
     {
         if (! $this->settings->enabled()) {
-            return ['ran' => false, 'reason' => 'ปิดบอทอยู่ (เปิดได้ที่ /admin/discord)', 'results' => []];
+            return ['ran' => false, 'reason' => __('ปิดบอทอยู่ (เปิดได้ที่ /admin/discord)'), 'results' => []];
         }
 
         if (! $this->settings->hasBotToken() || $this->settings->guildId() === null) {
-            return ['ran' => false, 'reason' => 'ยังตั้งค่าไม่ครบ (โทเค็นบอท / Guild ID)', 'results' => []];
+            return ['ran' => false, 'reason' => __('ยังตั้งค่าไม่ครบ (โทเค็นบอท / Guild ID)'), 'results' => []];
         }
 
         if ($dryRun) {
@@ -83,7 +83,7 @@ class DiscordPublisher
         $lock = Cache::lock('discord:sync', 300);
 
         if (! $lock->get()) {
-            return ['ran' => false, 'reason' => 'กำลังซิงก์อยู่อีกรอบหนึ่ง — รอสักครู่แล้วดูผล', 'results' => []];
+            return ['ran' => false, 'reason' => __('กำลังซิงก์อยู่อีกรอบหนึ่ง — รอสักครู่แล้วดูผล'), 'results' => []];
         }
 
         try {
@@ -302,13 +302,13 @@ class DiscordPublisher
         $guildId = $this->settings->guildId();
 
         if ($guildId === null) {
-            return ['ok' => false, 'error' => 'ยังไม่ได้ใส่ Guild ID'];
+            return ['ok' => false, 'error' => __('ยังไม่ได้ใส่ Guild ID')];
         }
 
         $response = $this->client->guildChannels($guildId);
 
         if (! $response['ok'] || ! is_array($response['data'])) {
-            return ['ok' => false, 'error' => $response['error'] ?? 'ดึงรายชื่อห้องไม่สำเร็จ'];
+            return ['ok' => false, 'error' => __((string) ($response['error'] ?? 'ดึงรายชื่อห้องไม่สำเร็จ'))];
         }
 
         $plan = $this->planner->plan($response['data']);
@@ -367,7 +367,7 @@ class DiscordPublisher
                 'role' => $role,
                 'channel_id' => $channel,
                 'status' => $payload === null ? 'unavailable' : $status($kind, 'main', $channel, DiscordContent::hash($payload)),
-                'error' => $posted["{$kind}:main"]->last_error ?? null,
+                'error' => $this->displayError($posted["{$kind}:main"]->last_error ?? null),
                 'payload' => $payload ?? ['content' => '⚠️ อ่านข้อมูลสดไม่ได้ตอนนี้ — ในห้องจะยังเป็นข้อความเดิม', 'components' => []],
             ];
         }
@@ -383,7 +383,7 @@ class DiscordPublisher
                 'role' => 'dev',
                 'channel_id' => $channel,
                 'status' => $status('release', $ref, $channel, null),
-                'error' => $posted['release:'.$ref]->last_error ?? null,
+                'error' => $this->displayError($posted['release:'.$ref]->last_error ?? null),
                 'payload' => $this->content->release($release),
             ];
         }
@@ -396,7 +396,7 @@ class DiscordPublisher
                 'role' => 'news',
                 'channel_id' => $channel,
                 'status' => $status('article', (string) $article->id, $channel, null),
-                'error' => $posted['article:'.$article->id]->last_error ?? null,
+                'error' => $this->displayError($posted['article:'.$article->id]->last_error ?? null),
                 'payload' => $this->content->article($article, $thai),
             ];
         }
@@ -409,7 +409,7 @@ class DiscordPublisher
                 'role' => 'learn',
                 'channel_id' => $channel,
                 'status' => $status('lesson', $lesson['code'], $channel, null),
-                'error' => $posted['lesson:'.$lesson['code']]->last_error ?? null,
+                'error' => $this->displayError($posted['lesson:'.$lesson['code']]->last_error ?? null),
                 'payload' => $this->content->lesson($lesson),
             ];
         }
@@ -422,7 +422,7 @@ class DiscordPublisher
                 'role' => 'videos',
                 'channel_id' => $channel,
                 'status' => $status('video', $video['code'], $channel, null),
-                'error' => $posted['video:'.$video['code']]->last_error ?? null,
+                'error' => $this->displayError($posted['video:'.$video['code']]->last_error ?? null),
                 'payload' => $this->content->video($video),
             ];
         }
@@ -431,6 +431,12 @@ class DiscordPublisher
     }
 
     // ── ภายใน ────────────────────────────────────────────────────────────────
+
+    /** last_error ถูกเขียนโดยงานซิงก์ (ไม่มีภาษาของผู้ใช้) — แปลตอนส่งให้หน้าเว็บ */
+    private function displayError(?string $error): ?string
+    {
+        return $error === null ? null : __($error);
+    }
 
     /** @return array<string, string> */
     /**

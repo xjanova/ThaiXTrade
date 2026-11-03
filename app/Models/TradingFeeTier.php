@@ -55,7 +55,7 @@ class TradingFeeTier extends Model
         $min = number_format((float) $this->min_order_usd, 0);
 
         if ($this->max_order_usd === null) {
-            return "\${$min} ขึ้นไป";
+            return __('$:min ขึ้นไป', ['min' => $min]);
         }
 
         return "\${$min} – \$".number_format((float) $this->max_order_usd, 0);

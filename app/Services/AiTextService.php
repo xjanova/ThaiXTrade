@@ -50,7 +50,7 @@ class AiTextService
             $config = $this->configFor($provider);
 
             if ($config === null) {
-                $errors[] = "{$provider}: ยังไม่ได้ตั้งคีย์";
+                $errors[] = __(':provider: ยังไม่ได้ตั้งคีย์', ['provider' => $provider]);
 
                 continue;
             }
@@ -70,7 +70,7 @@ class AiTextService
              * ล้มเพราะอะไร — ซึ่งเป็นข้อมูลที่ต้องใช้ตอนแยกว่า 404 (โมเดลตาย)
              * 401 (คีย์) หรือ 429 (โควตา) สามอย่างนี้แก้คนละทางกันหมด
              */
-            $errors[] = $provider.': '.($result['error'] ?? 'ไม่ทราบสาเหตุ');
+            $errors[] = $provider.': '.($result['error'] ?? __('ไม่ทราบสาเหตุ'));
         }
 
         Log::warning('AI text: ล้มทุกผู้ให้บริการ', ['errors' => $errors]);
@@ -128,7 +128,7 @@ class AiTextService
 
         foreach (self::PROVIDERS as $provider) {
             foreach ((array) config("ai_text.providers.{$provider}.models", []) as $id => $label) {
-                $models[$id] = $label;
+                $models[$id] = __($label);
             }
         }
 
@@ -207,9 +207,9 @@ class AiTextService
         if ($response->failed()) {
             // แยกสามสาเหตุให้ชัดตั้งแต่ต้นทาง — แก้คนละทางกันหมด
             $hint = match ($response->status()) {
-                401, 403 => 'คีย์ใช้ไม่ได้',
-                404 => "ไม่มีโมเดล {$model} แล้ว",
-                429 => 'เกินโควตา/ความถี่',
+                401, 403 => __('คีย์ใช้ไม่ได้'),
+                404 => __('ไม่มีโมเดล :model แล้ว', ['model' => $model]),
+                429 => __('เกินโควตา/ความถี่'),
                 default => 'HTTP '.$response->status(),
             };
 
@@ -219,7 +219,7 @@ class AiTextService
         $content = $response->json('choices.0.message.content');
 
         if (! is_string($content) || trim($content) === '') {
-            return ['success' => false, 'error' => 'ได้คำตอบว่างเปล่า'];
+            return ['success' => false, 'error' => __('ได้คำตอบว่างเปล่า')];
         }
 
         return [

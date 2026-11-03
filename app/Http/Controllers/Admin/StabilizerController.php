@@ -84,7 +84,7 @@ class StabilizerController extends Controller
         AuditLog::log('stabilizer.params', null, $change['old'], $change['new']);
         Cache::forget(StabilizerService::PUBLIC_CACHE_KEY);
 
-        return back()->with('success', 'บันทึกพารามิเตอร์ของกองทุนพยุงราคาแล้ว (มีผลรอบถัดไป และแสดงบนหน้า /stability ทันที)');
+        return back()->with('success', __('บันทึกพารามิเตอร์ของกองทุนพยุงราคาแล้ว (มีผลรอบถัดไป และแสดงบนหน้า /stability ทันที)'));
     }
 
     /**
@@ -103,14 +103,14 @@ class StabilizerController extends Controller
 
         if ($enable) {
             if (($validated['confirm'] ?? '') !== 'ENABLE') {
-                return back()->withErrors(['confirm' => 'พิมพ์ ENABLE เพื่อยืนยันการเปิดกองทุนพยุงราคา']);
+                return back()->withErrors(['confirm' => __('พิมพ์ ENABLE เพื่อยืนยันการเปิดกองทุนพยุงราคา')]);
             }
 
             $readiness = $this->settings->readiness($this->dex);
             if (! $readiness['ready']) {
                 $missing = array_column(array_filter($readiness['checks'], fn ($c) => ! $c['ok']), 'label');
 
-                return back()->withErrors(['enabled' => 'ยังเปิดไม่ได้ — ขาด: '.implode(' · ', $missing)]);
+                return back()->withErrors(['enabled' => __('ยังเปิดไม่ได้ — ขาด: :missing', ['missing' => implode(' · ', $missing)])]);
             }
         }
 
@@ -122,8 +122,8 @@ class StabilizerController extends Controller
         Cache::forget(StabilizerService::PUBLIC_CACHE_KEY);
 
         return back()->with('success', $enable
-            ? 'เปิดกองทุนพยุงราคาแล้ว — เริ่มทำงานในรอบถัดไปของ scheduler (ทุก 5 นาที)'
-            : 'หยุดกองทุนพยุงราคาแล้ว — ไม่มีการเซ็นธุรกรรมใหม่จนกว่าจะเปิดอีกครั้ง');
+            ? __('เปิดกองทุนพยุงราคาแล้ว — เริ่มทำงานในรอบถัดไปของ scheduler (ทุก 5 นาที)')
+            : __('หยุดกองทุนพยุงราคาแล้ว — ไม่มีการเซ็นธุรกรรมใหม่จนกว่าจะเปิดอีกครั้ง'));
     }
 
     public function storeDeposit(Request $request): RedirectResponse
@@ -142,12 +142,12 @@ class StabilizerController extends Controller
         );
 
         if (! $result['ok']) {
-            return back()->withErrors(['tx_hash' => 'บันทึกเงินฝากไม่ได้: '.$result['error']]);
+            return back()->withErrors(['tx_hash' => __('บันทึกเงินฝากไม่ได้: :error', ['error' => __((string) $result['error'])])]);
         }
 
         AuditLog::log('stabilizer.deposit', $result['deposit'], null, $result['deposit']->only(['token', 'amount_wei', 'tx_hash', 'from_address']));
 
-        return back()->with('success', 'บันทึกเงินฝากจากเชนแล้ว');
+        return back()->with('success', __('บันทึกเงินฝากจากเชนแล้ว'));
     }
 
     /** ดูว่ากฎจะตัดสินใจอย่างไรตอนนี้ — ไม่บันทึก ไม่เซ็น */

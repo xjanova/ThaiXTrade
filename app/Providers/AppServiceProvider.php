@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\VerifyWalletOwnership;
 use App\Models\SiteSetting;
 use App\Services\Stabilizer\BridgeReserveSource;
@@ -9,6 +10,7 @@ use App\Services\Stabilizer\NodeStabilizerSigner;
 use App\Services\Stabilizer\NullBridgeReserveSource;
 use App\Services\Stabilizer\StabilizerTxSigner;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
@@ -82,6 +84,12 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->environment('production')) {
             URL::forceScheme('https');
         }
+
+        /*
+         * ภาษาของคำขอตามปุ่ม TH/EN — global (ไม่ใช่ group web) เพราะต้องอ่านคุกกี้ก่อน EncryptCookies
+         * ลงทะเบียนตรงนี้แทน bootstrap/app.php ซึ่งเป็นไฟล์ห้ามแก้ของโปรเจกต์ (ดู SetLocale)
+         */
+        $this->app->make(Kernel::class)->pushMiddleware(SetLocale::class);
 
         // Register Line Socialite provider
         Event::listen(SocialiteWasCalled::class, [LineExtendSocialite::class, 'handle']);

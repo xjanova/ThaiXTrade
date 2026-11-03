@@ -46,7 +46,7 @@ class StrategyAvailability
         if ($spec && ($spec['retired'] ?? false)) {
             return [
                 'available' => false,
-                'reason' => (string) ($spec['retired_reason'] ?? 'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว'),
+                'reason' => __((string) ($spec['retired_reason'] ?? 'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว')),
                 'reason_en' => (string) ($spec['retired_reason_en'] ?? 'This strategy has been retired.'),
             ];
         }
@@ -54,7 +54,7 @@ class StrategyAvailability
         if ($code === 'arbitrage' && ! $this->dexDeployed()) {
             return [
                 'available' => false,
-                'reason' => 'รอพูล DEX บน TPIX Chain เปิดใช้งานก่อน จึงจะมีราคาสองฝั่งให้เทียบส่วนต่าง',
+                'reason' => __('รอพูล DEX บน TPIX Chain เปิดใช้งานก่อน จึงจะมีราคาสองฝั่งให้เทียบส่วนต่าง'),
                 'reason_en' => 'Waiting for the TPIX Chain DEX pool — arbitrage needs a second price source.',
             ];
         }

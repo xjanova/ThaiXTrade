@@ -258,7 +258,7 @@ class PaperBroker
             ->max('reset_count');
 
         if ($usedToday >= $maxPerDay) {
-            return ['ok' => false, 'reason' => "ล้างพอร์ตทดลองได้วันละ {$maxPerDay} ครั้ง"];
+            return ['ok' => false, 'reason' => __('ล้างพอร์ตทดลองได้วันละ :max ครั้ง', ['max' => $maxPerDay])];
         }
 
         DB::transaction(function () use ($wallet, $accounts, $usedToday) {

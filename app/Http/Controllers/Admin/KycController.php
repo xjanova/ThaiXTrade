@@ -133,7 +133,8 @@ class KycController extends Controller
                 'submitted_at' => $submission->submitted_at?->toIso8601String(),
                 'reviewed_at' => $submission->reviewed_at?->toIso8601String(),
                 'reviewed_by' => $submission->reviewer?->name,
-                'review_note' => $submission->review_note,
+                // บางใบระบบเขียนหมายเหตุเอง (ผลจาก Thaiprompt) — แปลตอนแสดง ข้อความที่แอดมินพิมพ์เองผ่านไปเหมือนเดิม
+                'review_note' => $this->displayNote($submission->review_note),
                 'reject_reason' => $submission->reject_reason,
 
                 'documents' => $submission->documents->map(fn ($d) => [
@@ -144,7 +145,7 @@ class KycController extends Controller
                     'mime' => $d->mime,
                     'purged' => $d->isPurged(),
                     'views' => $d->views->map(fn ($v) => [
-                        'admin' => $v->admin?->name ?? 'ไม่ทราบ',
+                        'admin' => $v->admin?->name ?? __('ไม่ทราบ'),
                         'viewed_at' => $v->viewed_at?->toIso8601String(),
                     ])->all(),
                 ])->all(),
@@ -184,13 +185,13 @@ class KycController extends Controller
 
         $submission = KycSubmission::where('uuid', $uuid)->firstOrFail();
 
-        abort_if($submission->isPurged(), 410, 'ใบนี้ถูกล้างข้อมูลแล้ว ตรวจไม่ได้');
+        abort_if($submission->isPurged(), 410, __('ใบนี้ถูกล้างข้อมูลแล้ว ตรวจไม่ได้'));
 
         $this->kyc->approve($submission, Auth::guard('admin')->user(), $validated['note'] ?? null);
 
         $this->audit('kyc.approve', $submission);
 
-        return back()->with('success', 'อนุมัติแล้ว');
+        return back()->with('success', __('อนุมัติแล้ว'));
     }
 
     public function reject(Request $request, string $uuid): RedirectResponse
@@ -203,7 +204,7 @@ class KycController extends Controller
 
         $submission = KycSubmission::where('uuid', $uuid)->firstOrFail();
 
-        abort_if($submission->isPurged(), 410, 'ใบนี้ถูกล้างข้อมูลแล้ว ตรวจไม่ได้');
+        abort_if($submission->isPurged(), 410, __('ใบนี้ถูกล้างข้อมูลแล้ว ตรวจไม่ได้'));
 
         $this->kyc->reject(
             $submission,
@@ -214,7 +215,7 @@ class KycController extends Controller
 
         $this->audit('kyc.reject', $submission);
 
-        return back()->with('success', 'ปฏิเสธแล้ว');
+        return back()->with('success', __('ปฏิเสธแล้ว'));
     }
 
     // =========================================================================
@@ -257,7 +258,7 @@ class KycController extends Controller
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        abort_if(! $deletionRequest->isPending(), 409, 'คำขอนี้ถูกดำเนินการไปแล้ว');
+        abort_if(! $deletionRequest->isPending(), 409, __('คำขอนี้ถูกดำเนินการไปแล้ว'));
 
         $result = $this->purge->completeDeletion(
             $deletionRequest,
@@ -271,7 +272,7 @@ class KycController extends Controller
             'files_deleted' => $result->files_deleted,
         ]);
 
-        return back()->with('success', "ลบข้อมูลแล้ว ({$result->files_deleted} ไฟล์)");
+        return back()->with('success', __('ลบข้อมูลแล้ว (:count ไฟล์)', ['count' => $result->files_deleted]));
     }
 
     public function rejectDeletion(Request $request, KycDeletionRequest $deletionRequest): RedirectResponse
@@ -281,7 +282,7 @@ class KycController extends Controller
             'note' => ['required', 'string', 'max:1000'],
         ]);
 
-        abort_if(! $deletionRequest->isPending(), 409, 'คำขอนี้ถูกดำเนินการไปแล้ว');
+        abort_if(! $deletionRequest->isPending(), 409, __('คำขอนี้ถูกดำเนินการไปแล้ว'));
 
         $this->purge->rejectDeletion(
             $deletionRequest,
@@ -291,7 +292,7 @@ class KycController extends Controller
 
         $this->audit('kyc.deletion.reject', null, ['request_id' => $deletionRequest->id]);
 
-        return back()->with('success', 'บันทึกการปฏิเสธแล้ว');
+        return back()->with('success', __('บันทึกการปฏิเสธแล้ว'));
     }
 
     // =========================================================================
@@ -344,12 +345,33 @@ class KycController extends Controller
 
         $this->audit('kyc.settings.update', null, ['enabled' => $validated['enabled']]);
 
-        return back()->with('success', 'บันทึกการตั้งค่าแล้ว');
+        return back()->with('success', __('บันทึกการตั้งค่าแล้ว'));
     }
 
     // =========================================================================
     // Helpers
     // =========================================================================
+
+    /**
+     * หมายเหตุที่ระบบเขียนเอง (ผลจาก Thaiprompt) — แปลตอนแสดง.
+     *
+     * ข้อความคงที่แปลตรงตัว · ใบที่ได้จาก Thaiprompt มีวันที่ฝังอยู่ (ThaipromptKycService::sprintf)
+     * จึงแยกชิ้นแล้วประกอบใหม่ ภาษาไทยได้ข้อความเดิมทุกตัวอักษร · ข้อความที่แอดมินพิมพ์เองผ่านไปเหมือนเดิม
+     */
+    private function displayNote(?string $note): ?string
+    {
+        if (! filled($note)) {
+            return $note;
+        }
+
+        if (preg_match('/^ยืนยันตัวตนผ่าน Thaiprompt \((eKYC ในแอป|ทีมงาน Thaiprompt ตรวจ)\) เมื่อ (.+)$/u', $note, $m) === 1) {
+            return __('ยืนยันตัวตนผ่าน Thaiprompt (:method) เมื่อ :at', ['method' => __($m[1]), 'at' => $m[2]]);
+        }
+
+        $translated = __($note);
+
+        return is_string($translated) ? $translated : $note;
+    }
 
     private function settingsPayload(): array
     {
@@ -362,6 +384,7 @@ class KycController extends Controller
                 'label_th' => $feature['label_th'],
                 'label_en' => $feature['label_en'],
                 'desc_th' => $feature['desc_th'],
+                'desc_en' => $feature['desc_en'] ?? '',
             ];
         }
 

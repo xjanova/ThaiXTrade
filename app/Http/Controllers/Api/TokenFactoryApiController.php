@@ -60,7 +60,7 @@ class TokenFactoryApiController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $tokens->items(),
+            'data' => array_map(fn (FactoryToken $t) => $this->tokenFactoryService->presentToken($t), $tokens->items()),
             'meta' => [
                 'current_page' => $tokens->currentPage(),
                 'per_page' => $tokens->perPage(),
@@ -110,8 +110,8 @@ class TokenFactoryApiController extends Controller
             'quote_id' => ['required', 'uuid'],
             'fee_tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
         ], [
-            'quote_id.*' => 'รหัสใบเสนอราคาไม่ถูกต้อง',
-            'fee_tx_hash.*' => 'รูปแบบ tx hash ไม่ถูกต้อง',
+            'quote_id.*' => __('รหัสใบเสนอราคาไม่ถูกต้อง'),
+            'fee_tx_hash.*' => __('รูปแบบ tx hash ไม่ถูกต้อง'),
         ]);
 
         try {
@@ -150,10 +150,10 @@ class TokenFactoryApiController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $token,
+            'data' => $this->tokenFactoryService->presentToken($token),
             'message' => $token->status === 'deploying'
-                ? 'อนุมัติอัตโนมัติแล้ว กำลังสร้างเหรียญบนเชน'
-                : 'ส่งคำขอสร้างเหรียญแล้ว รอผู้ดูแลตรวจสอบ',
+                ? __('อนุมัติอัตโนมัติแล้ว กำลังสร้างเหรียญบนเชน')
+                : __('ส่งคำขอสร้างเหรียญแล้ว รอผู้ดูแลตรวจสอบ'),
         ], 201);
     }
 
@@ -195,8 +195,8 @@ class TokenFactoryApiController extends Controller
             'quote_id' => ['required', 'uuid'],
             'fee_tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
         ], [
-            'quote_id.*' => 'รหัสใบเสนอราคาไม่ถูกต้อง',
-            'fee_tx_hash.*' => 'รูปแบบ tx hash ไม่ถูกต้อง',
+            'quote_id.*' => __('รหัสใบเสนอราคาไม่ถูกต้อง'),
+            'fee_tx_hash.*' => __('รูปแบบ tx hash ไม่ถูกต้อง'),
         ]);
 
         try {
@@ -212,8 +212,8 @@ class TokenFactoryApiController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $token,
-            'message' => 'ชำระค่ายืนยันซอร์สแล้ว — ระบบกำลังส่งซอร์สโค้ดให้ explorer ตรวจ (ใช้เวลาไม่กี่นาที)',
+            'data' => $this->tokenFactoryService->presentToken($token),
+            'message' => __('ชำระค่ายืนยันซอร์สแล้ว — ระบบกำลังส่งซอร์สโค้ดให้ explorer ตรวจ (ใช้เวลาไม่กี่นาที)'),
         ]);
     }
 
@@ -230,13 +230,13 @@ class TokenFactoryApiController extends Controller
         if (! $token) {
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'NOT_FOUND', 'message' => 'ไม่พบเหรียญนี้'],
+                'error' => ['code' => 'NOT_FOUND', 'message' => __('ไม่พบเหรียญนี้')],
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'data' => $this->canSeeFullDetails($request, $token) ? $token : $token->toPublicArray(),
+            'data' => $this->canSeeFullDetails($request, $token) ? $this->tokenFactoryService->presentToken($token) : $token->toPublicArray(),
         ]);
     }
 
@@ -369,7 +369,7 @@ class TokenFactoryApiController extends Controller
     {
         return response()->json([
             'success' => false,
-            'error' => ['code' => 'WALLET_REQUIRED', 'message' => 'กรุณาเชื่อมต่อและยืนยันกระเป๋าก่อนสร้างเหรียญ'],
+            'error' => ['code' => 'WALLET_REQUIRED', 'message' => __('กรุณาเชื่อมต่อและยืนยันกระเป๋าก่อนสร้างเหรียญ')],
         ], 422);
     }
 
@@ -387,7 +387,7 @@ class TokenFactoryApiController extends Controller
         $user = $this->kycGate->resolveUser($request);
 
         if (! $user || ! $this->kycGate->satisfiesLevel($user, KycSubmission::LEVEL_BASIC)) {
-            throw new TokenFactoryException('KYC_REQUIRED', 'ต้องยืนยันตัวตน (KYC) ก่อนสร้างเหรียญประเภทนี้', 403);
+            throw new TokenFactoryException('KYC_REQUIRED', __('ต้องยืนยันตัวตน (KYC) ก่อนสร้างเหรียญประเภทนี้'), 403);
         }
     }
 

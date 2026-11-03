@@ -43,9 +43,11 @@ class TokenFactoryPolicyController extends Controller
         $prepared = $policy->prepareUpdate($request->all());
 
         if ($prepared['errors'] !== []) {
+            $errors = array_map(fn ($message) => is_string($message) ? __($message) : $message, $prepared['errors']);
+
             return back()
-                ->withErrors($prepared['errors'])
-                ->with('error', 'บันทึกไม่สำเร็จ — '.implode(' · ', array_values($prepared['errors'])));
+                ->withErrors($errors)
+                ->with('error', __('บันทึกไม่สำเร็จ — :errors', ['errors' => implode(' · ', array_values($errors))]));
         }
 
         $diff = $policy->save($prepared['policy']);
@@ -57,7 +59,7 @@ class TokenFactoryPolicyController extends Controller
         }
 
         return back()->with('success', $diff['new'] === []
-            ? 'ไม่มีอะไรเปลี่ยน'
-            : 'บันทึกนโยบาย Token Factory แล้ว ('.count($diff['new']).' รายการ)');
+            ? __('ไม่มีอะไรเปลี่ยน')
+            : __('บันทึกนโยบาย Token Factory แล้ว (:count รายการ)', ['count' => count($diff['new'])]));
     }
 }

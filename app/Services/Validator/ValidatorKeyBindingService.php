@@ -78,30 +78,30 @@ class ValidatorKeyBindingService
         $bls = strtolower($input['bls_public_key']);
 
         if ((int) $input['chain_id'] !== (int) config('blockchain.tpix_chain_id', 4289)) {
-            throw new ValidatorBindingRefused('CHAIN_MISMATCH', 'ลายเซ็นนี้ทำสำหรับเชนอื่น ไม่ใช่ TPIX Chain');
+            throw new ValidatorBindingRefused('CHAIN_MISMATCH', __('ลายเซ็นนี้ทำสำหรับเชนอื่น ไม่ใช่ TPIX Chain'));
         }
         if (abs(time() - (int) $input['signed_at']) > self::MAX_SKEW_SECONDS) {
-            throw new ValidatorBindingRefused('STALE_SIGNATURE', 'ลายเซ็นหมดอายุ (เกิน 30 นาที) หรือนาฬิกาเครื่องคลาด — ตั้งเวลาเครื่องให้ตรงแล้วเซ็นใหม่');
+            throw new ValidatorBindingRefused('STALE_SIGNATURE', __('ลายเซ็นหมดอายุ (เกิน 30 นาที) หรือนาฬิกาเครื่องคลาด — ตั้งเวลาเครื่องให้ตรงแล้วเซ็นใหม่'));
         }
         if ($wallet === $validator) {
-            throw new ValidatorBindingRefused('SAME_KEY', 'กุญแจ validator ต้องไม่ใช่กระเป๋าที่ stake — กุญแจ validator อยู่ในเครื่องแบบไม่เข้ารหัส');
+            throw new ValidatorBindingRefused('SAME_KEY', __('กุญแจ validator ต้องไม่ใช่กระเป๋าที่ stake — กุญแจ validator อยู่ในเครื่องแบบไม่เข้ารหัส'));
         }
 
         $message = self::message([...$input, 'staking_wallet' => $wallet, 'validator_address' => $validator, 'bls_public_key' => $bls]);
         if (! $this->signatures->verify($message, $input['staking_signature'], $wallet)) {
-            throw new ValidatorBindingRefused('BAD_STAKING_SIGNATURE', 'ลายเซ็นของกระเป๋าที่ stake ไม่ถูกต้อง');
+            throw new ValidatorBindingRefused('BAD_STAKING_SIGNATURE', __('ลายเซ็นของกระเป๋าที่ stake ไม่ถูกต้อง'));
         }
         if (! $this->signatures->verify($message, $input['validator_signature'], $validator)) {
-            throw new ValidatorBindingRefused('BAD_VALIDATOR_SIGNATURE', 'ลายเซ็นของกุญแจ validator ไม่ถูกต้อง — ต้องเซ็นด้วยกุญแจของเครื่องที่จะปิดบล็อก');
+            throw new ValidatorBindingRefused('BAD_VALIDATOR_SIGNATURE', __('ลายเซ็นของกุญแจ validator ไม่ถูกต้อง — ต้องเซ็นด้วยกุญแจของเครื่องที่จะปิดบล็อก'));
         }
 
         if (! $this->registry->isValidator($wallet)) {
-            throw new ValidatorBindingRefused('NOT_VALIDATOR_STAKE', 'กระเป๋านี้ยังไม่มีโหนดชั้น Validator ที่ active บนเชน (หรืออ่านเชนไม่ได้ตอนนี้) — stake ก่อนแล้วค่อยผูกกุญแจ');
+            throw new ValidatorBindingRefused('NOT_VALIDATOR_STAKE', __('กระเป๋านี้ยังไม่มีโหนดชั้น Validator ที่ active บนเชน (หรืออ่านเชนไม่ได้ตอนนี้) — stake ก่อนแล้วค่อยผูกกุญแจ'));
         }
 
         $set = $this->validatorSet->current();
         if ($set === null) {
-            throw new ValidatorBindingRefused('CHAIN_UNREACHABLE', 'อ่านชุด validator จากเชนไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง', 503);
+            throw new ValidatorBindingRefused('CHAIN_UNREACHABLE', __('อ่านชุด validator จากเชนไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง'), 503);
         }
         $inSet = array_column($set['validators'], 'address');
         $blsInSet = array_filter(array_column($set['validators'], 'bls'));
@@ -110,19 +110,19 @@ class ValidatorKeyBindingService
             $current = ValidatorKeyBinding::active()->where('staking_wallet', $wallet)->lockForUpdate()->first();
 
             if ($current !== null && (int) $input['signed_at'] <= $current->signed_at) {
-                throw new ValidatorBindingRefused('REPLAYED', 'มีการผูกที่ใหม่กว่านี้อยู่แล้ว — ลายเซ็นนี้เก่ากว่า');
+                throw new ValidatorBindingRefused('REPLAYED', __('มีการผูกที่ใหม่กว่านี้อยู่แล้ว — ลายเซ็นนี้เก่ากว่า'));
             }
 
             $rebind = $current !== null && $current->validator_address === $validator;
 
             if (! $rebind && in_array($validator, $inSet, true)) {
-                throw new ValidatorBindingRefused('ADDRESS_IN_SET', 'ที่อยู่นี้เป็น validator ที่ปิดบล็อกอยู่แล้ว ผูกกับกระเป๋าอื่นไม่ได้');
+                throw new ValidatorBindingRefused('ADDRESS_IN_SET', __('ที่อยู่นี้เป็น validator ที่ปิดบล็อกอยู่แล้ว ผูกกับกระเป๋าอื่นไม่ได้'));
             }
             if (! $rebind && in_array($bls, $blsInSet, true)) {
-                throw new ValidatorBindingRefused('BLS_IN_SET', 'BLS key นี้เป็นของ validator ที่ปิดบล็อกอยู่แล้ว');
+                throw new ValidatorBindingRefused('BLS_IN_SET', __('BLS key นี้เป็นของ validator ที่ปิดบล็อกอยู่แล้ว'));
             }
             if ($current !== null && ! $rebind && in_array($current->validator_address, $inSet, true)) {
-                throw new ValidatorBindingRefused('OLD_KEY_STILL_SEALING', 'กุญแจเดิมของกระเป๋านี้ยังปิดบล็อกอยู่ — ให้ทีมถอดกุญแจเดิมออกจากชุดก่อนเปลี่ยน');
+                throw new ValidatorBindingRefused('OLD_KEY_STILL_SEALING', __('กุญแจเดิมของกระเป๋านี้ยังปิดบล็อกอยู่ — ให้ทีมถอดกุญแจเดิมออกจากชุดก่อนเปลี่ยน'));
             }
 
             $taken = ValidatorKeyBinding::active()
@@ -130,7 +130,7 @@ class ValidatorKeyBindingService
                 ->where(fn ($q) => $q->where('validator_address', $validator)->orWhere('bls_public_key', $bls))
                 ->exists();
             if ($taken) {
-                throw new ValidatorBindingRefused('KEY_TAKEN', 'กุญแจนี้ถูกผูกกับกระเป๋าอื่นแล้ว');
+                throw new ValidatorBindingRefused('KEY_TAKEN', __('กุญแจนี้ถูกผูกกับกระเป๋าอื่นแล้ว'));
             }
 
             $current?->update(['status' => ValidatorKeyBinding::STATUS_SUPERSEDED]);

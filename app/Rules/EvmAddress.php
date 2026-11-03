@@ -20,7 +20,7 @@ class EvmAddress implements ValidationRule
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         if (! is_string($value) || ! preg_match('/^0x[a-fA-F0-9]{40}\z/', $value) || $value === self::ZERO_ADDRESS) {
-            $fail('ที่อยู่กระเป๋าไม่ถูกต้อง — ต้องขึ้นต้นด้วย 0x ตามด้วยเลขฐานสิบหก 40 ตัว และห้ามเป็นที่อยู่ศูนย์');
+            $fail(__('ที่อยู่กระเป๋าไม่ถูกต้อง — ต้องขึ้นต้นด้วย 0x ตามด้วยเลขฐานสิบหก 40 ตัว และห้ามเป็นที่อยู่ศูนย์'));
         }
     }
 }

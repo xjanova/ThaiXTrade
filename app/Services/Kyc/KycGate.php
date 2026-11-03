@@ -49,6 +49,8 @@ class KycGate
                 'label_th' => $meta['label_th'] ?? $key,
                 'label_en' => $meta['label_en'] ?? $key,
                 'desc_th' => $meta['desc_th'] ?? '',
+                // หน้าจอภาษาอังกฤษแสดง desc_en — แปลตอนใช้ (config เป็นข้อความไทยล้วน)
+                'desc_en' => ($d = (string) ($meta['desc_th'] ?? '')) !== '' ? __($d) : '',
                 'enabled' => $this->requires($key),
                 'level' => $this->requiredLevel($key),
             ];
@@ -256,15 +258,15 @@ class KycGate
             return;
         }
 
-        $label = (string) config("kyc.features.{$feature}.label_th", $feature);
+        $label = __((string) config("kyc.features.{$feature}.label_th", $feature));
         $level = $this->requiredLevel($feature);
 
         $message = $user === null
-            ? "ต้องเข้าสู่ระบบและยืนยันตัวตนก่อนใช้{$label}"
-            : "ต้องยืนยันตัวตนก่อนใช้{$label}";
+            ? __('ต้องเข้าสู่ระบบและยืนยันตัวตนก่อนใช้:label', ['label' => $label])
+            : __('ต้องยืนยันตัวตนก่อนใช้:label', ['label' => $label]);
 
         if ($user !== null && $level === KycSubmission::LEVEL_ENHANCED) {
-            $message .= ' (ระดับเพิ่มเติม)';
+            $message .= __(' (ระดับเพิ่มเติม)');
         }
 
         abort(403, $message);

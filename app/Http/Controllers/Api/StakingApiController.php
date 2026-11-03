@@ -53,7 +53,7 @@ class StakingApiController extends Controller
     {
         return response()->json([
             'success' => false,
-            'error' => ['code' => 'STAKING_RETIRED', 'message' => 'ปิดรับ stake ใหม่แล้ว ตำแหน่งเดิมยังถอนได้ตามปกติ'],
+            'error' => ['code' => 'STAKING_RETIRED', 'message' => __('ปิดรับ stake ใหม่แล้ว ตำแหน่งเดิมยังถอนได้ตามปกติ')],
         ], 410);
     }
 

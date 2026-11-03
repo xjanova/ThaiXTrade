@@ -71,32 +71,32 @@ class WtpixBridgeRelayer
         $mismatch = $this->config->vaultRegistryMismatch();
 
         $checks = [
-            ['key' => 'installed', 'ok' => $this->config->installed(), 'hint' => 'WTPIX_BRIDGE_ENABLED=true ใน .env'],
-            ['key' => 'site_switch', 'ok' => $this->config->siteSwitchOn(), 'hint' => 'เปิดสวิตช์ที่ /admin/bridge/wtpix'],
+            ['key' => 'installed', 'ok' => $this->config->installed(), 'hint' => __('WTPIX_BRIDGE_ENABLED=true ใน .env')],
+            ['key' => 'site_switch', 'ok' => $this->config->siteSwitchOn(), 'hint' => __('เปิดสวิตช์ที่ /admin/bridge/wtpix')],
             ['key' => 'vault', 'ok' => $vault !== null && ! $mismatch,
-                'hint' => $vault === null ? 'ตั้ง WTPIX_BRIDGE_VAULT_ADDRESS'
-                    : ($mismatch ? 'ทะเบียนสัญญาชี้ wtpix_bridge_vault ไปที่อื่น ('.$this->config->vaultRegistryAddress().') — ตรวจก่อนเปิด' : $vault)],
-            ['key' => 'wtpix', 'ok' => $wtpix !== null, 'hint' => $wtpix ?? 'ตั้ง WTPIX_BSC_ADDRESS'],
-            ['key' => 'minter', 'ok' => $minter !== null, 'hint' => $minter ?? 'ตั้ง WTPIX_BSC_MINTER_ADDRESS'],
-            ['key' => 'relayer_keystore', 'ok' => $relayer !== null, 'hint' => $relayer ?? 'วางไฟล์ WTPIX_BRIDGE_RELAYER_KEYSTORE'],
-            ['key' => 'relayer_passphrase', 'ok' => $this->config->hasPassphrase('relayer'), 'hint' => 'WTPIX_BRIDGE_RELAYER_PASS ใน .env'],
+                'hint' => $vault === null ? __('ตั้ง WTPIX_BRIDGE_VAULT_ADDRESS')
+                    : ($mismatch ? __('ทะเบียนสัญญาชี้ wtpix_bridge_vault ไปที่อื่น (:address) — ตรวจก่อนเปิด', ['address' => (string) $this->config->vaultRegistryAddress()]) : $vault)],
+            ['key' => 'wtpix', 'ok' => $wtpix !== null, 'hint' => $wtpix ?? __('ตั้ง WTPIX_BSC_ADDRESS')],
+            ['key' => 'minter', 'ok' => $minter !== null, 'hint' => $minter ?? __('ตั้ง WTPIX_BSC_MINTER_ADDRESS')],
+            ['key' => 'relayer_keystore', 'ok' => $relayer !== null, 'hint' => $relayer ?? __('วางไฟล์ WTPIX_BRIDGE_RELAYER_KEYSTORE')],
+            ['key' => 'relayer_passphrase', 'ok' => $this->config->hasPassphrase('relayer'), 'hint' => __('WTPIX_BRIDGE_RELAYER_PASS ใน .env')],
         ];
 
         $onchain = $vault && $wtpix && $minter && $relayer ? $this->onchain($direction, $rpc, $relayer) : null;
 
         if ($direction === WtpixBridgeTransfer::TO_BSC) {
-            $checks[] = ['key' => 'relayer_role', 'ok' => ($onchain['relayer_role'] ?? null) === true, 'hint' => 'WTPIXBridgeMinter.setRelayer(relayer, true) โดยเจ้าของ'];
+            $checks[] = ['key' => 'relayer_role', 'ok' => ($onchain['relayer_role'] ?? null) === true, 'hint' => __('WTPIXBridgeMinter.setRelayer(relayer, true) โดยเจ้าของ')];
             $checks[] = ['key' => 'minter_not_paused', 'ok' => ($onchain['paused'] ?? null) === false,
-                'hint' => ($onchain['paused'] ?? null) === true ? 'minter ถูก pause — เจ้าของต้อง unpause' : 'อ่านสถานะจาก BSC ไม่ได้'];
-            $checks[] = ['key' => 'token_not_paused', 'ok' => ($onchain['token_paused'] ?? null) === false, 'hint' => 'wTPIX ต้องไม่ถูก pause'];
+                'hint' => ($onchain['paused'] ?? null) === true ? __('minter ถูก pause — เจ้าของต้อง unpause') : __('อ่านสถานะจาก BSC ไม่ได้')];
+            $checks[] = ['key' => 'token_not_paused', 'ok' => ($onchain['token_paused'] ?? null) === false, 'hint' => __('wTPIX ต้องไม่ถูก pause')];
             $checks[] = ['key' => 'minter_is_minter', 'ok' => ($onchain['minter_is_minter'] ?? null) === true,
-                'hint' => 'wTPIX.minters(minter) ต้องเป็น true (setInitialMinter หรือ queueMinter → 2 วัน → executeMinter)'];
+                'hint' => __('wTPIX.minters(minter) ต้องเป็น true (setInitialMinter หรือ queueMinter → 2 วัน → executeMinter)')];
             $checks[] = ['key' => 'minter_token', 'ok' => ($onchain['minter_token'] ?? null) === $wtpix,
-                'hint' => 'WTPIXBridgeMinter.token() ต้องเป็น WTPIX_BSC_ADDRESS'];
+                'hint' => __('WTPIXBridgeMinter.token() ต้องเป็น WTPIX_BSC_ADDRESS')];
         } else {
-            $checks[] = ['key' => 'relayer_role', 'ok' => ($onchain['relayer_role'] ?? null) === true, 'hint' => 'TPIXBridgeVault.setRelayer(relayer, true) โดยเจ้าของ'];
+            $checks[] = ['key' => 'relayer_role', 'ok' => ($onchain['relayer_role'] ?? null) === true, 'hint' => __('TPIXBridgeVault.setRelayer(relayer, true) โดยเจ้าของ')];
             $checks[] = ['key' => 'vault_not_paused', 'ok' => ($onchain['paused'] ?? null) === false,
-                'hint' => ($onchain['paused'] ?? null) === true ? 'คลังถูก pause — เจ้าของต้องรัน unpause-bridge-vault.js' : 'อ่านสถานะจากเชน TPIX ไม่ได้'];
+                'hint' => ($onchain['paused'] ?? null) === true ? __('คลังถูก pause — เจ้าของต้องรัน unpause-bridge-vault.js') : __('อ่านสถานะจากเชน TPIX ไม่ได้')];
         }
 
         return [

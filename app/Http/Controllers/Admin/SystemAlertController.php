@@ -27,6 +27,13 @@ class SystemAlertController extends Controller
             ->limit(20)
             ->get(['id', 'node', 'alert_key', 'severity', 'message', 'occurrences', 'first_seen_at', 'last_seen_at']);
 
+        // ข้อความเหตุบันทึกโดย cron/งานเบื้องหลังเป็นไทย — แปลตอนแสดง (ข้อความที่มีค่าแทรกจะคงเดิม)
+        $alerts->each(function (SystemAlert $alert) {
+            if (is_string($alert->message)) {
+                $alert->message = __($alert->message);
+            }
+        });
+
         return response()->json(['alerts' => $alerts]);
     }
 

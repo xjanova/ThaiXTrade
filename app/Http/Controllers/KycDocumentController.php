@@ -67,7 +67,7 @@ class KycDocumentController extends Controller
      */
     private function stream(KycDocument $document): StreamedResponse
     {
-        abort_if($document->isPurged(), 410, 'เอกสารนี้ถูกลบตามคำขอหรือครบกำหนดเก็บแล้ว');
+        abort_if($document->isPurged(), 410, __('เอกสารนี้ถูกลบตามคำขอหรือครบกำหนดเก็บแล้ว'));
 
         $disk = Storage::disk($document->disk);
 

@@ -37,8 +37,8 @@ class BannerController extends Controller
         return Inertia::render('Admin/Banners/Index', [
             'banners' => $banners,
             'stats' => $stats,
-            'types' => Banner::TYPES,
-            'placements' => Banner::PLACEMENTS,
+            'types' => array_map(fn ($label) => __($label), Banner::TYPES),
+            'placements' => array_map(fn ($label) => __($label), Banner::PLACEMENTS),
         ]);
     }
 
@@ -63,7 +63,7 @@ class BannerController extends Controller
 
         Banner::create($validated);
 
-        return back()->with('success', 'สร้าง banner สำเร็จ');
+        return back()->with('success', __('สร้าง banner สำเร็จ'));
     }
 
     /**
@@ -87,7 +87,7 @@ class BannerController extends Controller
 
         $banner->update($validated);
 
-        return back()->with('success', 'อัปเดต banner สำเร็จ');
+        return back()->with('success', __('อัปเดต banner สำเร็จ'));
     }
 
     /**
@@ -97,7 +97,7 @@ class BannerController extends Controller
     {
         $banner->delete();
 
-        return back()->with('success', 'ลบ banner สำเร็จ');
+        return back()->with('success', __('ลบ banner สำเร็จ'));
     }
 
     /**
@@ -107,6 +107,6 @@ class BannerController extends Controller
     {
         $banner->update(['is_active' => ! $banner->is_active]);
 
-        return back()->with('success', ($banner->is_active ? 'เปิด' : 'ปิด').' banner สำเร็จ');
+        return back()->with('success', $banner->is_active ? __('เปิด banner สำเร็จ') : __('ปิด banner สำเร็จ'));
     }
 }

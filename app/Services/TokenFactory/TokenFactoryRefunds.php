@@ -11,6 +11,7 @@ use App\Support\Wei;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Traits\Localizable;
 use RuntimeException;
 
 /**
@@ -31,6 +32,8 @@ use RuntimeException;
  */
 class TokenFactoryRefunds
 {
+    use Localizable;
+
     public const PAYOUT_PURPOSE = 'token_factory_refund';
 
     public function __construct(
@@ -95,7 +98,8 @@ class TokenFactoryRefunds
         }
 
         try {
-            $this->queueAuto($token->fresh());
+            // ข้อความล้มเหลวถูกเก็บลง refund_error — สร้างเป็นภาษาไทยเสมอ เหมือนงานเบื้องหลัง ไม่ขึ้นกับภาษาของแอดมินที่กด
+            $this->withLocale('th', fn () => $this->queueAuto($token->fresh()));
         } catch (TokenFactoryException $e) {
             $this->markFailed($token->id, $e->getMessage());
             Log::warning("Token factory refund #{$token->id} auto payout not queued", ['reason' => $e->getMessage()]);
@@ -129,7 +133,7 @@ class TokenFactoryRefunds
             $amount = (string) $row->refund_amount_wei;
             $check = $this->treasury->validatePayout($row->creator_address, $amount, null, TreasuryPayout::ORIGIN_FACTORY_REFUND);
             if (! $check['ok']) {
-                throw new TokenFactoryException('REFUND_AUTO_BLOCKED', 'จ่ายคืนอัตโนมัติไม่ได้: '.implode(' / ', $check['errors']));
+                throw new TokenFactoryException('REFUND_AUTO_BLOCKED', __('จ่ายคืนอัตโนมัติไม่ได้: :errors', ['errors' => implode(' / ', array_map(fn ($e) => __((string) $e), $check['errors']))]));
             }
 
             $attempt = $this->payoutsFor($row->id)->count() + 1;
@@ -161,18 +165,18 @@ class TokenFactoryRefunds
     {
         $txHash = strtolower(trim($txHash));
         if (! preg_match('/^0x[a-f0-9]{64}$/', $txHash)) {
-            throw new TokenFactoryException('REFUND_TX_INVALID', 'รูปแบบ tx hash ไม่ถูกต้อง');
+            throw new TokenFactoryException('REFUND_TX_INVALID', __('รูปแบบ tx hash ไม่ถูกต้อง'));
         }
 
         $this->assertRefundOpen($token);
 
         $sending = $token->refund_payout_id ? TreasuryPayout::find($token->refund_payout_id) : null;
         if ($sending && ! $sending->endedWithoutPayment()) {
-            throw new TokenFactoryException('REFUND_AUTO_IN_PROGRESS', "ระบบกำลังจ่ายคืนอัตโนมัติอยู่ (คิว #{$sending->id}) — รอผลก่อน ไม่งั้นจะคืนซ้ำ", 409);
+            throw new TokenFactoryException('REFUND_AUTO_IN_PROGRESS', __('ระบบกำลังจ่ายคืนอัตโนมัติอยู่ (คิว #:id) — รอผลก่อน ไม่งั้นจะคืนซ้ำ', ['id' => $sending->id]), 409);
         }
 
         if (FactoryToken::where('refund_tx_hash', $txHash)->exists() || TokenFactoryFeeVerifier::txAlreadyUsed($txHash)) {
-            throw new TokenFactoryException('REFUND_TX_USED', 'ธุรกรรมนี้ถูกใช้ยืนยันรายการอื่นไปแล้ว', 409);
+            throw new TokenFactoryException('REFUND_TX_USED', __('ธุรกรรมนี้ถูกใช้ยืนยันรายการอื่นไปแล้ว'), 409);
         }
 
         // เงินที่คลังจ่ายด้วยเหตุอื่น (เช่นขายเหรียญให้ผู้สร้างคนนี้) ไม่ใช่การคืนค่าธรรมเนียม
@@ -180,56 +184,59 @@ class TokenFactoryRefunds
             ->whereNotIn('id', $this->payoutsFor($token->id)->pluck('id'))
             ->first();
         if ($otherPayout) {
-            throw new TokenFactoryException('REFUND_TX_USED', "ธุรกรรมนี้เป็นรายการจ่ายอื่นของคลัง (คิว #{$otherPayout->id}) นับเป็นการคืนเงินไม่ได้", 409);
+            throw new TokenFactoryException('REFUND_TX_USED', __('ธุรกรรมนี้เป็นรายการจ่ายอื่นของคลัง (คิว #:id) นับเป็นการคืนเงินไม่ได้', ['id' => $otherPayout->id]), 409);
         }
 
         $tx = $this->ask('eth_getTransactionByHash', [$txHash]);
         if (! is_array($tx)) {
-            throw new TokenFactoryException('REFUND_TX_NOT_FOUND', 'ยังไม่พบธุรกรรมนี้บนเชน TPIX — รอสักครู่แล้วลองใหม่');
+            throw new TokenFactoryException('REFUND_TX_NOT_FOUND', __('ยังไม่พบธุรกรรมนี้บนเชน TPIX — รอสักครู่แล้วลองใหม่'));
         }
 
         if (strtolower((string) ($tx['to'] ?? '')) !== strtolower((string) $token->creator_address)) {
-            throw new TokenFactoryException('REFUND_WRONG_RECIPIENT', "ธุรกรรมนี้ไม่ได้โอนไปที่กระเป๋าผู้ขอ ({$token->creator_address})");
+            throw new TokenFactoryException('REFUND_WRONG_RECIPIENT', __('ธุรกรรมนี้ไม่ได้โอนไปที่กระเป๋าผู้ขอ (:address)', ['address' => $token->creator_address]));
         }
 
         $from = strtolower((string) ($tx['from'] ?? ''));
         if (! in_array($from, $this->allowedSenders($token), true)) {
-            throw new TokenFactoryException('REFUND_WRONG_SENDER', 'ต้องโอนคืนจากกระเป๋ารับค่าธรรมเนียมหรือกระเป๋าร้อนของระบบเท่านั้น (ธุรกรรมนี้มาจาก '.$from.')');
+            throw new TokenFactoryException('REFUND_WRONG_SENDER', __('ต้องโอนคืนจากกระเป๋ารับค่าธรรมเนียมหรือกระเป๋าร้อนของระบบเท่านั้น (ธุรกรรมนี้มาจาก :from)', ['from' => $from]));
         }
 
         $chainId = TpixRpcClient::hexToInt($tx['chainId'] ?? null);
         if ($chainId !== null && $chainId !== $this->policy->chainId()) {
-            throw new TokenFactoryException('REFUND_WRONG_CHAIN', 'ต้องโอนคืนบนเชน TPIX ('.$this->policy->chainId().') เท่านั้น');
+            throw new TokenFactoryException('REFUND_WRONG_CHAIN', __('ต้องโอนคืนบนเชน TPIX (:chain) เท่านั้น', ['chain' => $this->policy->chainId()]));
         }
 
         $value = Wei::hexToInt(is_string($tx['value'] ?? null) ? $tx['value'] : '0x0');
         if (bccomp($value, (string) $token->refund_amount_wei, 0) < 0) {
             throw new TokenFactoryException(
                 'REFUND_TOO_LOW',
-                'ยอดที่โอนคืน ('.Wei::format($value).' TPIX) น้อยกว่ายอดที่ต้องคืน ('.Wei::format((string) $token->refund_amount_wei).' TPIX)'
+                __('ยอดที่โอนคืน (:sent TPIX) น้อยกว่ายอดที่ต้องคืน (:due TPIX)', [
+                    'sent' => Wei::format($value),
+                    'due' => Wei::format((string) $token->refund_amount_wei),
+                ])
             );
         }
 
         $receipt = $this->ask('eth_getTransactionReceipt', [$txHash]);
         $block = is_array($receipt) ? TpixRpcClient::hexToInt($receipt['blockNumber'] ?? null) : null;
         if ($block === null) {
-            throw new TokenFactoryException('REFUND_TX_NOT_FOUND', 'ธุรกรรมยังไม่ถูกบรรจุลงบล็อก — รอสักครู่แล้วลองใหม่');
+            throw new TokenFactoryException('REFUND_TX_NOT_FOUND', __('ธุรกรรมยังไม่ถูกบรรจุลงบล็อก — รอสักครู่แล้วลองใหม่'));
         }
         if (($receipt['status'] ?? null) !== '0x1') {
-            throw new TokenFactoryException('REFUND_TX_FAILED', 'ธุรกรรมนี้ล้มเหลวบนเชน (revert) — ไม่มีเงินถึงผู้ขอ');
+            throw new TokenFactoryException('REFUND_TX_FAILED', __('ธุรกรรมนี้ล้มเหลวบนเชน (revert) — ไม่มีเงินถึงผู้ขอ'));
         }
 
         // ต้องเกิดหลังผู้ใช้จ่ายค่าธรรมเนียม — กันเอาธุรกรรมเก่าที่เคยโอนให้กระเป๋านี้มานับเป็นการคืนเงิน
         $feeBlock = (int) ($token->metadata['fee_block'] ?? 0);
         if ($feeBlock > 0 && $block <= $feeBlock) {
-            throw new TokenFactoryException('REFUND_TX_TOO_OLD', 'ธุรกรรมนี้เกิดก่อนหรือพร้อมการจ่ายค่าธรรมเนียม จึงนับเป็นการคืนเงินไม่ได้');
+            throw new TokenFactoryException('REFUND_TX_TOO_OLD', __('ธุรกรรมนี้เกิดก่อนหรือพร้อมการจ่ายค่าธรรมเนียม จึงนับเป็นการคืนเงินไม่ได้'));
         }
 
         $latest = TpixRpcClient::hexToInt($this->ask('eth_blockNumber', []));
         $required = (int) $this->policy->effective()['required_confirmations'];
         $confirmations = $latest === null ? 0 : max(0, $latest - $block + 1);
         if ($confirmations < $required) {
-            throw new TokenFactoryException('REFUND_TX_PENDING', "รอการยืนยันบนเชน ({$confirmations}/{$required} บล็อก) แล้วกดยืนยันอีกครั้ง", 202);
+            throw new TokenFactoryException('REFUND_TX_PENDING', __('รอการยืนยันบนเชน (:confirmations/:required บล็อก) แล้วกดยืนยันอีกครั้ง', ['confirmations' => $confirmations, 'required' => $required]), 202);
         }
 
         try {
@@ -244,11 +251,11 @@ class TokenFactoryRefunds
                     'updated_at' => now(),
                 ]);
         } catch (QueryException) {
-            throw new TokenFactoryException('REFUND_TX_USED', 'ธุรกรรมนี้ถูกใช้ยืนยันรายการอื่นไปแล้ว', 409);
+            throw new TokenFactoryException('REFUND_TX_USED', __('ธุรกรรมนี้ถูกใช้ยืนยันรายการอื่นไปแล้ว'), 409);
         }
 
         if ($updated !== 1) {
-            throw new TokenFactoryException('REFUND_NOT_OPEN', 'รายการคืนเงินนี้ถูกปิดไปแล้ว', 409);
+            throw new TokenFactoryException('REFUND_NOT_OPEN', __('รายการคืนเงินนี้ถูกปิดไปแล้ว'), 409);
         }
 
         Log::info("Token factory refund #{$token->id} confirmed (manual)", ['tx' => $txHash, 'amount_wei' => $token->refund_amount_wei]);
@@ -305,16 +312,16 @@ class TokenFactoryRefunds
     private function assertRefundOpen(?FactoryToken $token): void
     {
         if (! $token || $token->status !== 'rejected') {
-            throw new TokenFactoryException('REFUND_NOT_OPEN', 'คืนเงินได้เฉพาะคำขอที่ถูกปฏิเสธ', 409);
+            throw new TokenFactoryException('REFUND_NOT_OPEN', __('คืนเงินได้เฉพาะคำขอที่ถูกปฏิเสธ'), 409);
         }
 
         if ($token->refund_status === FactoryToken::REFUND_REFUNDED) {
-            throw new TokenFactoryException('REFUND_ALREADY_DONE', 'คืนค่าธรรมเนียมรายการนี้ไปแล้ว', 409);
+            throw new TokenFactoryException('REFUND_ALREADY_DONE', __('คืนค่าธรรมเนียมรายการนี้ไปแล้ว'), 409);
         }
 
         if (! in_array($token->refund_status, [FactoryToken::REFUND_PENDING, FactoryToken::REFUND_FAILED, FactoryToken::REFUND_SENDING], true)
             || bccomp((string) ($token->refund_amount_wei ?? '0'), '0', 0) <= 0) {
-            throw new TokenFactoryException('REFUND_NOT_OPEN', 'คำขอนี้ไม่มียอดที่ต้องคืน (ไม่ได้จ่ายค่าธรรมเนียม)', 409);
+            throw new TokenFactoryException('REFUND_NOT_OPEN', __('คำขอนี้ไม่มียอดที่ต้องคืน (ไม่ได้จ่ายค่าธรรมเนียม)'), 409);
         }
     }
 
@@ -356,7 +363,7 @@ class TokenFactoryRefunds
         try {
             return $this->rpc->call($method, $params);
         } catch (RuntimeException) {
-            throw new TokenFactoryException('CHAIN_UNAVAILABLE', 'ติดต่อเชน TPIX ไม่ได้ชั่วคราว กรุณาลองใหม่อีกครั้ง', 503);
+            throw new TokenFactoryException('CHAIN_UNAVAILABLE', __('ติดต่อเชน TPIX ไม่ได้ชั่วคราว กรุณาลองใหม่อีกครั้ง'), 503);
         }
     }
 }

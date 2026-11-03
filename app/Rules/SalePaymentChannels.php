@@ -23,7 +23,7 @@ class SalePaymentChannels implements ValidationRule
         $unknown = array_filter($channels, fn (mixed $channel) => ! in_array($channel, TokenSale::PAYMENT_CHANNELS, true));
 
         if (! in_array(TokenSale::REQUIRED_CHANNEL, $channels, true) || $unknown !== []) {
-            $fail('ช่องทางรับเงินต้องมีบัตรเครดิต และเลือกเพิ่มได้เฉพาะโอนเงินธนาคารหรือ USDT ที่ตรวจเงินเข้าบนเชน');
+            $fail(__('ช่องทางรับเงินต้องมีบัตรเครดิต และเลือกเพิ่มได้เฉพาะโอนเงินธนาคารหรือ USDT ที่ตรวจเงินเข้าบนเชน'));
         }
     }
 }

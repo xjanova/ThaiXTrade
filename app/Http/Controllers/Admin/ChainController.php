@@ -74,7 +74,7 @@ class ChainController extends Controller
 
         Chain::create($validated);
 
-        return back()->with('success', 'เพิ่มเชนเรียบร้อยแล้ว');
+        return back()->with('success', __('เพิ่มเชนเรียบร้อยแล้ว'));
     }
 
     /**
@@ -89,7 +89,7 @@ class ChainController extends Controller
 
         $chain->update($validated);
 
-        return back()->with('success', 'แก้ไขเชนเรียบร้อยแล้ว');
+        return back()->with('success', __('แก้ไขเชนเรียบร้อยแล้ว'));
     }
 
     /**
@@ -101,9 +101,9 @@ class ChainController extends Controller
             'is_active' => ! $chain->is_active,
         ]);
 
-        $status = $chain->is_active ? 'เปิดใช้งาน' : 'ปิดใช้งาน';
+        $message = $chain->is_active ? 'เปิดใช้งานเชน :name แล้ว' : 'ปิดใช้งานเชน :name แล้ว';
 
-        return back()->with('success', "{$status}เชน {$chain->name} แล้ว");
+        return back()->with('success', __($message, ['name' => $chain->name]));
     }
 
     /**
@@ -126,16 +126,17 @@ class ChainController extends Controller
          */
         if ($chain->tokens_count > 0 || $chain->trading_pairs_count > 0) {
             return back()->withErrors([
-                'chain' => "ลบไม่ได้ — เชนนี้ยังมี {$chain->tokens_count} โทเคน "
-                    ."และ {$chain->trading_pairs_count} คู่เทรดผูกอยู่ "
-                    .'ให้ย้ายหรือลบของพวกนั้นก่อน หรือใช้ปุ่มปิดใช้งานแทน',
+                'chain' => __('ลบไม่ได้ — เชนนี้ยังมี :tokens โทเคน และ :pairs คู่เทรดผูกอยู่ ให้ย้ายหรือลบของพวกนั้นก่อน หรือใช้ปุ่มปิดใช้งานแทน', [
+                    'tokens' => $chain->tokens_count,
+                    'pairs' => $chain->trading_pairs_count,
+                ]),
             ]);
         }
 
         $this->deleteStoredLogo($chain->logo);
         $chain->delete();
 
-        return back()->with('success', "ลบเชน {$chain->name} แล้ว");
+        return back()->with('success', __('ลบเชน :name แล้ว', ['name' => $chain->name]));
     }
 
     // =========================================================================
@@ -214,9 +215,9 @@ class ChainController extends Controller
             'consensus' => ['nullable', 'string', 'max:30'],
             'network_id' => ['nullable', 'integer', 'min:1'],
         ], [
-            'chain_id_hex.regex' => 'Chain ID ต้องเป็นเลขฐานสิบหกขึ้นต้นด้วย 0x เช่น 0x38 (BSC) หรือ 0x10c1 (TPIX)',
-            'chain_id_hex.unique' => 'Chain ID นี้ถูกใช้กับเชนอื่นแล้ว',
-            'color.regex' => 'สีต้องเป็นรหัส HEX 6 หลัก เช่น #06B6D4',
+            'chain_id_hex.regex' => __('Chain ID ต้องเป็นเลขฐานสิบหกขึ้นต้นด้วย 0x เช่น 0x38 (BSC) หรือ 0x10c1 (TPIX)'),
+            'chain_id_hex.unique' => __('Chain ID นี้ถูกใช้กับเชนอื่นแล้ว'),
+            'color.regex' => __('สีต้องเป็นรหัส HEX 6 หลัก เช่น #06B6D4'),
         ]);
 
         /*

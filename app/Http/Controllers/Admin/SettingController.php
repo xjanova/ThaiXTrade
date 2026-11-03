@@ -195,10 +195,10 @@ class SettingController extends Controller
         ]);
 
         if (! ($result['ok'] ?? false)) {
-            return back()->with('error', "ทดสอบ {$validated['provider']} ไม่ผ่าน: ".($result['reason'] ?? 'ไม่ทราบสาเหตุ'));
+            return back()->with('error', __('ทดสอบ :provider ไม่ผ่าน: :reason', ['provider' => $validated['provider'], 'reason' => __($result['reason'] ?? 'ไม่ทราบสาเหตุ')]));
         }
 
-        return back()->with('success', "เชื่อมต่อ {$validated['provider']} ได้ — ตอบกลับมาว่า: ".mb_substr($result['text'], 0, 120));
+        return back()->with('success', __('เชื่อมต่อ :provider ได้ — ตอบกลับมาว่า: :text', ['provider' => $validated['provider'], 'text' => mb_substr($result['text'], 0, 120)]));
     }
 
     /**
@@ -308,7 +308,7 @@ class SettingController extends Controller
         SiteSetting::clearCache();
         AuditLog::log('settings.general.update');
 
-        return back()->with('success', 'บันทึก General settings สำเร็จ');
+        return back()->with('success', __('บันทึก General settings สำเร็จ'));
     }
 
     /**
@@ -340,7 +340,7 @@ class SettingController extends Controller
         SiteSetting::clearCache();
         AuditLog::log('settings.seo.update');
 
-        return back()->with('success', 'บันทึก SEO settings สำเร็จ');
+        return back()->with('success', __('บันทึก SEO settings สำเร็จ'));
     }
 
     /**
@@ -400,7 +400,7 @@ class SettingController extends Controller
         if ($tab === 'payment' && $request->has('card_service_fee_percent')) {
             $fee = $request->input('card_service_fee_percent');
             if (! is_numeric($fee) || (float) $fee < 0 || (float) $fee > 50) {
-                return back()->with('error', 'ค่าบริการบัตรต้องเป็นตัวเลข 0–50 (%)');
+                return back()->with('error', __('ค่าบริการบัตรต้องเป็นตัวเลข 0–50 (%)'));
             }
         }
 
@@ -408,7 +408,7 @@ class SettingController extends Controller
         if ($tab === 'payment' && $request->has('card_claim_hold_days')) {
             $days = $request->input('card_claim_hold_days');
             if (! is_numeric($days) || (int) $days < 0 || (int) $days > 180) {
-                return back()->with('error', 'วันพัก claim ของบัตรต้องเป็นตัวเลข 0–180');
+                return back()->with('error', __('วันพัก claim ของบัตรต้องเป็นตัวเลข 0–180'));
             }
         }
 
@@ -461,7 +461,7 @@ class SettingController extends Controller
 
         MoneySettings::change("settings.{$tab}.update", $save, $groups);
 
-        return back()->with('success', "บันทึก {$tab} settings สำเร็จ");
+        return back()->with('success', __('บันทึก :tab settings สำเร็จ', ['tab' => $tab]));
     }
 
     /**
@@ -479,7 +479,7 @@ class SettingController extends Controller
         if ($tab === 'payment') {
             $liveKeyOnly = function (string $attribute, mixed $value, Closure $fail): void {
                 if (app()->isProduction() && is_string($value) && StripePaymentService::isTestKey($value)) {
-                    $fail('เว็บจริงห้ามใช้คีย์ทดสอบของ Stripe — ต้องใช้คีย์ที่ขึ้นต้นด้วย pk_live_ / sk_live_');
+                    $fail(__('เว็บจริงห้ามใช้คีย์ทดสอบของ Stripe — ต้องใช้คีย์ที่ขึ้นต้นด้วย pk_live_ / sk_live_'));
                 }
             };
 
@@ -581,7 +581,7 @@ class SettingController extends Controller
             }
         }, ['email']);
 
-        return back()->with('success', 'บันทึกการตั้งค่าอีเมลเรียบร้อยแล้ว');
+        return back()->with('success', __('บันทึกการตั้งค่าอีเมลเรียบร้อยแล้ว'));
     }
 
     /**
@@ -599,11 +599,11 @@ class SettingController extends Controller
         try {
             Mail::to($validated['test_email'])->send(new TestMail());
 
-            return back()->with('success', "ส่งอีเมลทดสอบไปที่ {$validated['test_email']} เรียบร้อยแล้ว");
+            return back()->with('success', __('ส่งอีเมลทดสอบไปที่ :email เรียบร้อยแล้ว', ['email' => $validated['test_email']]));
         } catch (\Exception $e) {
             Log::error('Test email failed', ['error' => $e->getMessage()]);
 
-            return back()->with('error', 'ส่งอีเมลไม่สำเร็จ: '.$e->getMessage());
+            return back()->with('error', __('ส่งอีเมลไม่สำเร็จ: :error', ['error' => __($e->getMessage())]));
         }
     }
 

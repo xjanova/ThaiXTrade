@@ -4,7 +4,7 @@
  */
 
 import { createApp, h } from 'vue';
-import { createInertiaApp } from '@inertiajs/vue3';
+import { createInertiaApp, router } from '@inertiajs/vue3';
 import { createPinia } from 'pinia';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { initAudio } from '@/Composables/useSounds';
@@ -29,6 +29,12 @@ installDevtoolsGuard();
 // ธีมถูกติดไปแล้วโดยสคริปต์ใน <head> — ตรงนี้แค่ sync ค่าเข้าสถานะของ Vue
 // ให้ปุ่มเลือกธีมรู้ว่าตอนนี้เลือกอันไหนอยู่
 useTheme().init();
+
+// เปลี่ยนภาษา → ขอ props ของหน้านี้ใหม่ ข้อความที่เซิร์ฟเวอร์สร้างไว้ (flash, ป้ายหลังบ้าน) จะได้เปลี่ยนตาม
+// คงตำแหน่งเลื่อนและสถานะฟอร์มไว้ ผู้ใช้ไม่เสียสิ่งที่พิมพ์ค้างอยู่
+window.addEventListener('tpix:locale-changed', () => {
+    router.reload({ preserveScroll: true, preserveState: true });
+});
 
 createInertiaApp({
     title: (title) => title ? `${title} - ${appName}` : appName,

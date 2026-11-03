@@ -297,7 +297,7 @@ class TradingFeeController extends Controller
 
             return response()->json([
                 'success' => false,
-                'error' => ['code' => 'SERVER_ERROR', 'message' => 'ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง'],
+                'error' => ['code' => 'SERVER_ERROR', 'message' => __('ระบบขัดข้องชั่วคราว กรุณาลองใหม่อีกครั้ง')],
             ], 500);
         }
 
@@ -305,7 +305,7 @@ class TradingFeeController extends Controller
             'success' => false,
             'error' => [
                 'code' => $code,
-                'message' => self::MESSAGES[$code] ?? $code,
+                'message' => __(self::MESSAGES[$code] ?? $code),
             ],
         ], $status);
     }

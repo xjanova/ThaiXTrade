@@ -35,11 +35,11 @@ class EnsureKycApproved
             return $next($request);
         }
 
-        $label = (string) config("kyc.features.{$feature}.label_th", $feature);
+        $label = __((string) config("kyc.features.{$feature}.label_th", $feature));
 
         $message = $user === null
-            ? "ต้องเข้าสู่ระบบและยืนยันตัวตนก่อนใช้{$label}"
-            : "ต้องยืนยันตัวตนก่อนใช้{$label}";
+            ? __('ต้องเข้าสู่ระบบและยืนยันตัวตนก่อนใช้:label', ['label' => $label])
+            : __('ต้องยืนยันตัวตนก่อนใช้:label', ['label' => $label]);
 
         if ($request->expectsJson()) {
             return response()->json([

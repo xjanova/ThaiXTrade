@@ -87,7 +87,7 @@ class ProfileController extends Controller
 
         // ห้ามลบอีเมลทิ้งถ้ามันเป็นทางเข้าเดียวที่เหลือ — ล้างแล้วล็อกอินกลับไม่ได้อีก
         if (blank($validated['email'] ?? null) && $user->email !== null && $user->wallet_address === null) {
-            return back()->withErrors(['email' => 'ลบอีเมลไม่ได้ — เป็นทางเข้าเดียวของบัญชีนี้']);
+            return back()->withErrors(['email' => __('ลบอีเมลไม่ได้ — เป็นทางเข้าเดียวของบัญชีนี้')]);
         }
 
         $user->update($validated);
@@ -110,8 +110,8 @@ class ProfileController extends Controller
 
         if (! $result['ok']) {
             return back()->withErrors(['wallet' => match ($result['error']) {
-                'ONLY_SIGN_IN_METHOD' => 'ถอดกระเป๋าไม่ได้ — เป็นทางเข้าเดียวของบัญชีนี้ ตั้งอีเมลกับรหัสผ่านก่อน',
-                default => 'ยังไม่ได้ผูกกระเป๋ากับบัญชีนี้',
+                'ONLY_SIGN_IN_METHOD' => __('ถอดกระเป๋าไม่ได้ — เป็นทางเข้าเดียวของบัญชีนี้ ตั้งอีเมลกับรหัสผ่านก่อน'),
+                default => __('ยังไม่ได้ผูกกระเป๋ากับบัญชีนี้'),
             }]);
         }
 
@@ -120,7 +120,7 @@ class ProfileController extends Controller
             Cache::forget('wallet_verified:'.strtolower($wallet));
         }
 
-        return back()->with('success', 'ถอดกระเป๋าออกจากบัญชีแล้ว');
+        return back()->with('success', __('ถอดกระเป๋าออกจากบัญชีแล้ว'));
     }
 
     /**

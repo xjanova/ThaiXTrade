@@ -39,11 +39,11 @@ class ThaipromptKycController extends Controller
         try {
             $url = $this->thaiprompt->beginAuthorization($request->user(), $request->session(), $request->ip());
         } catch (ThaipromptKycException $e) {
-            return back()->withErrors(['kyc' => $e->getMessage()]);
+            return back()->withErrors(['kyc' => __($e->getMessage())]);
         } catch (RuntimeException $e) {
             $this->thaiprompt->logUnexpected($e, $request->user());
 
-            return back()->withErrors(['kyc' => ThaipromptKycService::ERR_UNEXPECTED]);
+            return back()->withErrors(['kyc' => __(ThaipromptKycService::ERR_UNEXPECTED)]);
         }
 
         // ออกนอกโดเมน — Inertia ต้องใช้ location() (409 + X-Inertia-Location) ไม่ใช่ redirect ธรรมดา
@@ -74,7 +74,7 @@ class ThaipromptKycController extends Controller
 
         if (! $request->user()) {
             return redirect()->route('login')->withErrors([
-                'kyc' => 'เซสชันหมดอายุระหว่างไปยืนยันที่ Thaiprompt — เข้าสู่ระบบแล้วกดเชื่อมใหม่อีกครั้ง',
+                'kyc' => __('เซสชันหมดอายุระหว่างไปยืนยันที่ Thaiprompt — เข้าสู่ระบบแล้วกดเชื่อมใหม่อีกครั้ง'),
             ]);
         }
 
@@ -85,18 +85,18 @@ class ThaipromptKycController extends Controller
                 $request->query(),
             );
         } catch (ThaipromptKycException $e) {
-            return redirect()->route('kyc.index')->withErrors(['kyc' => $e->getMessage()]);
+            return redirect()->route('kyc.index')->withErrors(['kyc' => __($e->getMessage())]);
         } catch (RuntimeException $e) {
             $this->thaiprompt->logUnexpected($e, $request->user());
 
-            return redirect()->route('kyc.index')->withErrors(['kyc' => ThaipromptKycService::ERR_UNEXPECTED]);
+            return redirect()->route('kyc.index')->withErrors(['kyc' => __(ThaipromptKycService::ERR_UNEXPECTED)]);
         }
 
         return redirect()->route('kyc.index')->with(
             'success',
             $link->isApproved()
-                ? 'ยืนยันตัวตนสำเร็จด้วยบัญชี Thaiprompt — ใช้บริการที่ต้องยืนยันตัวตนได้ทันที'
-                : 'เชื่อมบัญชี Thaiprompt แล้ว — เปิดแอป Thaiprompt เพื่อยืนยันตัวตนให้เสร็จ หน้านี้จะอัปเดตให้เอง',
+                ? __('ยืนยันตัวตนสำเร็จด้วยบัญชี Thaiprompt — ใช้บริการที่ต้องยืนยันตัวตนได้ทันที')
+                : __('เชื่อมบัญชี Thaiprompt แล้ว — เปิดแอป Thaiprompt เพื่อยืนยันตัวตนให้เสร็จ หน้านี้จะอัปเดตให้เอง'),
         );
     }
 
@@ -106,17 +106,17 @@ class ThaipromptKycController extends Controller
         $link = $user->thaipromptKycLink;
 
         if (! $link) {
-            return response()->json(['success' => false, 'message' => 'ยังไม่ได้เชื่อมบัญชี Thaiprompt'], 404);
+            return response()->json(['success' => false, 'message' => __('ยังไม่ได้เชื่อมบัญชี Thaiprompt')], 404);
         }
 
         try {
             $link = $this->thaiprompt->refresh($link);
         } catch (ThaipromptKycException $e) {
-            return $this->refreshFailed($link, $e->getMessage(), 422);
+            return $this->refreshFailed($link, __($e->getMessage()), 422);
         } catch (RuntimeException $e) {
             $this->thaiprompt->logUnexpected($e, $user);
 
-            return $this->refreshFailed($link, ThaipromptKycService::ERR_UNEXPECTED, 500);
+            return $this->refreshFailed($link, __(ThaipromptKycService::ERR_UNEXPECTED), 500);
         }
 
         return response()->json([

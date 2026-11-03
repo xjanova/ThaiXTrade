@@ -110,7 +110,7 @@ class CarbonCreditApiController extends Controller
             'success' => false,
             'error' => [
                 'code' => CarbonCreditService::ERR_PURCHASE_CLOSED,
-                'message' => 'ยังไม่เปิดให้ซื้อคาร์บอนเครดิต — รอประกาศเปิดระบบชำระเงินก่อน ระหว่างนี้ดูรายละเอียดโครงการได้ตามปกติ',
+                'message' => __('ยังไม่เปิดให้ซื้อคาร์บอนเครดิต — รอประกาศเปิดระบบชำระเงินก่อน ระหว่างนี้ดูรายละเอียดโครงการได้ตามปกติ'),
             ],
         ], 403);
     }

@@ -52,15 +52,14 @@ final class ValidatorVoteCommands
         $after = $setSize + 1;
         $warnings = [];
         if (IbftValidatorSet::faultTolerance($after) <= IbftValidatorSet::faultTolerance($setSize)) {
-            $warnings[] = sprintf(
-                'เพิ่มเป็น %d ตัว: ต้องเห็นพ้อง %d ตัว ทนดับได้ %d ตัวเท่าเดิม — ถ้าตัวใหม่ดับ validator เดิมต้องอยู่ครบทุกตัว ไม่งั้นเชนหยุด',
-                $after,
-                IbftValidatorSet::quorum($after),
-                IbftValidatorSet::faultTolerance($after),
-            );
+            $warnings[] = __('เพิ่มเป็น :after ตัว: ต้องเห็นพ้อง :quorum ตัว ทนดับได้ :tolerance ตัวเท่าเดิม — ถ้าตัวใหม่ดับ validator เดิมต้องอยู่ครบทุกตัว ไม่งั้นเชนหยุด', [
+                'after' => (string) $after,
+                'quorum' => (string) IbftValidatorSet::quorum($after),
+                'tolerance' => (string) IbftValidatorSet::faultTolerance($after),
+            ]);
         }
-        $warnings[] = 'โหวตเข้าเมื่อโหนดใหม่ซิงก์ถึงบล็อกล่าสุดและเป็นเพียร์กับ validator เดิมแล้วเท่านั้น (สคริปต์ตรวจให้เมื่อใส่ --node-id)';
-        $warnings[] = 'คะแนนโหวตที่ยังไม่ครบถูกล้างทุก 100,000 บล็อก (~55 ชม.) — ไม่ครบในรอบนั้นต้องโหวตใหม่';
+        $warnings[] = __('โหวตเข้าเมื่อโหนดใหม่ซิงก์ถึงบล็อกล่าสุดและเป็นเพียร์กับ validator เดิมแล้วเท่านั้น (สคริปต์ตรวจให้เมื่อใส่ --node-id)');
+        $warnings[] = __('คะแนนโหวตที่ยังไม่ครบถูกล้างทุก 100,000 บล็อก (~55 ชม.) — ไม่ครบในรอบนั้นต้องโหวตใหม่');
 
         return $warnings;
     }
@@ -72,11 +71,11 @@ final class ValidatorVoteCommands
     {
         $script = self::SCRIPT.' '.$vote.' '.$scriptArgs;
         $lines = [
-            '# 1) ซ้อม (ตรวจอย่างเดียว ไม่ส่งอะไร) — บนเครื่องเชน: ssh tpixadmin@123.253.62.252',
+            __('# 1) ซ้อม (ตรวจอย่างเดียว ไม่ส่งอะไร) — บนเครื่องเชน: ssh tpixadmin@123.253.62.252'),
             $script,
-            '# 2) ทำจริง',
+            __('# 2) ทำจริง'),
             $script.' --yes',
-            '# สำรอง: สั่งเองทีละตัว (ต้องได้เกินครึ่งของชุดปัจจุบัน) แล้วตรวจด้วย ibft snapshot',
+            __('# สำรอง: สั่งเองทีละตัว (ต้องได้เกินครึ่งของชุดปัจจุบัน) แล้วตรวจด้วย ibft snapshot'),
         ];
         foreach (self::CONTAINERS as $container) {
             $lines[] = 'sudo docker exec '.$container.' polygon-edge ibft propose '.$proposeArgs.' --grpc-address '.self::GRPC;

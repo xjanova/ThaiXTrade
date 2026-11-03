@@ -133,13 +133,13 @@ class AiBotWalletTransfer extends Model
     public function failureMessage(): ?string
     {
         if ($this->failure_code !== null) {
-            return self::FAILURE_MESSAGES[$this->failure_code] ?? self::FAILURE_MESSAGES[self::FAIL_SIGN];
+            return __(self::FAILURE_MESSAGES[$this->failure_code] ?? self::FAILURE_MESSAGES[self::FAIL_SIGN]);
         }
 
         if ($this->failure_reason === null || $this->failure_reason === '') {
             return null;
         }
 
-        return trim(explode(':', $this->failure_reason, 2)[0]);
+        return __(trim(explode(':', $this->failure_reason, 2)[0]));
     }
 }

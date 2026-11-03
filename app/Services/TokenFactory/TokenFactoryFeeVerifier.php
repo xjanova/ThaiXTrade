@@ -50,47 +50,50 @@ class TokenFactoryFeeVerifier
         $required = (int) $this->policy->effective()['required_confirmations'];
 
         if (! preg_match('/^0x[a-f0-9]{64}$/', $txHash)) {
-            throw new TokenFactoryException('FEE_TX_INVALID', 'รูปแบบ tx hash ของค่าธรรมเนียมไม่ถูกต้อง');
+            throw new TokenFactoryException('FEE_TX_INVALID', __('รูปแบบ tx hash ของค่าธรรมเนียมไม่ถูกต้อง'));
         }
 
         if (self::txAlreadyUsed($txHash)) {
-            throw new TokenFactoryException('FEE_TX_USED', 'ธุรกรรมนี้ถูกใช้ชำระค่าธรรมเนียมไปแล้ว', 409);
+            throw new TokenFactoryException('FEE_TX_USED', __('ธุรกรรมนี้ถูกใช้ชำระค่าธรรมเนียมไปแล้ว'), 409);
         }
 
         if ($feeWallet === '') {
-            throw new TokenFactoryException('FEE_WALLET_MISSING', 'ระบบยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม กรุณาติดต่อทีมงาน', 503);
+            throw new TokenFactoryException('FEE_WALLET_MISSING', __('ระบบยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม กรุณาติดต่อทีมงาน'), 503);
         }
 
         $tx = $this->ask('eth_getTransactionByHash', [$txHash]);
 
         if (! is_array($tx)) {
             if ($quote->isExpired()) {
-                throw new TokenFactoryException('QUOTE_EXPIRED', 'ใบเสนอราคาหมดอายุแล้ว และยังไม่พบธุรกรรมค่าธรรมเนียมบนเชน');
+                throw new TokenFactoryException('QUOTE_EXPIRED', __('ใบเสนอราคาหมดอายุแล้ว และยังไม่พบธุรกรรมค่าธรรมเนียมบนเชน'));
             }
 
             throw TokenFactoryException::feePending(
-                'ยังไม่พบธุรกรรมค่าธรรมเนียมบนเชน — รอสักครู่ ระบบจะตรวจอีกครั้ง',
+                __('ยังไม่พบธุรกรรมค่าธรรมเนียมบนเชน — รอสักครู่ ระบบจะตรวจอีกครั้ง'),
                 ['confirmations' => 0, 'required' => $required]
             );
         }
 
         if (strtolower((string) ($tx['to'] ?? '')) !== $feeWallet) {
-            throw new TokenFactoryException('FEE_WRONG_RECIPIENT', 'ธุรกรรมนี้ไม่ได้โอนเข้ากระเป๋ารับค่าธรรมเนียมของระบบ');
+            throw new TokenFactoryException('FEE_WRONG_RECIPIENT', __('ธุรกรรมนี้ไม่ได้โอนเข้ากระเป๋ารับค่าธรรมเนียมของระบบ'));
         }
 
         if (strtolower((string) ($tx['from'] ?? '')) !== $creator) {
-            throw new TokenFactoryException('FEE_WRONG_SENDER', 'ค่าธรรมเนียมต้องโอนจากกระเป๋าเดียวกับผู้สร้างเหรียญ');
+            throw new TokenFactoryException('FEE_WRONG_SENDER', __('ค่าธรรมเนียมต้องโอนจากกระเป๋าเดียวกับผู้สร้างเหรียญ'));
         }
 
         if ($this->chainIdOf($tx) !== $this->policy->chainId()) {
-            throw new TokenFactoryException('FEE_WRONG_CHAIN', 'ค่าธรรมเนียมต้องจ่ายบนเชน TPIX ('.$this->policy->chainId().') เท่านั้น');
+            throw new TokenFactoryException('FEE_WRONG_CHAIN', __('ค่าธรรมเนียมต้องจ่ายบนเชน TPIX (:chain) เท่านั้น', ['chain' => $this->policy->chainId()]));
         }
 
         $valueWei = Wei::hexToInt(is_string($tx['value'] ?? null) ? $tx['value'] : '0x0');
         if (bccomp($valueWei, (string) $quote->amount_wei, 0) < 0) {
             throw new TokenFactoryException(
                 'FEE_TOO_LOW',
-                'ยอดที่โอน ('.Wei::format($valueWei).' TPIX) น้อยกว่าค่าธรรมเนียม ('.Wei::format((string) $quote->amount_wei).' TPIX)'
+                __('ยอดที่โอน (:sent TPIX) น้อยกว่าค่าธรรมเนียม (:due TPIX)', [
+                    'sent' => Wei::format($valueWei),
+                    'due' => Wei::format((string) $quote->amount_wei),
+                ])
             );
         }
 
@@ -99,13 +102,13 @@ class TokenFactoryFeeVerifier
 
         if ($block === null) {
             throw TokenFactoryException::feePending(
-                'ธุรกรรมค่าธรรมเนียมยังไม่ถูกบรรจุลงบล็อก — รอสักครู่',
+                __('ธุรกรรมค่าธรรมเนียมยังไม่ถูกบรรจุลงบล็อก — รอสักครู่'),
                 ['confirmations' => 0, 'required' => $required]
             );
         }
 
         if (($receipt['status'] ?? null) !== '0x1') {
-            throw new TokenFactoryException('FEE_TX_FAILED', 'ธุรกรรมค่าธรรมเนียมล้มเหลวบนเชน (revert) — ไม่มีการโอนเงินเกิดขึ้น');
+            throw new TokenFactoryException('FEE_TX_FAILED', __('ธุรกรรมค่าธรรมเนียมล้มเหลวบนเชน (revert) — ไม่มีการโอนเงินเกิดขึ้น'));
         }
 
         $latest = TpixRpcClient::hexToInt($this->ask('eth_blockNumber', []));
@@ -113,21 +116,21 @@ class TokenFactoryFeeVerifier
         $timestamp = is_array($blockData) ? TpixRpcClient::hexToInt($blockData['timestamp'] ?? null) : null;
 
         if ($latest === null || $timestamp === null) {
-            throw new TokenFactoryException('CHAIN_UNAVAILABLE', 'อ่านข้อมูลบล็อกจากเชน TPIX ไม่ได้ชั่วคราว กรุณาลองใหม่', 503);
+            throw new TokenFactoryException('CHAIN_UNAVAILABLE', __('อ่านข้อมูลบล็อกจากเชน TPIX ไม่ได้ชั่วคราว กรุณาลองใหม่'), 503);
         }
 
         if ($timestamp < $quote->created_at->getTimestamp() - self::CLOCK_SKEW) {
-            throw new TokenFactoryException('FEE_TX_BEFORE_QUOTE', 'ธุรกรรมนี้เกิดก่อนออกใบเสนอราคา จึงใช้จ่ายค่าธรรมเนียมรอบนี้ไม่ได้');
+            throw new TokenFactoryException('FEE_TX_BEFORE_QUOTE', __('ธุรกรรมนี้เกิดก่อนออกใบเสนอราคา จึงใช้จ่ายค่าธรรมเนียมรอบนี้ไม่ได้'));
         }
 
         if ($timestamp > $quote->expires_at->getTimestamp() + self::CLOCK_SKEW) {
-            throw new TokenFactoryException('QUOTE_EXPIRED', 'ชำระหลังใบเสนอราคาหมดอายุ — กรุณาติดต่อทีมงานพร้อม tx hash');
+            throw new TokenFactoryException('QUOTE_EXPIRED', __('ชำระหลังใบเสนอราคาหมดอายุ — กรุณาติดต่อทีมงานพร้อม tx hash'));
         }
 
         $confirmations = max(0, $latest - $block + 1);
         if ($confirmations < $required) {
             throw TokenFactoryException::feePending(
-                "รอการยืนยันบนเชน ({$confirmations}/{$required} บล็อก)",
+                __('รอการยืนยันบนเชน (:confirmations/:required บล็อก)', ['confirmations' => $confirmations, 'required' => $required]),
                 ['confirmations' => $confirmations, 'required' => $required]
             );
         }
@@ -170,13 +173,13 @@ class TokenFactoryFeeVerifier
         try {
             return Cache::lock('token_factory:fee_tx:'.$txHash, 30)->block(10, function () use ($txHash, $write) {
                 if (self::txAlreadyUsed($txHash)) {
-                    throw new TokenFactoryException('FEE_TX_USED', 'ธุรกรรมนี้ถูกใช้ชำระค่าธรรมเนียมไปแล้ว', 409);
+                    throw new TokenFactoryException('FEE_TX_USED', __('ธุรกรรมนี้ถูกใช้ชำระค่าธรรมเนียมไปแล้ว'), 409);
                 }
 
                 return $write();
             });
         } catch (LockTimeoutException) {
-            throw new TokenFactoryException('FEE_TX_BUSY', 'ธุรกรรมนี้กำลังถูกตรวจอยู่ กรุณาลองใหม่อีกครั้ง', 409);
+            throw new TokenFactoryException('FEE_TX_BUSY', __('ธุรกรรมนี้กำลังถูกตรวจอยู่ กรุณาลองใหม่อีกครั้ง'), 409);
         }
     }
 
@@ -185,7 +188,7 @@ class TokenFactoryFeeVerifier
         try {
             return $this->rpc->call($method, $params);
         } catch (RuntimeException) {
-            throw new TokenFactoryException('CHAIN_UNAVAILABLE', 'ติดต่อเชน TPIX ไม่ได้ชั่วคราว กรุณาลองใหม่อีกครั้ง', 503);
+            throw new TokenFactoryException('CHAIN_UNAVAILABLE', __('ติดต่อเชน TPIX ไม่ได้ชั่วคราว กรุณาลองใหม่อีกครั้ง'), 503);
         }
     }
 

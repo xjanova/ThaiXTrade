@@ -24,7 +24,7 @@ class AdvisorFactory
     public function forPlan(?AiBotPlan $plan): Advisor
     {
         if (! $this->settings->enabled()) {
-            return new NullAdvisor('ปิดระบบที่ปรึกษาไว้ชั่วคราว');
+            return new NullAdvisor(__('ปิดระบบที่ปรึกษาไว้ชั่วคราว'));
         }
 
         return $this->make($this->settings->providerForTier($plan?->tier ?? 'free'));
@@ -33,7 +33,7 @@ class AdvisorFactory
     public function make(string $providerName): Advisor
     {
         if (! $this->settings->enabled()) {
-            return new NullAdvisor('ปิดระบบที่ปรึกษาไว้ชั่วคราว');
+            return new NullAdvisor(__('ปิดระบบที่ปรึกษาไว้ชั่วคราว'));
         }
 
         return $this->build($providerName);
@@ -55,7 +55,7 @@ class AdvisorFactory
         $config = $this->settings->providerConfig($providerName);
 
         if (! $config) {
-            return new NullAdvisor("ไม่รู้จักที่ปรึกษาชื่อ {$providerName}");
+            return new NullAdvisor(__('ไม่รู้จักที่ปรึกษาชื่อ :provider', ['provider' => $providerName]));
         }
 
         // ยังไม่ใส่คีย์ = ถือว่ายังไม่ได้ตั้งค่า ไม่ใช่ error
@@ -64,13 +64,13 @@ class AdvisorFactory
         // ได้อีกกรณีคือใช้โควตาวันนี้หมดแล้ว — เหมารวมเป็น "ยังไม่ได้ตั้งคีย์"
         // จะทำให้แอดมินไปนั่งแก้คีย์ที่ถูกอยู่แล้ว ทั้งที่ต้องรอวันใหม่เฉยๆ
         if (trim((string) ($config['api_key'] ?? '')) === '') {
-            return new NullAdvisor("ยังไม่ได้ตั้งคีย์ของ {$providerName}");
+            return new NullAdvisor(__('ยังไม่ได้ตั้งคีย์ของ :provider', ['provider' => $providerName]));
         }
 
         return match ($config['driver'] ?? $providerName) {
             'gemini' => new GeminiAdvisor($config),
             'openai' => new OpenAiAdvisor($config),
-            default => new NullAdvisor("ไม่รองรับไดรเวอร์ {$providerName}"),
+            default => new NullAdvisor(__('ไม่รองรับไดรเวอร์ :provider', ['provider' => $providerName])),
         };
     }
 }

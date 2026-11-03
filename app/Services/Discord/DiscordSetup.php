@@ -29,12 +29,12 @@ class DiscordSetup
         $token = $this->settings->botToken();
 
         if ($token === null) {
-            return ['ok' => false, 'message' => 'ยังไม่ได้ใส่โทเค็นบอท'];
+            return ['ok' => false, 'message' => __('ยังไม่ได้ใส่โทเค็นบอท')];
         }
 
         $me = $this->client->me($token);
         if (! $me['ok']) {
-            return ['ok' => false, 'message' => 'ตรวจโทเค็นไม่ผ่าน: '.$me['error']];
+            return ['ok' => false, 'message' => __('ตรวจโทเค็นไม่ผ่าน: :error', ['error' => __((string) $me['error'])])];
         }
 
         $state = ['bot_name' => (string) ($me['data']['username'] ?? ''), 'bot_id' => (string) ($me['data']['id'] ?? '')];
@@ -46,7 +46,7 @@ class DiscordSetup
             if (! $identified['ok']) {
                 $this->settings->mergeState($state);
 
-                return ['ok' => false, 'message' => 'โทเค็นใช้ได้ แต่ยืนยันตัวกับ Gateway ไม่สำเร็จ: '.$identified['error']];
+                return ['ok' => false, 'message' => __('โทเค็นใช้ได้ แต่ยืนยันตัวกับ Gateway ไม่สำเร็จ: :error', ['error' => __((string) $identified['error'])])];
             }
 
             $state['identified_at'] = now()->toIso8601String();
@@ -56,14 +56,14 @@ class DiscordSetup
         if ($guildId === null) {
             $this->settings->mergeState($state);
 
-            return ['ok' => false, 'message' => "เชื่อมบอท {$state['bot_name']} ได้แล้ว — ใส่ Guild ID ของเซิร์ฟเวอร์ต่อ"];
+            return ['ok' => false, 'message' => __('เชื่อมบอท :bot ได้แล้ว — ใส่ Guild ID ของเซิร์ฟเวอร์ต่อ', ['bot' => $state['bot_name']])];
         }
 
         $guild = $this->client->guild($guildId);
         if (! $guild['ok']) {
             $this->settings->mergeState($state);
 
-            return ['ok' => false, 'message' => 'บอทยังเข้าเซิร์ฟเวอร์นี้ไม่ได้: '.$guild['error']];
+            return ['ok' => false, 'message' => __('บอทยังเข้าเซิร์ฟเวอร์นี้ไม่ได้: :error', ['error' => __((string) $guild['error'])])];
         }
 
         $state['guild_name'] = (string) ($guild['data']['name'] ?? '');
@@ -71,13 +71,13 @@ class DiscordSetup
 
         $channels = $this->publisher->refreshChannels();
         if (! $channels['ok']) {
-            return ['ok' => false, 'message' => 'ดึงรายชื่อห้องไม่สำเร็จ: '.$channels['error']];
+            return ['ok' => false, 'message' => __('ดึงรายชื่อห้องไม่สำเร็จ: :error', ['error' => __((string) $channels['error'])])];
         }
 
         $roles = count($channels['map']);
         $total = count($this->settings->state()['channels'] ?? []);
 
-        return ['ok' => true, 'message' => "เชื่อมต่อแล้ว — บอท {$state['bot_name']} ในเซิร์ฟเวอร์ {$state['guild_name']} · พบห้องที่โพสต์ได้ {$total} ห้อง · จัดห้องให้ {$roles} เรื่อง"];
+        return ['ok' => true, 'message' => __('เชื่อมต่อแล้ว — บอท :bot ในเซิร์ฟเวอร์ :guild · พบห้องที่โพสต์ได้ :total ห้อง · จัดห้องให้ :roles เรื่อง', ['bot' => $state['bot_name'], 'guild' => $state['guild_name'], 'total' => $total, 'roles' => $roles])];
     }
 
     /**
@@ -92,18 +92,18 @@ class DiscordSetup
         $guildId = $this->settings->guildId();
 
         if ($applicationId === null || $guildId === null) {
-            return ['ok' => false, 'message' => 'ต้องใส่ Application ID และ Guild ID ก่อน'];
+            return ['ok' => false, 'message' => __('ต้องใส่ Application ID และ Guild ID ก่อน')];
         }
 
         $response = $this->client->putGuildCommands($applicationId, $guildId, self::commands());
 
         if (! $response['ok']) {
-            return ['ok' => false, 'message' => 'ลงทะเบียนคำสั่งไม่สำเร็จ: '.$response['error']];
+            return ['ok' => false, 'message' => __('ลงทะเบียนคำสั่งไม่สำเร็จ: :error', ['error' => __((string) $response['error'])])];
         }
 
         $this->settings->mergeState(['commands_registered_at' => now()->toIso8601String()]);
 
-        return ['ok' => true, 'message' => 'ลงทะเบียนคำสั่งแล้ว — /ถาม /ขายเหรียญ /ราคา /เชน /ลิงก์ และคลิกขวาข้อความ → Apps → รายงานให้แอดมิน · ใช้ในเซิร์ฟเวอร์ได้ทันที'];
+        return ['ok' => true, 'message' => __('ลงทะเบียนคำสั่งแล้ว — /ถาม /ขายเหรียญ /ราคา /เชน /ลิงก์ และคลิกขวาข้อความ → Apps → รายงานให้แอดมิน · ใช้ในเซิร์ฟเวอร์ได้ทันที')];
     }
 
     /** @return list<array<string, mixed>> */

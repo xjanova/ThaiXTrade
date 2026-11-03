@@ -149,7 +149,7 @@ class AiBotWalletController extends Controller
 
         abort_unless(
             preg_match('/^0x[a-f0-9]{40}$/', $wallet) === 1,
-            response()->json(['success' => false, 'error' => ['code' => 'INVALID_WALLET', 'message' => 'ต้องระบุ wallet_address']], 422),
+            response()->json(['success' => false, 'error' => ['code' => 'INVALID_WALLET', 'message' => __('ต้องระบุ wallet_address')]], 422),
         );
 
         return $wallet;
@@ -197,7 +197,7 @@ class AiBotWalletController extends Controller
     {
         return response()->json([
             'success' => false,
-            'error' => ['code' => $code, 'message' => self::ERROR_MESSAGES[$code] ?? 'ทำรายการไม่สำเร็จ'],
+            'error' => ['code' => $code, 'message' => __(self::ERROR_MESSAGES[$code] ?? 'ทำรายการไม่สำเร็จ')],
         ], $status);
     }
 }
