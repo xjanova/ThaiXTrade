@@ -61,6 +61,32 @@ return [
         'NEAR' => ['name' => 'NEAR Protocol', 'address' => '0x1Fa4a73a3F0133f0025378af00236f3aBDEE5D63', 'decimals' => 18, 'coingecko_id' => 'near', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/near/info/logo.png', 'sort_order' => 25],
         'SHIB' => ['name' => 'Shiba Inu', 'address' => '0x2859e4544C4bB03966803b044A93563Bd2D0DD4D', 'decimals' => 18, 'coingecko_id' => 'shiba-inu', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/ethereum/assets/0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE/logo.png', 'sort_order' => 26],
         'PEPE' => ['name' => 'Pepe', 'address' => '0x25d887Ce7a35172C62FeBFD67a1856F20FaEbB00', 'decimals' => 18, 'coingecko_id' => 'pepe', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/ethereum/assets/0x6982508145454Ce325dDbE47a25d4ec3d2311933/logo.png', 'sort_order' => 27],
+
+        /*
+         * เพิ่ม 2026-11-03 — ตรวจกับเชนจริงก่อนใส่ทุกตัว: symbol() ตรง · ราคาที่ PancakeSwap V2 ให้
+         * สำหรับไม้ \$100 ทั้งซื้อและขายห่างราคา Binance ไม่เกิน 2% (ตัวที่พูลบางหรือ address ปลอมตกหมด)
+         * ไม้ใหญ่กว่าที่พูลรับไหวยังถูกด่าน price impact / ราคาเบี่ยง 10% ในหน้าเทรดกันไว้
+         */
+        'CAKE' => ['name' => 'PancakeSwap', 'address' => '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', 'decimals' => 18, 'coingecko_id' => 'pancakeswap-token', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82/logo.png', 'sort_order' => 28],
+        'INJ' => ['name' => 'Injective', 'address' => '0xa2B726B1145A4773F68593CF171187d8EBe4d495', 'decimals' => 18, 'coingecko_id' => 'injective-protocol', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xa2B726B1145A4773F68593CF171187d8EBe4d495/logo.png', 'sort_order' => 29],
+        'FIL' => ['name' => 'Filecoin', 'address' => '0x0D8Ce2A99Bb6e3B7Db580eD848240e4a0F9aE153', 'decimals' => 18, 'coingecko_id' => 'filecoin', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x0D8Ce2A99Bb6e3B7Db580eD848240e4a0F9aE153/logo.png', 'sort_order' => 30],
+        'AXS' => ['name' => 'Axie Infinity', 'address' => '0x715D400F88C167884bbCc41C5FeA407ed4D2f8A0', 'decimals' => 18, 'coingecko_id' => 'axie-infinity', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x715D400F88C167884bbCc41C5FeA407ed4D2f8A0/logo.png', 'sort_order' => 31],
+        'EGLD' => ['name' => 'MultiversX', 'address' => '0xbF7c81FFF98BbE61B40Ed186e4AfD6DDd01337fe', 'decimals' => 18, 'coingecko_id' => 'elrond-erd-2', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xbF7c81FFF98BbE61B40Ed186e4AfD6DDd01337fe/logo.png', 'sort_order' => 32],
+        'ZIL' => ['name' => 'Zilliqa', 'address' => '0xb86AbCb37C3A4B64f74f59301AFF131a1BEcC787', 'decimals' => 12, 'coingecko_id' => 'zilliqa', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xb86AbCb37C3A4B64f74f59301AFF131a1BEcC787/logo.png', 'sort_order' => 33],
+        'FLOKI' => ['name' => 'FLOKI', 'address' => '0xfb5B838b6cfEEdC2873aB27866079AC55363D37E', 'decimals' => 9, 'coingecko_id' => 'floki', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xfb5B838b6cfEEdC2873aB27866079AC55363D37E/logo.png', 'sort_order' => 34],
+        'TWT' => ['name' => 'Trust Wallet Token', 'address' => '0x4B0F1812e5Df2A09796481Ff14017e6005508003', 'decimals' => 18, 'coingecko_id' => 'trust-wallet-token', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x4B0F1812e5Df2A09796481Ff14017e6005508003/logo.png', 'sort_order' => 35],
+        'XVS' => ['name' => 'Venus', 'address' => '0xcF6BB5389c92Bdda8a3747Ddb454cB7a64626C63', 'decimals' => 18, 'coingecko_id' => 'venus', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xcF6BB5389c92Bdda8a3747Ddb454cB7a64626C63/logo.png', 'sort_order' => 36],
+        'ASTER' => ['name' => 'Aster', 'address' => '0x000Ae314E2A2172a039B26378814C252734f556A', 'decimals' => 18, 'coingecko_id' => 'aster-2', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x000Ae314E2A2172a039B26378814C252734f556A/logo.png', 'sort_order' => 37],
+        'BAND' => ['name' => 'Band Protocol', 'address' => '0xAD6cAEb32CD2c308980a548bD0Bc5AA4306c6c18', 'decimals' => 18, 'coingecko_id' => 'band-protocol', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xAD6cAEb32CD2c308980a548bD0Bc5AA4306c6c18/logo.png', 'sort_order' => 38],
+        'C98' => ['name' => 'Coin98', 'address' => '0xaEC945e04baF28b135Fa7c640f624f8D90F1C3a6', 'decimals' => 18, 'coingecko_id' => 'coin98', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xaEC945e04baF28b135Fa7c640f624f8D90F1C3a6/logo.png', 'sort_order' => 39],
+        'SFP' => ['name' => 'SafePal', 'address' => '0xD41FDb03Ba84762dD66a0af1a6C8540FF1ba5dfb', 'decimals' => 18, 'coingecko_id' => 'safepal', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xD41FDb03Ba84762dD66a0af1a6C8540FF1ba5dfb/logo.png', 'sort_order' => 40],
+        'DODO' => ['name' => 'DODO', 'address' => '0x67ee3Cb086F8a16f34beE3ca72FAD36F7Db929e2', 'decimals' => 18, 'coingecko_id' => 'dodo', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x67ee3Cb086F8a16f34beE3ca72FAD36F7Db929e2/logo.png', 'sort_order' => 41],
+        'ALICE' => ['name' => 'My Neighbor Alice', 'address' => '0xAC51066d7bEC65Dc4589368da368b212745d63E8', 'decimals' => 6, 'coingecko_id' => 'my-neighbor-alice', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xAC51066d7bEC65Dc4589368da368b212745d63E8/logo.png', 'sort_order' => 42],
+        'TKO' => ['name' => 'Toko Token', 'address' => '0x9f589e3eabe42ebC94A44727b3f3531C0c877809', 'decimals' => 18, 'coingecko_id' => 'tokocrypto', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x9f589e3eabe42ebC94A44727b3f3531C0c877809/logo.png', 'sort_order' => 43],
+        'SANTOS' => ['name' => 'Santos FC Fan Token', 'address' => '0xA64455a4553C9034236734FadDAddbb64aCE4Cc7', 'decimals' => 8, 'coingecko_id' => 'santos-fc-fan-token', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xA64455a4553C9034236734FadDAddbb64aCE4Cc7/logo.png', 'sort_order' => 44],
+        'TST' => ['name' => 'Test', 'address' => '0x86Bb94DdD16Efc8bc58e6b056e8df71D9e666429', 'decimals' => 18, 'coingecko_id' => null, 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x86Bb94DdD16Efc8bc58e6b056e8df71D9e666429/logo.png', 'sort_order' => 45],
+        'BROCCOLI714' => ['name' => 'Broccoli', 'address' => '0x6d5AD1592ed9D6D1dF9b93c793AB759573Ed6714', 'decimals' => 18, 'coingecko_id' => null, 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x6d5AD1592ed9D6D1dF9b93c793AB759573Ed6714/logo.png', 'sort_order' => 46],
+        'USD1' => ['name' => 'World Liberty Financial USD', 'address' => '0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d', 'decimals' => 18, 'coingecko_id' => 'usd1-wlfi', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d/logo.png', 'sort_order' => 47],
     ],
 
     /*
@@ -72,5 +98,6 @@ return [
         'BTC' => 2, 'ETH' => 2, 'BNB' => 2, 'SOL' => 2, 'LTC' => 2, 'AVAX' => 2, 'LINK' => 2, 'ATOM' => 2,
         'XRP' => 4, 'ADA' => 4, 'DOGE' => 5, 'POL' => 4, 'DOT' => 3, 'UNI' => 3, 'TRX' => 5, 'NEAR' => 3,
         'SHIB' => 8, 'PEPE' => 8, 'USDC' => 4,
+        'CAKE' => 4, 'INJ' => 3, 'FIL' => 4, 'AXS' => 4, 'EGLD' => 3, 'ZIL' => 6, 'FLOKI' => 8, 'TWT' => 4, 'XVS' => 3, 'ASTER' => 4, 'BAND' => 4, 'C98' => 5, 'SFP' => 4, 'DODO' => 5, 'ALICE' => 4, 'TKO' => 4, 'SANTOS' => 4, 'TST' => 5, 'BROCCOLI714' => 5, 'USD1' => 4,
     ],
 ];

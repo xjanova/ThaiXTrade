@@ -140,8 +140,40 @@ class PopularMarketPairsSeeder extends Seeder
             $sortOrder++;
         }
 
+        $retired = $this->retireUpgradedMarkets($chain);
+
         $this->command?->info("✅ ตลาดยอดนิยม (โหมดดูราคา): {$created} คู่");
+        if ($retired > 0) {
+            $this->command?->info("♻️  ปิดคู่ดูราคา {$retired} คู่ที่ขึ้นเทรดจริงบน BSC แล้ว");
+        }
         $this->command?->info('รวมคู่เทรดที่เปิดใช้งาน: '.TradingPair::active()->count());
+    }
+
+    /**
+     * ปิดคู่ดูราคาของเหรียญที่ย้ายขึ้นเทรดจริงบน BSC แล้ว (อยู่ใน config/bsc_trade_tokens.php).
+     *
+     * ⚠️ ถ้าไม่ปิด INJ-USDT จะมีสองแถว (ดูราคาบนเชน TPIX + เทรดจริงบน BSC) ชื่อคู่เดียวกัน
+     *    หน้าเว็บผูกโหมด/เชนตามชื่อคู่ แถวไหนมาทีหลังก็ทับแถวแรก — คู่ที่เทรดได้อาจกลายเป็น "อ้างอิง"
+     *    ไม่ลบทิ้ง แค่ปิด (อาจมีข้อมูลเก่าอ้างถึง) — เอาเหรียญออกจากทะเบียน BSC แล้วรันใหม่ก็กลับมาเป็นคู่ดูราคา
+     */
+    private function retireUpgradedMarkets(Chain $chain): int
+    {
+        $addresses = array_map(fn (string $symbol) => "index:{$symbol}", array_keys(config('bsc_trade_tokens.tokens', [])));
+        $tokenIds = Token::where('chain_id', $chain->id)->whereIn('contract_address', $addresses)->pluck('id');
+
+        if ($tokenIds->isEmpty()) {
+            return 0;
+        }
+
+        $retired = TradingPair::where('chain_id', $chain->id)
+            ->whereIn('base_token_id', $tokenIds)
+            ->where('execution_mode', 'index')
+            ->where('is_active', true)
+            ->update(['is_active' => false]);
+
+        Token::whereIn('id', $tokenIds)->update(['is_active' => false]);
+
+        return $retired;
     }
 
     /**

@@ -333,12 +333,12 @@
             "empty": "No pairs found",
             "emptyFavorites": "No favorite pairs yet",
             "soon": "Soon",
-            "allQuotes": "All",
             "indexOnly": "Ref",
-            "onChain": "Pairs on {chain} — switch network at the top to see other networks",
-            "allChains": "All networks — connect a wallet to see only your network's pairs",
-            "emptyChain": "No trading pairs on {chain} yet",
-            "emptyTpixQuote": "No pairs priced in TPIX yet — coming soon"
+            "onChain": "Tradable on {chain} — pick any pair, we'll ask your wallet to switch network when you place the order",
+            "allChains": "All networks",
+            "emptyChain": "No trading pairs on {chain} yet — coming soon",
+            "indexTab": "Price ref",
+            "indexScope": "Global market prices — chart only, orders can't be placed yet"
         },
         "book": {
             "step": "Step",
