@@ -69,25 +69,25 @@ class BridgeRelayer
         $relayer = $this->config->signerAddress('relayer');
         $checks = [];
 
-        $checks[] = ['key' => 'installed', 'ok' => $this->config->installed(), 'hint' => 'BRIDGE_ENABLED=true ใน .env'];
-        $checks[] = ['key' => 'site_switch', 'ok' => $this->config->siteSwitchOn(), 'hint' => 'เปิดสวิตช์ที่ /admin/bridge'];
+        $checks[] = ['key' => 'installed', 'ok' => $this->config->installed(), 'hint' => __('BRIDGE_ENABLED=true ใน .env')];
+        $checks[] = ['key' => 'site_switch', 'ok' => $this->config->siteSwitchOn(), 'hint' => __('เปิดสวิตช์ที่ /admin/bridge')];
         $checks[] = ['key' => 'usdt_tpix', 'ok' => $usdt !== null && ! $this->config->usdtTpixRegistryMismatch(),
-            'hint' => $usdt === null ? 'ตั้ง BRIDGE_USDT_TPIX_ADDRESS'
-                : ($this->config->usdtTpixRegistryMismatch() ? 'ทะเบียนสัญญาชี้ usdt_tpix ไปที่อื่น — ตรวจก่อนเปิด' : $usdt)];
-        $checks[] = ['key' => 'minter', 'ok' => $minter !== null, 'hint' => $minter ?? 'ยังไม่ได้ลงทะเบียน bridge_minter'];
-        $checks[] = ['key' => 'relayer_keystore', 'ok' => $relayer !== null, 'hint' => $relayer ?? 'วางไฟล์ BRIDGE_RELAYER_KEYSTORE'];
-        $checks[] = ['key' => 'relayer_passphrase', 'ok' => $this->config->hasPassphrase('relayer'), 'hint' => 'BRIDGE_RELAYER_PASS ใน .env'];
+            'hint' => $usdt === null ? __('ตั้ง BRIDGE_USDT_TPIX_ADDRESS')
+                : ($this->config->usdtTpixRegistryMismatch() ? __('ทะเบียนสัญญาชี้ usdt_tpix ไปที่อื่น — ตรวจก่อนเปิด') : $usdt)];
+        $checks[] = ['key' => 'minter', 'ok' => $minter !== null, 'hint' => $minter ?? __('ยังไม่ได้ลงทะเบียน bridge_minter')];
+        $checks[] = ['key' => 'relayer_keystore', 'ok' => $relayer !== null, 'hint' => $relayer ?? __('วางไฟล์ BRIDGE_RELAYER_KEYSTORE')];
+        $checks[] = ['key' => 'relayer_passphrase', 'ok' => $this->config->hasPassphrase('relayer'), 'hint' => __('BRIDGE_RELAYER_PASS ใน .env')];
 
         $onchain = $minter && $usdt && $relayer ? $this->onchainState($rpc, $minter, $usdt, $relayer) : null;
 
         $checks[] = ['key' => 'minter_is_bridge', 'ok' => ($onchain['minter_is_bridge'] ?? null) === true,
-            'hint' => 'USDT_TPIX.setBridge(minter, true) โดยเจ้าของ'];
+            'hint' => __('USDT_TPIX.setBridge(minter, true) โดยเจ้าของ')];
         $checks[] = ['key' => 'relayer_role', 'ok' => ($onchain['relayer_role'] ?? null) === true,
-            'hint' => 'TPIXBridgeMinter.setRelayer(relayer, true) โดยเจ้าของ'];
+            'hint' => __('TPIXBridgeMinter.setRelayer(relayer, true) โดยเจ้าของ')];
         $checks[] = ['key' => 'minter_not_paused', 'ok' => ($onchain['minter_paused'] ?? null) === false,
-            'hint' => ($onchain['minter_paused'] ?? null) === true ? 'minter ถูก pause อยู่ — เจ้าของต้อง unpause' : 'อ่านสถานะจากเชนไม่ได้'];
+            'hint' => ($onchain['minter_paused'] ?? null) === true ? __('minter ถูก pause อยู่ — เจ้าของต้อง unpause') : __('อ่านสถานะจากเชนไม่ได้')];
         $checks[] = ['key' => 'token_not_paused', 'ok' => ($onchain['token_paused'] ?? null) === false,
-            'hint' => 'USDT_TPIX ต้องไม่ถูก pause'];
+            'hint' => __('USDT_TPIX ต้องไม่ถูก pause')];
 
         return [
             'ready' => ! in_array(false, array_column($checks, 'ok'), true),

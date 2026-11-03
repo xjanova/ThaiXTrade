@@ -67,7 +67,7 @@ class DiscordController extends Controller
             ],
             'channels' => $state['channels'] ?? [],
             'channelMap' => (object) $this->settings->channelMap(),
-            'roles' => collect((array) config('discord.roles'))->map(fn ($r, $key) => ['key' => $key, 'label' => $r['label']])->values(),
+            'roles' => collect((array) config('discord.roles'))->map(fn ($r, $key) => ['key' => $key, 'label' => __($r['label'])])->values(),
             'posts' => DiscordPost::orderByDesc('updated_at')->limit(30)->get(['kind', 'ref_key', 'channel_id', 'message_id', 'last_error', 'posted_at', 'updated_at']),
             'salePreview' => $sale->snapshot(),
             'interactionsUrl' => rtrim((string) config('app.url'), '/').'/api/v1/discord/interactions',
@@ -106,9 +106,9 @@ class DiscordController extends Controller
             'ban_at' => ['required', 'integer', 'min:1', 'max:100', 'gte:kick_at'],
             'max_bans_per_day' => ['required', 'integer', 'min:0', 'max:50'],
         ], [
-            'kick_at.gte' => 'คะแนนที่เตะต้องไม่น้อยกว่าคะแนนที่ปิดเสียง',
-            'ban_at.gte' => 'คะแนนที่แบนต้องไม่น้อยกว่าคะแนนที่เตะ',
-            'log_channel.in' => 'ห้องที่เลือกไม่อยู่ในเซิร์ฟเวอร์ — กด "ทดสอบการเชื่อมต่อ" เพื่อดึงรายชื่อห้องใหม่',
+            'kick_at.gte' => __('คะแนนที่เตะต้องไม่น้อยกว่าคะแนนที่ปิดเสียง'),
+            'ban_at.gte' => __('คะแนนที่แบนต้องไม่น้อยกว่าคะแนนที่เตะ'),
+            'log_channel.in' => __('ห้องที่เลือกไม่อยู่ในเซิร์ฟเวอร์ — กด "ทดสอบการเชื่อมต่อ" เพื่อดึงรายชื่อห้องใหม่'),
         ]);
 
         $channelChanged = (string) ($validated['log_channel'] ?? '') !== (string) $this->settings->get('discord_mod_log_channel', '');
@@ -130,9 +130,9 @@ class DiscordController extends Controller
         }
 
         return back()->with('success', match ($validated['mode']) {
-            DiscordModerator::MODE_ENFORCE => 'บันทึกแล้ว — บอทจะลงโทษจริงตามเกณฑ์',
-            DiscordModerator::MODE_OBSERVE => 'บันทึกแล้ว — โหมดแจ้งเตือนอย่างเดียว ยังไม่ลงโทษใคร',
-            default => 'บันทึกแล้ว — ปิดระบบดูแลห้อง (กฎ AutoMod ที่ติดตั้งไว้ยังบล็อกข้อความอยู่)',
+            DiscordModerator::MODE_ENFORCE => __('บันทึกแล้ว — บอทจะลงโทษจริงตามเกณฑ์'),
+            DiscordModerator::MODE_OBSERVE => __('บันทึกแล้ว — โหมดแจ้งเตือนอย่างเดียว ยังไม่ลงโทษใคร'),
+            default => __('บันทึกแล้ว — ปิดระบบดูแลห้อง (กฎ AutoMod ที่ติดตั้งไว้ยังบล็อกข้อความอยู่)'),
         });
     }
 
@@ -141,7 +141,7 @@ class DiscordController extends Controller
     {
         $result = $automod->install();
 
-        return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
+        return back()->with($result['ok'] ? 'success' : 'error', __($result['message']));
     }
 
     /** ลงโทษเอง (หน้าเว็บถามยืนยันก่อน) — ไม่ลงโทษทีมงาน/เจ้าของเซิร์ฟเวอร์ */
@@ -152,13 +152,13 @@ class DiscordController extends Controller
             'action' => ['required', Rule::in(['timeout', 'kick', 'ban', 'unban'])],
             'reason' => ['required', 'string', 'max:200'],
         ], [
-            'user_id.regex' => 'User ID ต้องเป็นตัวเลข 17-20 หลัก (เปิด Developer Mode แล้วคลิกขวาที่ชื่อสมาชิก → Copy User ID)',
-            'reason.required' => 'ใส่เหตุผลก่อน — จะบันทึกไว้ใน audit log ของ Discord',
+            'user_id.regex' => __('User ID ต้องเป็นตัวเลข 17-20 หลัก (เปิด Developer Mode แล้วคลิกขวาที่ชื่อสมาชิก → Copy User ID)'),
+            'reason.required' => __('ใส่เหตุผลก่อน — จะบันทึกไว้ใน audit log ของ Discord'),
         ]);
 
         $result = $moderator->manual($validated['user_id'], $validated['action'], $validated['reason']);
 
-        return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
+        return back()->with($result['ok'] ? 'success' : 'error', __($result['message']));
     }
 
     /** สิทธิ์ระดับเซิร์ฟเวอร์ที่ระบบดูแลห้องยังขาด (ไม่แตะอะไรใน Discord) */
@@ -168,7 +168,7 @@ class DiscordController extends Controller
 
         return $result['ok']
             ? response()->json(['success' => true, 'missing' => $result['missing'], 'above_bot' => $result['above_bot']])
-            : response()->json(['success' => false, 'message' => $result['error']], 422);
+            : response()->json(['success' => false, 'message' => __($result['error'])], 422);
     }
 
     public function update(Request $request, SiteKnowledgeService $knowledge): RedirectResponse
@@ -189,11 +189,11 @@ class DiscordController extends Controller
             'channel_map' => ['nullable', 'array'],
             'channel_map.*' => ['nullable', 'string', Rule::in($known)],
         ], [
-            'application_id.regex' => 'Application ID ต้องเป็นตัวเลข 17-20 หลัก (Developer Portal → General Information)',
-            'public_key.regex' => 'Public Key ต้องเป็นตัวอักษร hex 64 ตัว (Developer Portal → General Information)',
-            'guild_id.regex' => 'Guild ID ต้องเป็นตัวเลข 17-20 หลัก (คลิกขวาที่ชื่อเซิร์ฟเวอร์ → Copy Server ID)',
-            'bot_token.regex' => 'รูปแบบโทเค็นบอทไม่ถูกต้อง (Developer Portal → Bot → Reset Token แล้วคัดลอกมาทั้งหมด)',
-            'channel_map.*.in' => 'ห้องที่เลือกไม่อยู่ในเซิร์ฟเวอร์ — กด "ทดสอบการเชื่อมต่อ" เพื่อดึงรายชื่อห้องใหม่',
+            'application_id.regex' => __('Application ID ต้องเป็นตัวเลข 17-20 หลัก (Developer Portal → General Information)'),
+            'public_key.regex' => __('Public Key ต้องเป็นตัวอักษร hex 64 ตัว (Developer Portal → General Information)'),
+            'guild_id.regex' => __('Guild ID ต้องเป็นตัวเลข 17-20 หลัก (คลิกขวาที่ชื่อเซิร์ฟเวอร์ → Copy Server ID)'),
+            'bot_token.regex' => __('รูปแบบโทเค็นบอทไม่ถูกต้อง (Developer Portal → Bot → Reset Token แล้วคัดลอกมาทั้งหมด)'),
+            'channel_map.*.in' => __('ห้องที่เลือกไม่อยู่ในเซิร์ฟเวอร์ — กด "ทดสอบการเชื่อมต่อ" เพื่อดึงรายชื่อห้องใหม่'),
         ]);
 
         $tokenChanged = filled($validated['bot_token'] ?? null);
@@ -232,15 +232,15 @@ class DiscordController extends Controller
         $knowledge->forget();
 
         return back()->with('success', $tokenChanged
-            ? 'บันทึกแล้ว — กด "ทดสอบการเชื่อมต่อ" เพื่อยืนยันโทเค็นใหม่'
-            : 'บันทึกการตั้งค่าบอท Discord แล้ว');
+            ? __('บันทึกแล้ว — กด "ทดสอบการเชื่อมต่อ" เพื่อยืนยันโทเค็นใหม่')
+            : __('บันทึกการตั้งค่าบอท Discord แล้ว'));
     }
 
     public function connect(DiscordSetup $setup): RedirectResponse
     {
         $result = $setup->connect();
 
-        return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
+        return back()->with($result['ok'] ? 'success' : 'error', __($result['message']));
     }
 
     public function replan(DiscordPublisher $publisher): RedirectResponse
@@ -248,15 +248,15 @@ class DiscordController extends Controller
         $result = $publisher->refreshChannels(replan: true);
 
         return $result['ok']
-            ? back()->with('success', 'จัดห้องใหม่ตามชื่อห้องแล้ว '.count($result['map']).' เรื่อง — ตรวจแล้วกดบันทึกถ้าต้องการเปลี่ยน')
-            : back()->with('error', $result['error']);
+            ? back()->with('success', __('จัดห้องใหม่ตามชื่อห้องแล้ว :count เรื่อง — ตรวจแล้วกดบันทึกถ้าต้องการเปลี่ยน', ['count' => count($result['map'])]))
+            : back()->with('error', __($result['error']));
     }
 
     public function registerCommands(DiscordSetup $setup): RedirectResponse
     {
         $result = $setup->registerCommands();
 
-        return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
+        return back()->with($result['ok'] ? 'success' : 'error', __($result['message']));
     }
 
     /**
@@ -268,7 +268,7 @@ class DiscordController extends Controller
         $max = (int) config('discord.ask.max_question_length', 500);
         $validated = $request->validate(
             ['question' => ['required', 'string', "max:{$max}"]],
-            ['question.required' => 'พิมพ์คำถามก่อน', 'question.max' => "คำถามยาวเกิน {$max} ตัวอักษร"],
+            ['question.required' => __('พิมพ์คำถามก่อน'), 'question.max' => __('คำถามยาวเกิน :max ตัวอักษร', ['max' => $max])],
         );
 
         $question = trim($validated['question']);
@@ -289,7 +289,7 @@ class DiscordController extends Controller
 
         $items = array_map(fn (array $item) => $item + [
             'channel_name' => $item['channel_id'] !== null ? ($channels[$item['channel_id']]['name'] ?? $item['channel_id']) : null,
-            'role_label' => $labels[$item['role']] ?? $item['role'],
+            'role_label' => isset($labels[$item['role']]) ? __($labels[$item['role']]) : $item['role'],
         ], $publisher->preview());
 
         return response()->json(['success' => true, 'items' => $items]);
@@ -302,7 +302,7 @@ class DiscordController extends Controller
 
         return $result['ok']
             ? response()->json(['success' => true, 'rooms' => $result['rooms']])
-            : response()->json(['success' => false, 'message' => $result['error']], 422);
+            : response()->json(['success' => false, 'message' => __($result['error'])], 422);
     }
 
     /** โพสต์/อัปเดตเข้า Discord ทันที (หน้าเว็บถามยืนยันก่อนกด เพราะเป็นการโพสต์ถึงสมาชิกจริง) */
@@ -312,14 +312,14 @@ class DiscordController extends Controller
         $outcome = $publisher->sync();
 
         if (! $outcome['ran']) {
-            return back()->with('error', $outcome['reason']);
+            return back()->with('error', __($outcome['reason']));
         }
 
         $count = fn (string $action) => count(array_filter($outcome['results'], fn ($r) => $r['action'] === $action));
-        $summary = "โพสต์ใหม่ {$count('created')} · แก้ข้อความเดิม {$count('edited')} · ไม่เปลี่ยน {$count('unchanged')}";
+        $summary = __('โพสต์ใหม่ :created · แก้ข้อความเดิม :edited · ไม่เปลี่ยน :unchanged', ['created' => $count('created'), 'edited' => $count('edited'), 'unchanged' => $count('unchanged')]);
 
         return $count('error') + $count('no_channel') > 0
-            ? back()->with('error', "{$summary} · มีปัญหา ".($count('error') + $count('no_channel')).' รายการ (ดูตารางด้านล่าง)')
+            ? back()->with('error', __(':summary · มีปัญหา :problems รายการ (ดูตารางด้านล่าง)', ['summary' => $summary, 'problems' => $count('error') + $count('no_channel')]))
             : back()->with('success', $summary);
     }
 }

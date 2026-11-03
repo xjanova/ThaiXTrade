@@ -42,12 +42,12 @@ class SourceVerifyPurchases
 
         $fee = $this->policy->sourceVerifyFee();
         if ($fee === null) {
-            throw new TokenFactoryException('SOURCE_VERIFY_DISABLED', 'ตอนนี้ปิดบริการยืนยันซอร์สโค้ดชั่วคราว', 403);
+            throw new TokenFactoryException('SOURCE_VERIFY_DISABLED', __('ตอนนี้ปิดบริการยืนยันซอร์สโค้ดชั่วคราว'), 403);
         }
 
         $feeWallet = $this->policy->feeWallet();
         if ($feeWallet === '') {
-            throw new TokenFactoryException('FEE_WALLET_MISSING', 'ระบบยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม กรุณาติดต่อทีมงาน', 503);
+            throw new TokenFactoryException('FEE_WALLET_MISSING', __('ระบบยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม กรุณาติดต่อทีมงาน'), 503);
         }
 
         $amount = rtrim(rtrim(number_format($fee, 6, '.', ''), '0'), '.');
@@ -85,11 +85,11 @@ class SourceVerifyPurchases
             || $quote->creator_address !== $creator
             || $quote->purpose !== TokenFactoryFeeQuote::PURPOSE_SOURCE_VERIFY
             || (int) $quote->factory_token_id !== (int) $token->id) {
-            throw new TokenFactoryException('QUOTE_NOT_FOUND', 'ไม่พบใบเสนอราคาค่ายืนยันซอร์สของเหรียญนี้ กรุณาขอใหม่');
+            throw new TokenFactoryException('QUOTE_NOT_FOUND', __('ไม่พบใบเสนอราคาค่ายืนยันซอร์สของเหรียญนี้ กรุณาขอใหม่'));
         }
 
         if ($quote->used_at !== null) {
-            throw new TokenFactoryException('QUOTE_USED', 'ใบเสนอราคานี้ถูกใช้ไปแล้ว', 409);
+            throw new TokenFactoryException('QUOTE_USED', __('ใบเสนอราคานี้ถูกใช้ไปแล้ว'), 409);
         }
 
         $verification = $this->feeVerifier->verify($quote, $txHash, $creator);
@@ -99,12 +99,12 @@ class SourceVerifyPurchases
             TokenFactoryFeeVerifier::claimTx($txHash, fn () => DB::transaction(function () use ($quote, $token, $txHash, $verification) {
                 $locked = TokenFactoryFeeQuote::whereKey($quote->id)->lockForUpdate()->first();
                 if (! $locked || $locked->used_at !== null) {
-                    throw new TokenFactoryException('QUOTE_USED', 'ใบเสนอราคานี้ถูกใช้ไปแล้ว', 409);
+                    throw new TokenFactoryException('QUOTE_USED', __('ใบเสนอราคานี้ถูกใช้ไปแล้ว'), 409);
                 }
 
                 $row = FactoryToken::whereKey($token->id)->lockForUpdate()->first();
                 if ($row->sourceVerifyPaid()) {
-                    throw new TokenFactoryException('SOURCE_VERIFY_ALREADY_PAID', 'จ่ายค่ายืนยันซอร์สของเหรียญนี้ไปแล้ว', 409);
+                    throw new TokenFactoryException('SOURCE_VERIFY_ALREADY_PAID', __('จ่ายค่ายืนยันซอร์สของเหรียญนี้ไปแล้ว'), 409);
                 }
 
                 $metadata = $row->metadata ?? [];
@@ -124,7 +124,7 @@ class SourceVerifyPurchases
             }));
         } catch (QueryException $e) {
             if (TokenFactoryFeeVerifier::txAlreadyUsed($txHash)) {
-                throw new TokenFactoryException('FEE_TX_USED', 'ธุรกรรมนี้ถูกใช้ชำระค่าธรรมเนียมไปแล้ว', 409);
+                throw new TokenFactoryException('FEE_TX_USED', __('ธุรกรรมนี้ถูกใช้ชำระค่าธรรมเนียมไปแล้ว'), 409);
             }
 
             throw $e;
@@ -141,23 +141,23 @@ class SourceVerifyPurchases
     private function assertPurchasable(FactoryToken $token, string $creator): void
     {
         if ($token->creator_address !== $creator) {
-            throw new TokenFactoryException('TOKEN_NOT_FOUND', 'ไม่พบเหรียญนี้ในกระเป๋าของคุณ', 404);
+            throw new TokenFactoryException('TOKEN_NOT_FOUND', __('ไม่พบเหรียญนี้ในกระเป๋าของคุณ'), 404);
         }
 
         if ($token->status !== 'deployed' || ! $token->contract_address) {
-            throw new TokenFactoryException('SOURCE_VERIFY_NOT_DEPLOYED', 'ยืนยันซอร์สได้หลังสร้างเหรียญบนเชนเสร็จแล้วเท่านั้น', 409);
+            throw new TokenFactoryException('SOURCE_VERIFY_NOT_DEPLOYED', __('ยืนยันซอร์สได้หลังสร้างเหรียญบนเชนเสร็จแล้วเท่านั้น'), 409);
         }
 
         if ($token->sourceVerifyPaid()) {
-            throw new TokenFactoryException('SOURCE_VERIFY_ALREADY_PAID', 'จ่ายค่ายืนยันซอร์สของเหรียญนี้ไปแล้ว', 409);
+            throw new TokenFactoryException('SOURCE_VERIFY_ALREADY_PAID', __('จ่ายค่ายืนยันซอร์สของเหรียญนี้ไปแล้ว'), 409);
         }
 
         if (($token->metadata['explorer_verification']['status'] ?? null) === 'verified') {
-            throw new TokenFactoryException('SOURCE_VERIFY_ALREADY_VERIFIED', 'ซอร์สโค้ดของเหรียญนี้ยืนยันบน explorer แล้ว', 409);
+            throw new TokenFactoryException('SOURCE_VERIFY_ALREADY_VERIFIED', __('ซอร์สโค้ดของเหรียญนี้ยืนยันบน explorer แล้ว'), 409);
         }
 
         if (! $this->explorer->supports($token)) {
-            throw new TokenFactoryException('SOURCE_VERIFY_UNSUPPORTED', 'ยังยืนยันซอร์สของเหรียญชนิดนี้ไม่ได้ กรุณาติดต่อทีมงาน');
+            throw new TokenFactoryException('SOURCE_VERIFY_UNSUPPORTED', __('ยังยืนยันซอร์สของเหรียญชนิดนี้ไม่ได้ กรุณาติดต่อทีมงาน'));
         }
     }
 }

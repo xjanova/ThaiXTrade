@@ -503,7 +503,7 @@ class WalletController extends Controller
                 'success' => false,
                 'error' => [
                     'code' => $identity['error'],
-                    'message' => self::LINK_ERRORS[$identity['error']] ?? 'ผูกกระเป๋ากับบัญชีไม่สำเร็จ',
+                    'message' => __(self::LINK_ERRORS[$identity['error']] ?? 'ผูกกระเป๋ากับบัญชีไม่สำเร็จ'),
                 ],
             ], 409);
         }

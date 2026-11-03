@@ -9,6 +9,7 @@ use App\Models\AiBotDemoAccount;
 use App\Models\AiBotPosition;
 use App\Models\AiBotTrade;
 use App\Models\AuditLog;
+use App\Services\AiBot\BotRunner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -85,7 +86,7 @@ class AiBotAdminController extends Controller
             'bot' => $bot->id, 'wallet' => $bot->wallet_address, 'status' => 'paused',
         ]);
 
-        return back()->with('success', "หยุดบอท #{$bot->id} แล้ว");
+        return back()->with('success', __('หยุดบอท #:id แล้ว', ['id' => $bot->id]));
     }
 
     /**
@@ -96,13 +97,13 @@ class AiBotAdminController extends Controller
     public function resume(AiBotConfig $bot): RedirectResponse
     {
         if ($bot->isBanned()) {
-            return back()->with('error', 'บอทตัวนี้ถูกระงับอยู่ — ต้องปลดระงับก่อนถึงจะให้เดินต่อได้');
+            return back()->with('error', __('บอทตัวนี้ถูกระงับอยู่ — ต้องปลดระงับก่อนถึงจะให้เดินต่อได้'));
         }
 
         $bot->update(['status' => 'running']);
         AuditLog::log('aibot.resume', null, null, ['bot' => $bot->id, 'wallet' => $bot->wallet_address]);
 
-        return back()->with('success', "ให้บอท #{$bot->id} เดินต่อแล้ว");
+        return back()->with('success', __('ให้บอท #:id เดินต่อแล้ว', ['id' => $bot->id]));
     }
 
     /**
@@ -116,7 +117,7 @@ class AiBotAdminController extends Controller
         $validated = $request->validate([
             'reason' => ['required', 'string', 'max:255'],
         ], [
-            'reason.required' => 'ต้องระบุเหตุผลที่ระงับ — ผู้ใช้ต้องรู้ว่าถูกระงับเพราะอะไร',
+            'reason.required' => __('ต้องระบุเหตุผลที่ระงับ — ผู้ใช้ต้องรู้ว่าถูกระงับเพราะอะไร'),
         ]);
 
         $bot->update([
@@ -130,7 +131,7 @@ class AiBotAdminController extends Controller
             'bot' => $bot->id, 'wallet' => $bot->wallet_address, 'reason' => $validated['reason'],
         ]);
 
-        return back()->with('success', "ระงับบอท #{$bot->id} แล้ว");
+        return back()->with('success', __('ระงับบอท #:id แล้ว', ['id' => $bot->id]));
     }
 
     /** ปลดระงับ — คืนเป็นสถานะหยุด ไม่ใช่เดินทันที ให้เจ้าของเป็นคนตัดสินใจเริ่มเอง */
@@ -145,7 +146,7 @@ class AiBotAdminController extends Controller
 
         AuditLog::log('aibot.unban', null, null, ['bot' => $bot->id, 'wallet' => $bot->wallet_address]);
 
-        return back()->with('success', "ปลดระงับบอท #{$bot->id} แล้ว (อยู่ในสถานะหยุด รอเจ้าของเริ่มเอง)");
+        return back()->with('success', __('ปลดระงับบอท #:id แล้ว (อยู่ในสถานะหยุด รอเจ้าของเริ่มเอง)', ['id' => $bot->id]));
     }
 
     // =========================================================================
@@ -310,7 +311,7 @@ class AiBotAdminController extends Controller
 
             return [
                 'code' => $code,
-                'name_th' => $spec['name_th'] ?? $code,
+                'name_th' => isset($spec['name_th']) ? __($spec['name_th']) : $code,
                 'risk' => $spec['risk'] ?? 'medium',
                 'bots' => $stratBots->count(),
                 'running' => $stratBots->where('status', 'running')->whereNull('banned_at')->count(),
@@ -329,11 +330,11 @@ class AiBotAdminController extends Controller
                 'pnl_pct' => $capital > 0 ? round((($equity - $capital) / $capital) * 100, 2) : 0.0,
                 'has_account' => $account !== null,
                 // เหตุผลที่ถือบ่อยสุด = จุดที่ควรไปแก้ก่อนเพื่อน ถ้ากลยุทธ์เงียบเกินไป
-                'top_hold_reason' => $d->where('action', 'hold')
+                'top_hold_reason' => $this->translateReason($d->where('action', 'hold')
                     ->groupBy('reason')
                     ->sortByDesc(fn ($g) => $g->count())
                     ->keys()
-                    ->first(),
+                    ->first()),
                 'curve' => $this->equityCurve($code),
             ];
         })->values()->all();
@@ -403,7 +404,7 @@ class AiBotAdminController extends Controller
                  * ตอนผู้ใช้เปิดหน้าไว้ — เอาเกณฑ์เดียวไปตัดสินทั้งสองแบบจะอ่านผิด
                  */
                 'silent_seconds' => $bot->last_run_at ? $bot->last_run_at->diffInSeconds(now()) : null,
-                'last_reason' => $bot->last_reason,
+                'last_reason' => $this->translateReason($bot->last_reason),
                 'max_position_usd' => (float) (($bot->risk ?? [])['max_position_usd'] ?? 0),
                 'ticks_24h' => $lastDecision->get($bot->id, collect())->count(),
                 'position' => $valued ? [
@@ -442,7 +443,7 @@ class AiBotAdminController extends Controller
                 'fee' => round((float) $t->fee, 4),
                 'realized_pnl' => $t->realized_pnl === null ? null : round((float) $t->realized_pnl, 2),
                 'risk_level' => $t->risk_level,
-                'reason' => $t->reason,
+                'reason' => $this->translateReason($t->reason),
                 'at' => $t->created_at->toIso8601String(),
             ])->all();
     }
@@ -463,12 +464,22 @@ class AiBotAdminController extends Controller
                 'pair' => $d->pair,
                 'timeframe' => $d->timeframe,
                 'action' => $d->action,
-                'reason' => $d->reason,
+                'reason' => $this->translateReason($d->reason),
                 'risk_level' => $d->risk_level,
                 'price' => $d->price === null ? null : (float) $d->price,
                 'budget' => $d->budget === null ? null : (float) $d->budget,
                 'has_position' => (bool) $d->has_position,
                 'at' => $d->created_at->toIso8601String(),
             ])->all();
+    }
+
+    /**
+     * Stored bot reasons are written in Thai (cron has no user locale) — translate at display.
+     * Delegates to BotRunner::localizeReason() so dynamic engine reasons (with numbers / nested
+     * reasons) translate exactly the same way as on the user API.
+     */
+    private function translateReason(mixed $reason): mixed
+    {
+        return is_string($reason) && $reason !== '' ? BotRunner::localizeReason($reason) : $reason;
     }
 }

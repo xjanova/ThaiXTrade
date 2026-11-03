@@ -101,21 +101,21 @@ class TokenFactoryService
         }
 
         $messages = [
-            'required' => 'กรุณากรอก :attribute',
-            'total_supply.regex' => 'จำนวนเหรียญต้องเป็นจำนวนเต็มบวก',
-            'token_type.in' => 'ไม่รู้จักประเภทเหรียญนี้',
-            'chain_id.in' => 'สร้างเหรียญได้เฉพาะบนเชน TPIX ('.$this->policy->chainId().') เท่านั้น',
-            'website.url' => 'เว็บไซต์ต้องเป็นลิงก์ https://',
-            'quote_id.required' => 'ต้องขอใบเสนอราคาค่าธรรมเนียมก่อน',
-            'quote_id.uuid' => 'รหัสใบเสนอราคาไม่ถูกต้อง',
-            'fee_tx_hash.regex' => 'รูปแบบ tx hash ของค่าธรรมเนียมไม่ถูกต้อง',
-            'decimals.*' => 'ทศนิยมต้องอยู่ระหว่าง 0–18',
-            'name.*' => 'ชื่อเหรียญต้องยาว 2–100 ตัวอักษร',
-            'symbol.*' => 'สัญลักษณ์ต้องยาว 2–20 ตัวอักษร',
+            'required' => __('กรุณากรอก :attribute'),
+            'total_supply.regex' => __('จำนวนเหรียญต้องเป็นจำนวนเต็มบวก'),
+            'token_type.in' => __('ไม่รู้จักประเภทเหรียญนี้'),
+            'chain_id.in' => __('สร้างเหรียญได้เฉพาะบนเชน TPIX (:chain) เท่านั้น', ['chain' => $this->policy->chainId()]),
+            'website.url' => __('เว็บไซต์ต้องเป็นลิงก์ https://'),
+            'quote_id.required' => __('ต้องขอใบเสนอราคาค่าธรรมเนียมก่อน'),
+            'quote_id.uuid' => __('รหัสใบเสนอราคาไม่ถูกต้อง'),
+            'fee_tx_hash.regex' => __('รูปแบบ tx hash ของค่าธรรมเนียมไม่ถูกต้อง'),
+            'decimals.*' => __('ทศนิยมต้องอยู่ระหว่าง 0–18'),
+            'name.*' => __('ชื่อเหรียญต้องยาว 2–100 ตัวอักษร'),
+            'symbol.*' => __('สัญลักษณ์ต้องยาว 2–20 ตัวอักษร'),
         ];
 
         $data = Validator::make($input, $rules, $messages, [
-            'name' => 'ชื่อเหรียญ', 'symbol' => 'สัญลักษณ์', 'total_supply' => 'จำนวนเหรียญ', 'token_type' => 'ประเภทเหรียญ',
+            'name' => __('ชื่อเหรียญ'), 'symbol' => __('สัญลักษณ์'), 'total_supply' => __('จำนวนเหรียญ'), 'token_type' => __('ประเภทเหรียญ'),
         ])->validate();
 
         $data['symbol'] = strtoupper(trim($data['symbol']));
@@ -145,11 +145,11 @@ class TokenFactoryService
         // โลโก้ต้องเป็นไฟล์ที่กระเป๋านี้อัปโหลดเองผ่าน /upload-logo เท่านั้น
         // เดิมรับ https:// อะไรก็ได้ = ฝังรูปจากโดเมนคนอื่น (ติดตาม IP ผู้ชม / เปลี่ยนรูปทีหลังได้)
         if (! empty($data['logo_url']) && ! $this->isOwnUploadedLogo($data['logo_url'], $creator)) {
-            $errors['logo_url'] = 'โลโก้ต้องเป็นไฟล์ที่อัปโหลดผ่านหน้าสร้างเหรียญจากกระเป๋านี้เท่านั้น';
+            $errors['logo_url'] = __('โลโก้ต้องเป็นไฟล์ที่อัปโหลดผ่านหน้าสร้างเหรียญจากกระเป๋านี้เท่านั้น');
         }
 
         if (! isset($errors['symbol']) && $this->symbolTaken($data['symbol'])) {
-            $errors['symbol'] = "สัญลักษณ์ {$data['symbol']} มีคนใช้แล้ว หรือกำลังรออนุมัติอยู่";
+            $errors['symbol'] = __('สัญลักษณ์ :symbol มีคนใช้แล้ว หรือกำลังรออนุมัติอยู่', ['symbol' => $data['symbol']]);
         }
 
         if ($errors !== []) {
@@ -175,7 +175,7 @@ class TokenFactoryService
         // ยืนยันไม่ได้ = ห้ามเก็บเงิน ต้องตรวจตอนนี้ ตอน /create ผู้ใช้จ่ายไปแล้ว
         if (in_array('source_verify', $prepared['decision']['options'], true)
             && ! $this->explorer->supports(new FactoryToken(['token_type' => $prepared['data']['token_type']]))) {
-            throw new TokenFactoryException('SOURCE_VERIFY_UNSUPPORTED', 'ยังยืนยันซอร์สของเหรียญชนิดนี้ไม่ได้ กรุณาติดต่อทีมงาน');
+            throw new TokenFactoryException('SOURCE_VERIFY_UNSUPPORTED', __('ยังยืนยันซอร์สของเหรียญชนิดนี้ไม่ได้ กรุณาติดต่อทีมงาน'));
         }
 
         $fee = $prepared['decision']['fee'];
@@ -184,7 +184,7 @@ class TokenFactoryService
         $feeWallet = $this->policy->feeWallet();
 
         if (bccomp($amountWei, '0', 0) > 0 && $feeWallet === '') {
-            throw new TokenFactoryException('FEE_WALLET_MISSING', 'ระบบยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม กรุณาติดต่อทีมงาน', 503);
+            throw new TokenFactoryException('FEE_WALLET_MISSING', __('ระบบยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม กรุณาติดต่อทีมงาน'), 503);
         }
 
         return TokenFactoryFeeQuote::create([
@@ -228,11 +228,11 @@ class TokenFactoryService
         $quote = $this->findQuote($data['quote_id'], $creator, TokenFactoryFeeQuote::PURPOSE_CREATE);
 
         if ($quote->used_at !== null) {
-            throw new TokenFactoryException('QUOTE_USED', 'ใบเสนอราคานี้ถูกใช้สร้างเหรียญไปแล้ว', 409);
+            throw new TokenFactoryException('QUOTE_USED', __('ใบเสนอราคานี้ถูกใช้สร้างเหรียญไปแล้ว'), 409);
         }
 
         if (! hash_equals($quote->params_hash, $decision['params_hash'])) {
-            throw new TokenFactoryException('QUOTE_MISMATCH', 'ประเภทหรือตัวเลือกไม่ตรงกับใบเสนอราคา กรุณาขอใบเสนอราคาใหม่');
+            throw new TokenFactoryException('QUOTE_MISMATCH', __('ประเภทหรือตัวเลือกไม่ตรงกับใบเสนอราคา กรุณาขอใบเสนอราคาใหม่'));
         }
 
         $feeTxHash = null;
@@ -240,12 +240,12 @@ class TokenFactoryService
 
         if ($quote->isFree()) {
             if ($quote->isExpired()) {
-                throw new TokenFactoryException('QUOTE_EXPIRED', 'ใบเสนอราคาหมดอายุแล้ว กรุณาขอใหม่');
+                throw new TokenFactoryException('QUOTE_EXPIRED', __('ใบเสนอราคาหมดอายุแล้ว กรุณาขอใหม่'));
             }
         } else {
             $feeTxHash = strtolower(trim((string) ($data['fee_tx_hash'] ?? '')));
             if ($feeTxHash === '') {
-                throw new TokenFactoryException('FEE_REQUIRED', 'ต้องชำระค่าธรรมเนียมก่อนส่งคำขอสร้างเหรียญ', 402);
+                throw new TokenFactoryException('FEE_REQUIRED', __('ต้องชำระค่าธรรมเนียมก่อนส่งคำขอสร้างเหรียญ'), 402);
             }
 
             // โยน FEE_PENDING (202) ถ้ายังยืนยันไม่ครบ — หน้าเว็บถามซ้ำได้
@@ -282,7 +282,7 @@ class TokenFactoryService
             $write = fn () => DB::transaction(function () use ($quote, $data, $creator, $feeTxHash, $metadata) {
                 $locked = TokenFactoryFeeQuote::whereKey($quote->id)->lockForUpdate()->first();
                 if (! $locked || $locked->used_at !== null) {
-                    throw new TokenFactoryException('QUOTE_USED', 'ใบเสนอราคานี้ถูกใช้สร้างเหรียญไปแล้ว', 409);
+                    throw new TokenFactoryException('QUOTE_USED', __('ใบเสนอราคานี้ถูกใช้สร้างเหรียญไปแล้ว'), 409);
                 }
 
                 $token = FactoryToken::create([
@@ -318,10 +318,10 @@ class TokenFactoryService
             }
 
             if ($feeTxHash !== null && FactoryToken::where('fee_tx_hash', $feeTxHash)->exists()) {
-                throw new TokenFactoryException('FEE_TX_USED', 'ธุรกรรมค่าธรรมเนียมนี้ถูกใช้สร้างเหรียญไปแล้ว', 409);
+                throw new TokenFactoryException('FEE_TX_USED', __('ธุรกรรมค่าธรรมเนียมนี้ถูกใช้สร้างเหรียญไปแล้ว'), 409);
             }
 
-            throw new TokenFactoryException('SYMBOL_TAKEN', "สัญลักษณ์ {$data['symbol']} มีคนใช้แล้ว หรือกำลังรออนุมัติอยู่", 409);
+            throw new TokenFactoryException('SYMBOL_TAKEN', __('สัญลักษณ์ :symbol มีคนใช้แล้ว หรือกำลังรออนุมัติอยู่', ['symbol' => $data['symbol']]), 409);
         }
 
         Log::info('Token creation request submitted', [
@@ -391,6 +391,46 @@ class TokenFactoryService
         return $query->paginate($perPage);
     }
 
+    /**
+     * แถวเหรียญสำหรับส่งให้เบราว์เซอร์ — แปลข้อความที่งานเบื้องหลังเขียนลง metadata เป็นภาษาไทย
+     * (deploy_error / refund_error / ...) ตามภาษาของคำขอ ณ ตอนแสดงผล.
+     *
+     * ข้อความที่ตรงคีย์ใน lang/*.json แปลได้ ที่เหลือ (stderr, ข้อความที่แทนค่าแล้ว) ผ่านไปตามเดิม
+     * ห้ามเขียนผลนี้กลับลงฐานข้อมูล — ใช้แสดงผลเท่านั้น
+     */
+    public function presentToken(FactoryToken $token): array
+    {
+        $data = $token->toArray();
+
+        if (is_array($data['metadata'] ?? null)) {
+            foreach (['deploy_error', 'deploy_pending_reason', 'deploy_warning', 'refund_error'] as $key) {
+                if (is_string($data['metadata'][$key] ?? null)) {
+                    $data['metadata'][$key] = $this->translateStored($data['metadata'][$key]);
+                }
+            }
+
+            if (is_string($data['metadata']['explorer_verification']['message'] ?? null)) {
+                $data['metadata']['explorer_verification']['message'] = $this->translateStored($data['metadata']['explorer_verification']['message']);
+            }
+        }
+
+        return $data;
+    }
+
+    /** __() คืน array ได้ถ้าข้อความบังเอิญตรงชื่อไฟล์ภาษา (เช่น "validation") — คงค่าเดิมไว้ */
+    private function translateStored(string $message): string
+    {
+        $translated = __($message);
+
+        return is_string($translated) ? $translated : $message;
+    }
+
+    /** หน้ารายการแบบแบ่งหน้า — แปลข้อความใน metadata ของทุกแถว (ดู presentToken) */
+    public function presentTokens(LengthAwarePaginator $tokens): LengthAwarePaginator
+    {
+        return $tokens->through(fn (FactoryToken $token) => $this->presentToken($token));
+    }
+
     // =========================================================================
     //  แอดมิน
     // =========================================================================
@@ -408,23 +448,23 @@ class TokenFactoryService
     {
         if (! in_array($token->status, ['pending', 'failed'], true)) {
             throw new \InvalidArgumentException(
-                "อนุมัติไม่ได้: สถานะตอนนี้คือ '{$token->status}' (อนุมัติได้เฉพาะ pending หรือ failed)"
+                __("อนุมัติไม่ได้: สถานะตอนนี้คือ ':status' (อนุมัติได้เฉพาะ pending หรือ failed)", ['status' => $token->status])
             );
         }
 
         if ($token->tx_hash) {
-            throw new \InvalidArgumentException('มีธุรกรรมสร้างเหรียญเดิมค้างอยู่ — ต้องตรวจผลธุรกรรมก่อน ห้ามส่งซ้ำ');
+            throw new \InvalidArgumentException(__('มีธุรกรรมสร้างเหรียญเดิมค้างอยู่ — ต้องตรวจผลธุรกรรมก่อน ห้ามส่งซ้ำ'));
         }
 
         // ใช้กับ retry ด้วย — คำขอเก่า (testnet ฟรี / ไม่มีการตรวจค่าธรรมเนียม) ห้ามหลุดไป deploy บน 4289
-        $blocker = $this->deployBlocker($token);
+        $blocker = $this->deployBlocker($token, app()->getLocale());
         if ($blocker !== null) {
             throw new \InvalidArgumentException($blocker);
         }
 
         $ready = $this->readyFor($token->token_type);
         if (! $ready['ok']) {
-            throw new \InvalidArgumentException('ยัง deploy ไม่ได้: '.$ready['reason']);
+            throw new \InvalidArgumentException(__('ยัง deploy ไม่ได้: :reason', ['reason' => $ready['reason']]));
         }
 
         try {
@@ -434,14 +474,14 @@ class TokenFactoryService
                 ->update(['status' => 'deploying', 'deploy_started_at' => null, 'updated_at' => now()]);
         } catch (QueryException $e) {
             if ($this->isUniqueViolation($e)) {
-                throw new \InvalidArgumentException("สัญลักษณ์ {$token->symbol} ถูกเหรียญอื่นใช้ไปแล้ว");
+                throw new \InvalidArgumentException(__('สัญลักษณ์ :symbol ถูกเหรียญอื่นใช้ไปแล้ว', ['symbol' => $token->symbol]));
             }
 
             throw $e;
         }
 
         if ($claimed !== 1) {
-            throw new \InvalidArgumentException('เหรียญนี้กำลังถูกดำเนินการอยู่แล้ว (มีการอนุมัติไปก่อนหน้า)');
+            throw new \InvalidArgumentException(__('เหรียญนี้กำลังถูกดำเนินการอยู่แล้ว (มีการอนุมัติไปก่อนหน้า)'));
         }
 
         try {
@@ -458,8 +498,8 @@ class TokenFactoryService
             Log::error('สั่งงาน deploy ไม่สำเร็จ', ['token_id' => $token->id, 'reverted' => $reverted, 'error' => $e->getMessage()]);
 
             throw new \InvalidArgumentException($reverted === 1
-                ? 'สั่งงาน deploy ไม่สำเร็จ (คิวมีปัญหา) — คืนสถานะเดิมแล้ว ลองใหม่อีกครั้ง'
-                : 'งาน deploy ล้มระหว่างทำงาน: '.mb_substr($e->getMessage(), 0, 200));
+                ? __('สั่งงาน deploy ไม่สำเร็จ (คิวมีปัญหา) — คืนสถานะเดิมแล้ว ลองใหม่อีกครั้ง')
+                : __('งาน deploy ล้มระหว่างทำงาน: :error', ['error' => mb_substr($e->getMessage(), 0, 200)]));
         }
 
         Log::info("Token {$token->symbol} approved, deployment job dispatched", [
@@ -480,7 +520,7 @@ class TokenFactoryService
 
         if ($updated !== 1) {
             throw new \InvalidArgumentException(
-                "ปฏิเสธไม่ได้: สถานะตอนนี้คือ '{$token->fresh()?->status}' (ปฏิเสธได้เฉพาะ pending หรือ failed)"
+                __("ปฏิเสธไม่ได้: สถานะตอนนี้คือ ':status' (ปฏิเสธได้เฉพาะ pending หรือ failed)", ['status' => $token->fresh()?->status])
             );
         }
 
@@ -500,16 +540,21 @@ class TokenFactoryService
      *     และหลุด unique index (chain_id, active_symbol) เพราะ chain_id ไม่ตรง
      *   - ต้องมีใบเสนอราคาที่ถูกใช้กับแถวนี้จริง (และ tx ค่าธรรมเนียมที่ตรวจแล้วถ้าไม่ฟรี)
      *   - ประเภท/ตัวเลือกที่ขอต้องยังเปิดอยู่ในนโยบาย ณ ตอนนี้
+     *
+     * $locale — ภาษาของข้อความ ค่าปริยาย 'th' เพราะงาน deploy เขียนข้อความนี้ลง deploy_error ในฐานข้อมูล
+     * ตอนแอดมินกดอนุมัติ (แสดงผลทันที) ส่งภาษาของคำขอมาแทน
      */
-    public function deployBlocker(FactoryToken $token): ?string
+    public function deployBlocker(FactoryToken $token, string $locale = 'th'): ?string
     {
         if ((int) $token->chain_id !== $this->policy->chainId()) {
-            return "คำขอนี้ระบุเชน {$token->chain_id} — สร้างได้เฉพาะเชน ".$this->policy->chainId()
-                .' (คำขอระบบเก่า ให้ปฏิเสธแล้วส่งใหม่)';
+            return __('คำขอนี้ระบุเชน :chain — สร้างได้เฉพาะเชน :allowed (คำขอระบบเก่า ให้ปฏิเสธแล้วส่งใหม่)', [
+                'chain' => $token->chain_id,
+                'allowed' => $this->policy->chainId(),
+            ], $locale);
         }
 
         if (! $token->fee_quote_id) {
-            return 'คำขอนี้ไม่มีการตรวจค่าธรรมเนียมบนเชน (คำขอระบบเก่า) — ให้ปฏิเสธแล้วให้ผู้สร้างส่งคำขอใหม่';
+            return __('คำขอนี้ไม่มีการตรวจค่าธรรมเนียมบนเชน (คำขอระบบเก่า) — ให้ปฏิเสธแล้วให้ผู้สร้างส่งคำขอใหม่', [], $locale);
         }
 
         $quote = TokenFactoryFeeQuote::find($token->fee_quote_id);
@@ -517,16 +562,19 @@ class TokenFactoryService
             || $quote->used_at === null
             || (int) $quote->factory_token_id !== (int) $token->id
             || $quote->creator_address !== strtolower((string) $token->creator_address)) {
-            return 'ใบเสนอราคาค่าธรรมเนียมของคำขอนี้ไม่ตรงกับคำขอ';
+            return __('ใบเสนอราคาค่าธรรมเนียมของคำขอนี้ไม่ตรงกับคำขอ', [], $locale);
         }
 
         if (! $quote->isFree() && ! $token->fee_tx_hash) {
-            return 'คำขอนี้ไม่มีธุรกรรมค่าธรรมเนียมที่ตรวจแล้ว';
+            return __('คำขอนี้ไม่มีธุรกรรมค่าธรรมเนียมที่ตรวจแล้ว', [], $locale);
         }
 
-        $violations = $this->policy->stateViolations($token->token_type, $token->metadata['sub_options'] ?? []);
+        // stateViolations() แปลตาม $locale มาแล้ว — ห้ามแปลซ้ำ (ข้อความที่แทนค่าแล้วไม่ใช่คีย์)
+        $violations = $this->policy->stateViolations($token->token_type, $token->metadata['sub_options'] ?? [], $locale);
         if ($violations !== []) {
-            return 'นโยบายตอนนี้ไม่อนุญาต: '.implode(', ', $violations);
+            return __('นโยบายตอนนี้ไม่อนุญาต: :violations', [
+                'violations' => implode(', ', $violations),
+            ], $locale);
         }
 
         return null;
@@ -554,7 +602,7 @@ class TokenFactoryService
         $row = $stuck(FactoryToken::whereKey($token->id))->first();
         if (! $row) {
             throw new \InvalidArgumentException(
-                'รีเซ็ตได้เฉพาะแถวที่ค้างสถานะ deploying เกิน '.self::STUCK_MINUTES.' นาทีและยังไม่มีธุรกรรม'
+                __('รีเซ็ตได้เฉพาะแถวที่ค้างสถานะ deploying เกิน :minutes นาทีและยังไม่มีธุรกรรม', ['minutes' => self::STUCK_MINUTES])
             );
         }
 
@@ -571,7 +619,7 @@ class TokenFactoryService
         ]);
 
         if ($updated !== 1) {
-            throw new \InvalidArgumentException('สถานะเปลี่ยนไประหว่างรีเซ็ต — ลองโหลดหน้าใหม่');
+            throw new \InvalidArgumentException(__('สถานะเปลี่ยนไประหว่างรีเซ็ต — ลองโหลดหน้าใหม่'));
         }
 
         return $token->fresh();
@@ -581,7 +629,7 @@ class TokenFactoryService
     public function recheckDeployment(FactoryToken $token): void
     {
         if ($token->status !== 'deploying' || ! $token->tx_hash) {
-            throw new \InvalidArgumentException('ตรวจผลได้เฉพาะเหรียญที่กำลัง deploy และมีธุรกรรมแล้ว');
+            throw new \InvalidArgumentException(__('ตรวจผลได้เฉพาะเหรียญที่กำลัง deploy และมีธุรกรรมแล้ว'));
         }
 
         CheckFactoryDeployReceiptJob::dispatch($token->id);
@@ -593,7 +641,7 @@ class TokenFactoryService
     public function toggleVerified(FactoryToken $token): FactoryToken
     {
         if ($token->status !== 'deployed') {
-            throw new \InvalidArgumentException('ยืนยัน (verify) ได้เฉพาะเหรียญที่ deploy แล้ว');
+            throw new \InvalidArgumentException(__('ยืนยัน (verify) ได้เฉพาะเหรียญที่ deploy แล้ว'));
         }
 
         $token->update(['is_verified' => ! $token->is_verified]);
@@ -607,7 +655,7 @@ class TokenFactoryService
     public function toggleListed(FactoryToken $token): FactoryToken
     {
         if ($token->status !== 'deployed') {
-            throw new \InvalidArgumentException('ลิสต์ได้เฉพาะเหรียญที่ deploy แล้ว');
+            throw new \InvalidArgumentException(__('ลิสต์ได้เฉพาะเหรียญที่ deploy แล้ว'));
         }
 
         $token->update(['is_listed' => ! $token->is_listed]);
@@ -662,8 +710,8 @@ class TokenFactoryService
             }
 
             return $owner === null
-                ? "อ่าน owner() ของแฟกทอรี {$label} ไม่ได้"
-                : "กระเป๋าที่เซิร์ฟเวอร์ใช้ส่งธุรกรรมไม่ใช่เจ้าของ (owner) ของแฟกทอรี {$label}";
+                ? __('อ่าน owner() ของแฟกทอรี :label ไม่ได้', ['label' => $label])
+                : __('กระเป๋าที่เซิร์ฟเวอร์ใช้ส่งธุรกรรมไม่ใช่เจ้าของ (owner) ของแฟกทอรี :label', ['label' => $label]);
         };
 
         $result = [
@@ -682,15 +730,15 @@ class TokenFactoryService
             'deployer_configured' => $deployerConfigured,
 
             'issues' => array_values(array_filter([
-                ! $creationEnabled ? 'ผู้ดูแลปิดระบบสร้างเหรียญไว้' : null,
-                $needsWallet && ! $walletConfigured ? 'ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม (ตั้งที่หน้า ตั้งค่า Token Factory)' : null,
-                ! $erc20Wanted && ! $nftWanted ? 'ผู้ดูแลยังไม่ได้เปิดประเภทเหรียญใดเลย' : null,
-                ! $chainReady ? 'ยังไม่ได้ติดตั้งสัญญาแฟกทอรีบนเชน' : null,
-                $chainReady && $erc20Wanted && ! $erc20Live ? 'แฟกทอรี ERC-20 ยังไม่พร้อม (สร้างได้เฉพาะ NFT)' : null,
-                $chainReady && $nftWanted && ! $nftLive ? 'แฟกทอรี NFT ยังไม่พร้อม (สร้างได้เฉพาะเหรียญ ERC-20)' : null,
+                ! $creationEnabled ? __('ผู้ดูแลปิดระบบสร้างเหรียญไว้') : null,
+                $needsWallet && ! $walletConfigured ? __('ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม (ตั้งที่หน้า ตั้งค่า Token Factory)') : null,
+                ! $erc20Wanted && ! $nftWanted ? __('ผู้ดูแลยังไม่ได้เปิดประเภทเหรียญใดเลย') : null,
+                ! $chainReady ? __('ยังไม่ได้ติดตั้งสัญญาแฟกทอรีบนเชน') : null,
+                $chainReady && $erc20Wanted && ! $erc20Live ? __('แฟกทอรี ERC-20 ยังไม่พร้อม (สร้างได้เฉพาะ NFT)') : null,
+                $chainReady && $nftWanted && ! $nftLive ? __('แฟกทอรี NFT ยังไม่พร้อม (สร้างได้เฉพาะเหรียญ ERC-20)') : null,
                 $ownerIssue('ERC-20', $erc20Live, $erc20Owner, $erc20OwnerOk, $erc20Wanted),
                 $ownerIssue('NFT', $nftLive, $nftOwner, $nftOwnerOk, $nftWanted),
-                ! $deployerConfigured ? 'ยังไม่ได้ตั้งกระเป๋าที่ใช้ส่งธุรกรรม (DEPLOYER_PRIVATE_KEY)' : null,
+                ! $deployerConfigured ? __('ยังไม่ได้ตั้งกระเป๋าที่ใช้ส่งธุรกรรม (DEPLOYER_PRIVATE_KEY)') : null,
             ])),
         ];
 
@@ -716,18 +764,18 @@ class TokenFactoryService
     {
         $type = TokenFactoryPolicy::policyTypeFor($tokenType);
         if ($type === null) {
-            return ['ok' => false, 'reason' => 'ไม่รู้จักประเภทเหรียญนี้'];
+            return ['ok' => false, 'reason' => __('ไม่รู้จักประเภทเหรียญนี้')];
         }
 
         $state = $this->isFactoryReady();
         $factory = TokenFactoryPolicy::TYPES[$type]['factory'];
 
         $reason = match (true) {
-            ! $state['creation_enabled'] => 'ผู้ดูแลปิดระบบสร้างเหรียญไว้',
-            $state['fee_wallet_needed'] && ! $state['fee_wallet_configured'] => 'ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม (ตั้งที่หน้า ตั้งค่า Token Factory)',
-            ! $state['deployer_configured'] => 'ยังไม่ได้ตั้งกระเป๋าที่ใช้ส่งธุรกรรม',
-            $factory === 'erc20' && ! $state['erc20_factory_ready'] => 'แฟกทอรี ERC-20 ยังไม่พร้อม (ยังไม่ได้ติดตั้ง หรือกระเป๋าของเซิร์ฟเวอร์ไม่ใช่เจ้าของ)',
-            $factory === 'nft' && ! $state['nft_factory_ready'] => 'แฟกทอรี NFT ยังไม่พร้อม (ยังไม่ได้ติดตั้ง หรือกระเป๋าของเซิร์ฟเวอร์ไม่ใช่เจ้าของ)',
+            ! $state['creation_enabled'] => __('ผู้ดูแลปิดระบบสร้างเหรียญไว้'),
+            $state['fee_wallet_needed'] && ! $state['fee_wallet_configured'] => __('ยังไม่ได้ตั้งกระเป๋ารับค่าธรรมเนียม (ตั้งที่หน้า ตั้งค่า Token Factory)'),
+            ! $state['deployer_configured'] => __('ยังไม่ได้ตั้งกระเป๋าที่ใช้ส่งธุรกรรม'),
+            $factory === 'erc20' && ! $state['erc20_factory_ready'] => __('แฟกทอรี ERC-20 ยังไม่พร้อม (ยังไม่ได้ติดตั้ง หรือกระเป๋าของเซิร์ฟเวอร์ไม่ใช่เจ้าของ)'),
+            $factory === 'nft' && ! $state['nft_factory_ready'] => __('แฟกทอรี NFT ยังไม่พร้อม (ยังไม่ได้ติดตั้ง หรือกระเป๋าของเซิร์ฟเวอร์ไม่ใช่เจ้าของ)'),
             default => null,
         };
 
@@ -799,12 +847,12 @@ class TokenFactoryService
     private function assertCanCreate(string $tokenType, string $creator): void
     {
         if (! $this->policy->creationEnabled()) {
-            throw new TokenFactoryException('FACTORY_DISABLED', 'ขณะนี้ปิดระบบสร้างเหรียญชั่วคราว', 403);
+            throw new TokenFactoryException('FACTORY_DISABLED', __('ขณะนี้ปิดระบบสร้างเหรียญชั่วคราว'), 403);
         }
 
         $ready = $this->readyFor($tokenType);
         if (! $ready['ok']) {
-            throw new TokenFactoryException('FACTORY_NOT_READY', 'ยังสร้างเหรียญประเภทนี้ไม่ได้: '.$ready['reason'], 503);
+            throw new TokenFactoryException('FACTORY_NOT_READY', __('ยังสร้างเหรียญประเภทนี้ไม่ได้: :reason', ['reason' => $ready['reason']]), 503);
         }
 
         $limit = (int) $this->policy->effective()['daily_limit_per_wallet'];
@@ -813,7 +861,7 @@ class TokenFactoryService
             ->count();
 
         if ($recent >= $limit) {
-            throw new TokenFactoryException('DAILY_LIMIT', "กระเป๋านี้สร้างเหรียญครบ {$limit} ครั้งใน 24 ชั่วโมงแล้ว", 429);
+            throw new TokenFactoryException('DAILY_LIMIT', __('กระเป๋านี้สร้างเหรียญครบ :limit ครั้งใน 24 ชั่วโมงแล้ว', ['limit' => $limit]), 429);
         }
     }
 
@@ -826,7 +874,7 @@ class TokenFactoryService
 
         if (! $quote || $quote->creator_address !== strtolower($creator)
             || ($purpose !== null && $quote->purpose !== $purpose)) {
-            throw new TokenFactoryException('QUOTE_NOT_FOUND', 'ไม่พบใบเสนอราคาของกระเป๋านี้ กรุณาขอใบเสนอราคาใหม่');
+            throw new TokenFactoryException('QUOTE_NOT_FOUND', __('ไม่พบใบเสนอราคาของกระเป๋านี้ กรุณาขอใบเสนอราคาใหม่'));
         }
 
         return $quote;
@@ -845,11 +893,11 @@ class TokenFactoryService
             ->first(['id', 'symbol', 'status']);
 
         if ($open) {
-            $stage = self::IN_PROGRESS_STAGE_TH[$open->status];
+            $stage = __(self::IN_PROGRESS_STAGE_TH[$open->status]);
 
             throw new TokenFactoryException(
                 'REQUEST_IN_PROGRESS',
-                "กระเป๋านี้มีคำขอสร้างเหรียญ {$open->symbol} อยู่ระหว่างดำเนินการ ({$stage}) — สร้างเหรียญใหม่ได้เมื่อคำขอนี้เสร็จหรือถูกปฏิเสธ ดูสถานะได้ที่แท็บ My Tokens",
+                __('กระเป๋านี้มีคำขอสร้างเหรียญ :symbol อยู่ระหว่างดำเนินการ (:stage) — สร้างเหรียญใหม่ได้เมื่อคำขอนี้เสร็จหรือถูกปฏิเสธ ดูสถานะได้ที่แท็บ My Tokens', ['symbol' => $open->symbol, 'stage' => $stage]),
                 409
             );
         }

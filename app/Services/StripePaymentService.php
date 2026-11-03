@@ -369,7 +369,7 @@ class StripePaymentService
 
             // ปฏิเสธ = ไม่มีอะไรเปลี่ยน โยนใต้ธุรกรรมเพื่อย้อนแถวที่เพิ่งหยุด ไม่งั้นเหรียญส่วนที่เหลือของผู้ซื้อหายเงียบ ๆ
             if (bccomp($tokensLeftWei, '0', 0) > 0) {
-                throw new PurchaseException('เหรียญของรายการนี้ออกจากคลังแล้ว '.Wei::format($tokensLeftWei).' TPIX — ระบบไม่คืนเงินให้ ต้องตรวจเหรียญก่อนคืนใน Stripe เอง');
+                throw new PurchaseException(__('เหรียญของรายการนี้ออกจากคลังแล้ว :amount TPIX — ระบบไม่คืนเงินให้ ต้องตรวจเหรียญก่อนคืนใน Stripe เอง', ['amount' => Wei::format($tokensLeftWei)]));
             }
 
             return true;
@@ -471,7 +471,7 @@ class StripePaymentService
             ->whereIn('metadata->dispute_closed_status', self::DISPUTE_KEPT_STATUSES)
             ->latest()
             ->get()
-            ->each(fn (SaleTransaction $tx) => $tx->setAttribute('restore_refusal', $this->disputeRestoreRefusal($tx)));
+            ->each(fn (SaleTransaction $tx) => $tx->setAttribute('restore_refusal', __($this->disputeRestoreRefusal($tx))));
     }
 
     /**
@@ -499,7 +499,7 @@ class StripePaymentService
 
             // กดซ้ำ คืนเงิน และ dispute ใหม่แทรกระหว่างถาม Stripe ได้ทั้งหมด จึงตัดสินซ้ำใต้ล็อก
             $refusal = $this->disputeRestoreRefusal($locked)
-                ?? (($locked->metadata['dispute_id'] ?? null) === $disputeId ? null : 'มี dispute ใหม่เข้ามาระหว่างตรวจ — ออเดอร์ยังเหมือนเดิม');
+                ?? (($locked->metadata['dispute_id'] ?? null) === $disputeId ? null : __('มี dispute ใหม่เข้ามาระหว่างตรวจ — ออเดอร์ยังเหมือนเดิม'));
 
             if ($refusal !== null) {
                 throw new PurchaseException($refusal);
@@ -553,17 +553,17 @@ class StripePaymentService
         } catch (\Throwable $e) {
             Log::error('stripe: ตรวจผล dispute กับ Stripe ไม่สำเร็จ', ['dispute_id' => $disputeId, 'error' => $e->getMessage()]);
 
-            throw new PurchaseException('ตรวจผล dispute กับ Stripe ไม่สำเร็จ — ออเดอร์ยังเหมือนเดิม ลองใหม่อีกครั้ง', 0, $e);
+            throw new PurchaseException(__('ตรวจผล dispute กับ Stripe ไม่สำเร็จ — ออเดอร์ยังเหมือนเดิม ลองใหม่อีกครั้ง'), 0, $e);
         }
 
         foreach ([$dispute, ...$onCharge->data] as $each) {
             if (! in_array($each->status, self::DISPUTE_KEPT_STATUSES, true)) {
-                throw new PurchaseException('Stripe แจ้งว่าผลของ dispute '.$each->id.' ตอนนี้คือ '.$each->status.' — กู้ไม่ได้');
+                throw new PurchaseException(__('Stripe แจ้งว่าผลของ dispute :id ตอนนี้คือ :status — กู้ไม่ได้', ['id' => $each->id, 'status' => $each->status]));
             }
         }
 
         if ((int) ($dispute->charge->amount_refunded ?? -1) !== 0) {
-            throw new PurchaseException('รายการนี้ถูกคืนเงินใน Stripe แล้ว — กู้ไม่ได้ ถ้ายังคืนไม่ครบให้คืนส่วนที่เหลือใน Stripe เพื่อปิดออเดอร์');
+            throw new PurchaseException(__('รายการนี้ถูกคืนเงินใน Stripe แล้ว — กู้ไม่ได้ ถ้ายังคืนไม่ครบให้คืนส่วนที่เหลือใน Stripe เพื่อปิดออเดอร์'));
         }
     }
 

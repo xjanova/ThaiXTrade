@@ -69,7 +69,8 @@ class WtpixBridgeAdminController extends Controller
                 'unexplained_release' => Wei::format((string) $snapshot->unexplained_release_wei, 18),
                 'foreign_supply' => Wei::format((string) $snapshot->foreign_supply_wei, 18),
                 'action' => $snapshot->action,
-                'note' => $snapshot->note,
+                // บันทึกจาก cron กระทบยอด (ไทย) — แปลตอนแสดง ข้อความที่มีค่าแทรกจะคงเดิม
+                'note' => $snapshot->note === null ? null : __($snapshot->note),
             ] : null,
             'transfers' => $transfers,
             'counts' => WtpixBridgeTransfer::selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status'),
@@ -90,7 +91,8 @@ class WtpixBridgeAdminController extends Controller
      */
     private function state(): array
     {
-        return Cache::remember(self::CACHE_STATE, 20, function () {
+        // แคชเก็บคำใบ้เป็นต้นฉบับไทย (แคชใช้ร่วมทุกภาษา) แล้วแปลตามภาษาของคำขอตอนส่งออก
+        $state = Cache::remember(self::CACHE_STATE, 20, function () {
             $vault = $this->config->vaultAddress();
             $wtpix = $this->config->wtpixAddress();
             $minter = $this->config->minterAddress();
@@ -156,18 +158,19 @@ class WtpixBridgeAdminController extends Controller
                 ['key' => 'installed', 'ok' => $this->config->installed(), 'hint' => 'WTPIX_BRIDGE_ENABLED=true ใน .env'],
                 ['key' => 'site_switch', 'ok' => $this->config->siteSwitchOn(), 'hint' => 'เปิดสวิตช์ด้านซ้าย'],
                 ['key' => 'vault_address', 'ok' => $vault !== null && ! $this->config->vaultRegistryMismatch(),
-                    'hint' => $this->config->vaultRegistryMismatch() ? 'ทะเบียนสัญญา ('.$this->config->vaultRegistryAddress().') ไม่ตรงกับ WTPIX_BRIDGE_VAULT_ADDRESS' : ($vault ?? 'ตั้ง WTPIX_BRIDGE_VAULT_ADDRESS')],
+                    'hint' => $this->config->vaultRegistryMismatch() ? 'ทะเบียนสัญญา (:address) ไม่ตรงกับ WTPIX_BRIDGE_VAULT_ADDRESS' : ($vault ?? 'ตั้ง WTPIX_BRIDGE_VAULT_ADDRESS'),
+                    'hint_params' => ['address' => (string) $this->config->vaultRegistryAddress()]],
                 ['key' => 'vault_code', 'ok' => (bool) ($vaultState['code'] ?? false), 'hint' => 'ไม่พบสัญญาที่ที่อยู่นี้บนเชน 4289'],
                 ['key' => 'wtpix_address', 'ok' => (bool) ($tokenState['code'] ?? false), 'hint' => $wtpix ?? 'ตั้ง WTPIX_BSC_ADDRESS'],
                 ['key' => 'minter_address', 'ok' => (bool) ($minterState['code'] ?? false), 'hint' => $minter ?? 'ตั้ง WTPIX_BSC_MINTER_ADDRESS'],
-                ['key' => 'bsc_chain', 'ok' => $bscChainOk, 'hint' => 'RPC ของ BSC ต้องตอบ chainId '.$this->config->bscChainId()],
+                ['key' => 'bsc_chain', 'ok' => $bscChainOk, 'hint' => 'RPC ของ BSC ต้องตอบ chainId :chain_id', 'hint_params' => ['chain_id' => (string) $this->config->bscChainId()]],
                 ['key' => 'minter_token', 'ok' => ($mint['onchain']['minter_token'] ?? null) === $wtpix && $wtpix !== null, 'hint' => 'WTPIXBridgeMinter.token() ต้องเป็น wTPIX ตัวนี้'],
                 ['key' => 'initial_minter_set', 'ok' => ($tokenState['initial_minter_set'] ?? null) === true, 'hint' => 'wTPIX.setInitialMinter(minter) ยังไม่ถูกเรียก'],
                 ['key' => 'minter_is_minter', 'ok' => ($tokenState['minter_is_minter'] ?? null) === true, 'hint' => 'wTPIX.minters(WTPIXBridgeMinter) ต้องเป็น true'],
                 ['key' => 'relayer_keystore', 'ok' => $relayer !== null && $this->config->hasPassphrase('relayer'), 'hint' => 'WTPIX_BRIDGE_RELAYER_KEYSTORE + WTPIX_BRIDGE_RELAYER_PASS'],
                 ['key' => 'minter_relayer_role', 'ok' => $role($bsc, $minter, 'relayers', $relayer) === true, 'hint' => 'WTPIXBridgeMinter.setRelayer(relayer, true)'],
                 ['key' => 'vault_relayer_role', 'ok' => $role($tpix, $vault, 'relayers', $relayer) === true, 'hint' => 'TPIXBridgeVault.setRelayer(relayer, true)'],
-                ['key' => 'relayer_bnb', 'ok' => $enough($relayerBnb), 'hint' => 'เติม BNB ให้ relayer (ขั้นต่ำ '.Wei::format($minGas, 18).')'],
+                ['key' => 'relayer_bnb', 'ok' => $enough($relayerBnb), 'hint' => 'เติม BNB ให้ relayer (ขั้นต่ำ :min)', 'hint_params' => ['min' => Wei::format($minGas, 18)]],
                 ['key' => 'vault_not_paused', 'ok' => ($vaultState['paused'] ?? null) === false, 'hint' => 'เจ้าของรัน unpause-bridge-vault.js'],
                 ['key' => 'minter_not_paused', 'ok' => ($minterState['paused'] ?? null) === false, 'hint' => 'เจ้าของเรียก WTPIXBridgeMinter.unpause()'],
                 ['key' => 'token_not_paused', 'ok' => ($tokenState['paused'] ?? null) === false, 'hint' => 'wTPIX ถูก pause โดยเจ้าของ'],
@@ -211,6 +214,23 @@ class WtpixBridgeAdminController extends Controller
                 ],
             ];
         });
+
+        $state['checks'] = array_map(function (array $check) {
+            $params = $check['hint_params'] ?? [];
+            unset($check['hint_params']);
+            if (is_string($check['hint'] ?? null) && preg_match('/\p{Thai}/u', $check['hint'])) {
+                $check['hint'] = __($check['hint'], $params);
+            }
+
+            return $check;
+        }, (array) ($state['checks'] ?? []));
+
+        // เหตุปิดสวิตช์เก็บเป็นไทยในแคช (ใช้ร่วมทุกภาษา) — แปลตอนส่งออก ข้อความที่มีค่าแทรกจะคงเดิม
+        if (is_string($state['switch_reason'] ?? null)) {
+            $state['switch_reason'] = __($state['switch_reason']);
+        }
+
+        return $state;
     }
 
     /** ยอดสด (ปุ่มรีเฟรช) — วัดอย่างเดียว ไม่สั่งหยุดอะไร */
@@ -258,14 +278,14 @@ class WtpixBridgeAdminController extends Controller
         if ($on) {
             $latest = WtpixBridgeSnapshot::latest('id')->first();
             if ($latest && $latest->status === WtpixBridgeSnapshot::STATUS_DEFICIT) {
-                $warnings[] = 'ผลกระทบยอดล่าสุดยังขาด — ระบบจะปิดเองอีกถ้ารอบหน้ายังขาด';
+                $warnings[] = __('ผลกระทบยอดล่าสุดยังขาด — ระบบจะปิดเองอีกถ้ารอบหน้ายังขาด');
             }
             if ($latest && (bccomp((string) $latest->unexplained_mint_wei, '0', 0) > 0 || bccomp((string) $latest->unexplained_release_wei, '0', 0) > 0
                 || bccomp((string) $latest->foreign_supply_wei, '0', 0) > 0)) {
-                $warnings[] = 'ยังมี mint/ปล่อยที่ระบบไม่ได้สั่งค้างอยู่ — ตัวกระทบยอดจะหยุดสะพานอีกในรอบหน้า';
+                $warnings[] = __('ยังมี mint/ปล่อยที่ระบบไม่ได้สั่งค้างอยู่ — ตัวกระทบยอดจะหยุดสะพานอีกในรอบหน้า');
             }
             if (! $this->config->installed()) {
-                $warnings[] = 'WTPIX_BRIDGE_ENABLED ใน .env ยังเป็น false — สวิตช์นี้ยังไม่มีผลจนกว่าจะตั้ง';
+                $warnings[] = __('WTPIX_BRIDGE_ENABLED ใน .env ยังเป็น false — สวิตช์นี้ยังไม่มีผลจนกว่าจะตั้ง');
             }
         }
 
@@ -289,33 +309,36 @@ class WtpixBridgeAdminController extends Controller
 
         // ความสัมพันธ์ระหว่างวงเงิน — ตั้งกลับหัวแล้วทุกรายการจะไปรอตรวจ หรือผู้ใช้ได้ศูนย์
         foreach (['lock' => 'ล็อก (TPIX → BSC)', 'burn' => 'เผา (BSC → TPIX)'] as $side => $label) {
+            $label = __($label);
             if (bccomp($wei("max_{$side}_per_tx"), $wei("min_{$side}"), 0) < 0) {
-                $errors[] = "{$label}: วงเงินต่อครั้งต้องไม่น้อยกว่าขั้นต่ำ";
+                $errors[] = __(':label: วงเงินต่อครั้งต้องไม่น้อยกว่าขั้นต่ำ', ['label' => $label]);
             }
             if (bccomp($wei("max_{$side}_per_address_daily"), $wei("max_{$side}_per_tx"), 0) < 0) {
-                $errors[] = "{$label}: วงเงินต่อกระเป๋าต่อวันต้องไม่น้อยกว่าวงเงินต่อครั้ง";
+                $errors[] = __(':label: วงเงินต่อกระเป๋าต่อวันต้องไม่น้อยกว่าวงเงินต่อครั้ง', ['label' => $label]);
             }
             // ขาออกลอยตัวได้ถึงเพดาน — ตัวที่ต้องน้อยกว่าขั้นต่ำคือเพดาน
             $feeKey = $side === 'lock' ? 'lock_fee_max' : "{$side}_fee";
             if (bccomp($wei($feeKey), $wei("min_{$side}"), 0) >= 0) {
-                $errors[] = "{$label}: ค่าธรรมเนียม".($side === 'lock' ? 'สูงสุด' : '').'ต้องน้อยกว่าขั้นต่ำ ไม่งั้นผู้ใช้ได้ศูนย์';
+                $errors[] = $side === 'lock'
+                    ? __(':label: ค่าธรรมเนียมสูงสุดต้องน้อยกว่าขั้นต่ำ ไม่งั้นผู้ใช้ได้ศูนย์', ['label' => $label])
+                    : __(':label: ค่าธรรมเนียมต้องน้อยกว่าขั้นต่ำ ไม่งั้นผู้ใช้ได้ศูนย์', ['label' => $label]);
             }
         }
 
         if (bccomp($wei('lock_fee_max'), $wei('lock_fee'), 0) < 0) {
-            $errors[] = 'ล็อก (TPIX → BSC): ค่าธรรมเนียมสูงสุดต้องไม่น้อยกว่าค่าธรรมเนียมขั้นต่ำ (ตั้งเท่ากัน = ค่าคงที่)';
+            $errors[] = __('ล็อก (TPIX → BSC): ค่าธรรมเนียมสูงสุดต้องไม่น้อยกว่าค่าธรรมเนียมขั้นต่ำ (ตั้งเท่ากัน = ค่าคงที่)');
         }
 
         $markupBps = null;
         if (filled($validated['fee_markup_pct'] ?? null)) {
             $markupBps = (int) bcmul((string) $validated['fee_markup_pct'], '100', 0);
             if ($markupBps > 10000) {
-                $errors[] = 'ส่วนเพิ่มบนค่าแก๊สต้องไม่เกิน 100%';
+                $errors[] = __('ส่วนเพิ่มบนค่าแก๊สต้องไม่เกิน 100%');
             }
         }
 
         if ($errors !== []) {
-            return response()->json(['success' => false, 'message' => 'บันทึกไม่ได้', 'errors' => $errors], 422);
+            return response()->json(['success' => false, 'message' => __('บันทึกไม่ได้'), 'errors' => $errors], 422);
         }
 
         foreach ($limits as $key => $value) {
@@ -347,7 +370,7 @@ class WtpixBridgeAdminController extends Controller
             'wallets' => ['present', 'array', 'max:20'],
             'wallets.*' => ['string', 'regex:/^0x[0-9a-fA-F]{40}$/'],
         ], [
-            'wallets.*.regex' => 'ที่อยู่กระเป๋าต้องเป็น 0x ตามด้วยตัวอักษร 40 ตัว',
+            'wallets.*.regex' => __('ที่อยู่กระเป๋าต้องเป็น 0x ตามด้วยตัวอักษร 40 ตัว'),
         ]);
 
         $this->config->setTestWallets($validated['wallets']);
@@ -371,36 +394,36 @@ class WtpixBridgeAdminController extends Controller
             $row = WtpixBridgeTransfer::lockForUpdate()->find($id);
 
             if (! $row) {
-                return [404, ['success' => false, 'message' => 'ไม่พบรายการ']];
+                return [404, ['success' => false, 'message' => __('ไม่พบรายการ')]];
             }
 
             $approvable = $row->status === WtpixBridgeTransfer::STATUS_NEEDS_REVIEW
                 || ($row->status === WtpixBridgeTransfer::STATUS_IGNORED && $row->review_reason === 'below_minimum');
 
             if (! $approvable) {
-                return [409, ['success' => false, 'message' => "รายการนี้อนุมัติไม่ได้ (สถานะ: {$row->status})"]];
+                return [409, ['success' => false, 'message' => __('รายการนี้อนุมัติไม่ได้ (สถานะ: :status)', ['status' => $row->status])]];
             }
 
             $route = $this->config->route($row->direction);
             $errors = [];
             if ($row->source_chain_id !== $route['source_chain'] || $row->source_contract !== $route['source_contract']) {
-                $errors[] = 'รายการนี้มาจากสัญญา/เชนที่ไม่ได้ตั้งไว้แล้ว (เปลี่ยนค่าตั้งหลังบันทึก) — ปฏิเสธแล้วจัดการด้วยมือ';
+                $errors[] = __('รายการนี้มาจากสัญญา/เชนที่ไม่ได้ตั้งไว้แล้ว (เปลี่ยนค่าตั้งหลังบันทึก) — ปฏิเสธแล้วจัดการด้วยมือ');
             }
             if (! hash_equals(Abi::depositId((int) $row->source_chain_id, $row->tx_hash, (int) $row->log_index), $row->deposit_id)) {
-                $errors[] = 'depositId ไม่ตรงกับ (เชน, tx, log) — ข้อมูลรายการผิดปกติ';
+                $errors[] = __('depositId ไม่ตรงกับ (เชน, tx, log) — ข้อมูลรายการผิดปกติ');
             }
             if (bccomp((string) $row->payout_wei, '0', 0) <= 0) {
-                $errors[] = 'ยอดที่จะส่งเป็นศูนย์';
+                $errors[] = __('ยอดที่จะส่งเป็นศูนย์');
             }
             if (! Abi::isValidAddress($row->recipient)) {
-                $errors[] = 'ที่อยู่ผู้รับไม่ถูกต้อง';
+                $errors[] = __('ที่อยู่ผู้รับไม่ถูกต้อง');
             }
             if ($route['dest_contract'] === null) {
-                $errors[] = 'ยังไม่ได้ตั้งสัญญาปลายทาง';
+                $errors[] = __('ยังไม่ได้ตั้งสัญญาปลายทาง');
             }
 
             if ($errors !== []) {
-                return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => $errors]];
+                return [422, ['success' => false, 'message' => __('อนุมัติไม่ได้'), 'errors' => $errors]];
             }
 
             /*
@@ -417,7 +440,7 @@ class WtpixBridgeAdminController extends Controller
                 $sender = $sourceRpc ? $this->policy->senderFacts($sourceRpc, (string) $row->from_address, (string) $row->tx_hash) : null;
 
                 if ($sender === null) {
-                    return [503, ['success' => false, 'message' => 'อ่านข้อมูลผู้ส่งจากเชนต้นทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                    return [503, ['success' => false, 'message' => __('อ่านข้อมูลผู้ส่งจากเชนต้นทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง')]];
                 }
 
                 $decision = $this->policy->evaluate($row->direction, [
@@ -427,7 +450,7 @@ class WtpixBridgeAdminController extends Controller
                 ] + $sender, $row->id, ignoreMinimum: true);
 
                 if ($decision['status'] === WtpixBridgeTransfer::STATUS_IGNORED) {
-                    return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => ["รายการนี้ทำต่อไม่ได้ ({$decision['reason']})"]]];
+                    return [422, ['success' => false, 'message' => __('อนุมัติไม่ได้'), 'errors' => [__('รายการนี้ทำต่อไม่ได้ (:reason)', ['reason' => $decision['reason']])]]];
                 }
 
                 if ($decision['status'] === WtpixBridgeTransfer::STATUS_NEEDS_REVIEW) {
@@ -440,7 +463,7 @@ class WtpixBridgeAdminController extends Controller
 
                     return [409, [
                         'success' => false,
-                        'message' => "ตรวจกับเชนแล้วพบข้อสงสัยอื่น ({$decision['reason']}) — ย้ายไปรอตรวจแล้ว ตรวจข้อนี้แล้วกดอนุมัติอีกครั้ง",
+                        'message' => __('ตรวจกับเชนแล้วพบข้อสงสัยอื่น (:reason) — ย้ายไปรอตรวจแล้ว ตรวจข้อนี้แล้วกดอนุมัติอีกครั้ง', ['reason' => $decision['reason']]),
                         'data' => $this->row($row->fresh()),
                     ]];
                 }
@@ -451,7 +474,7 @@ class WtpixBridgeAdminController extends Controller
             $maxPerTx = $rpc->callUint($route['dest_contract'], 'maxPerTx()');
 
             if ($processed === null || $maxPerTx === null) {
-                return [503, ['success' => false, 'message' => 'อ่านสถานะจากเชนปลายทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                return [503, ['success' => false, 'message' => __('อ่านสถานะจากเชนปลายทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง')]];
             }
 
             $actor = $request->user()?->name ?? 'admin';
@@ -466,7 +489,7 @@ class WtpixBridgeAdminController extends Controller
                     'last_error' => 'สัญญาปลายทางบันทึกว่าทำไปแล้วโดยธุรกรรมที่ระบบไม่ได้ส่ง — ตรวจผู้รับบน explorer แล้วกดอนุมัติอีกครั้ง',
                 ]);
 
-                return [409, ['success' => false, 'message' => 'รายการนี้ถูกทำบนเชนไปแล้วโดยธุรกรรมที่ระบบไม่ได้ส่ง — ตรวจ event บน explorer ว่าผู้รับ/จำนวนถูกต้องก่อนอนุมัติอีกครั้ง']];
+                return [409, ['success' => false, 'message' => __('รายการนี้ถูกทำบนเชนไปแล้วโดยธุรกรรมที่ระบบไม่ได้ส่ง — ตรวจ event บน explorer ว่าผู้รับ/จำนวนถูกต้องก่อนอนุมัติอีกครั้ง')]];
             }
 
             if ($processed) {
@@ -474,16 +497,20 @@ class WtpixBridgeAdminController extends Controller
                 $settled = $this->relayer->findSettlement($rpc, $row, $route['dest_contract']);
 
                 if ($settled['state'] === 'unreadable') {
-                    return [503, ['success' => false, 'message' => 'อ่าน event จากเชนปลายทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                    return [503, ['success' => false, 'message' => __('อ่าน event จากเชนปลายทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง')]];
                 }
 
                 if (! $this->relayer->settlementMatches($row, $settled)) {
-                    $why = $settled['state'] === 'found'
-                        ? 'event บนเชนไปที่ '.$settled['to'].' จำนวน '.Wei::format($settled['wei'], 18).' (tx '.$settled['tx_hash'].') ไม่ตรงกับรายการนี้'
-                        : 'สัญญาบอกว่าทำแล้วแต่หา event ของ depositId นี้ไม่เจอ'.($settled['state'] === 'too_far' ? ' (ช่วงบล็อกไกลเกินกว่าจะไล่อัตโนมัติ)' : '');
+                    $why = match (true) {
+                        $settled['state'] === 'found' => __('event บนเชนไปที่ :to จำนวน :amount (tx :tx) ไม่ตรงกับรายการนี้', [
+                            'to' => $settled['to'], 'amount' => Wei::format($settled['wei'], 18), 'tx' => $settled['tx_hash'],
+                        ]),
+                        $settled['state'] === 'too_far' => __('สัญญาบอกว่าทำแล้วแต่หา event ของ depositId นี้ไม่เจอ (ช่วงบล็อกไกลเกินกว่าจะไล่อัตโนมัติ)'),
+                        default => __('สัญญาบอกว่าทำแล้วแต่หา event ของ depositId นี้ไม่เจอ'),
+                    };
 
-                    return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => [
-                        "{$why} — ห้ามปิดเป็นสำเร็จ: ผู้ใช้อาจยังไม่ได้เงิน ตรวจคีย์ relayer ก่อน",
+                    return [422, ['success' => false, 'message' => __('อนุมัติไม่ได้'), 'errors' => [
+                        __(':why — ห้ามปิดเป็นสำเร็จ: ผู้ใช้อาจยังไม่ได้เงิน ตรวจคีย์ relayer ก่อน', ['why' => $why]),
                     ]]];
                 }
 
@@ -499,13 +526,14 @@ class WtpixBridgeAdminController extends Controller
                     'review_note' => $this->appendNote($row, "ยืนยันว่าทำบนเชนแล้วโดย {$actor} (เหตุเดิม: {$row->review_reason})"),
                 ]);
 
-                return [200, ['success' => true, 'message' => 'บันทึกว่าทำบนเชนแล้ว (ตามที่แอดมินตรวจ)', 'data' => $this->row($row->fresh())]];
+                return [200, ['success' => true, 'message' => __('บันทึกว่าทำบนเชนแล้ว (ตามที่แอดมินตรวจ)'), 'data' => $this->row($row->fresh())]];
             }
 
             if (bccomp((string) $row->payout_wei, $maxPerTx, 0) > 0) {
-                return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => [
-                    'ยอด '.Wei::format((string) $row->payout_wei, 18).' เกินเพดานต่อครั้งบนสัญญา ('.Wei::format($maxPerTx, 18)
-                    .') — เจ้าของต้อง setMaxPerTx ก่อน (depositId ใช้ได้ครั้งเดียว แบ่งจ่ายไม่ได้)',
+                return [422, ['success' => false, 'message' => __('อนุมัติไม่ได้'), 'errors' => [
+                    __('ยอด :amount เกินเพดานต่อครั้งบนสัญญา (:max) — เจ้าของต้อง setMaxPerTx ก่อน (depositId ใช้ได้ครั้งเดียว แบ่งจ่ายไม่ได้)', [
+                        'amount' => Wei::format((string) $row->payout_wei, 18), 'max' => Wei::format($maxPerTx, 18),
+                    ]),
                 ]]];
             }
 
@@ -526,7 +554,7 @@ class WtpixBridgeAdminController extends Controller
                 'last_error' => null,
             ]);
 
-            return [200, ['success' => true, 'message' => 'อนุมัติแล้ว — ระบบจะทำรายการภายในรอบถัดไป', 'data' => $this->row($row->fresh())]];
+            return [200, ['success' => true, 'message' => __('อนุมัติแล้ว — ระบบจะทำรายการภายในรอบถัดไป'), 'data' => $this->row($row->fresh())]];
         });
 
         return response()->json($result[1], $result[0]);
@@ -541,22 +569,22 @@ class WtpixBridgeAdminController extends Controller
             $row = WtpixBridgeTransfer::lockForUpdate()->find($id);
 
             if (! $row) {
-                return [404, ['success' => false, 'message' => 'ไม่พบรายการ']];
+                return [404, ['success' => false, 'message' => __('ไม่พบรายการ')]];
             }
 
             $open = in_array($row->status, [WtpixBridgeTransfer::STATUS_NEEDS_REVIEW, WtpixBridgeTransfer::STATUS_CONFIRMED, WtpixBridgeTransfer::STATUS_AWAITING_LIQUIDITY], true);
             if (! $open) {
-                return [409, ['success' => false, 'message' => "รายการนี้ปฏิเสธไม่ได้ (สถานะ: {$row->status})"]];
+                return [409, ['success' => false, 'message' => __('รายการนี้ปฏิเสธไม่ได้ (สถานะ: :status)', ['status' => $row->status])]];
             }
 
             $contract = $row->dest_contract ?: $this->config->route($row->direction)['dest_contract'];
             if ($contract !== null) {
                 $processed = $this->relayer->processedOnChain($this->relayer->destRpc($row->direction), $contract, $row->deposit_id);
                 if ($processed === null) {
-                    return [503, ['success' => false, 'message' => 'อ่านสถานะจากเชนปลายทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                    return [503, ['success' => false, 'message' => __('อ่านสถานะจากเชนปลายทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง')]];
                 }
                 if ($processed) {
-                    return [409, ['success' => false, 'message' => 'รายการนี้ถูกทำบนเชนไปแล้ว — ปฏิเสธไม่ได้ ตรวจ event บน explorer']];
+                    return [409, ['success' => false, 'message' => __('รายการนี้ถูกทำบนเชนไปแล้ว — ปฏิเสธไม่ได้ ตรวจ event บน explorer')]];
                 }
             }
 
@@ -589,8 +617,8 @@ class WtpixBridgeAdminController extends Controller
             'dest_tx_hash' => $t->dest_tx_hash,
             'attempts' => $t->attempts,
             'limits_overridden' => $t->limits_overridden,
-            'review_note' => $t->review_note,
-            'last_error' => $t->last_error,
+            'review_note' => $t->review_note === null ? null : __($t->review_note),
+            'last_error' => $t->last_error === null ? null : __($t->last_error),
         ];
     }
 
@@ -601,7 +629,7 @@ class WtpixBridgeAdminController extends Controller
         return [
             'fee' => Wei::format($current['fee_wei'], 18),
             'fresh' => $current['fresh'],
-            'quote' => $current['quote'] ? $current['quote']->toPublicArray() + ['note' => $current['quote']->note] : null,
+            'quote' => $current['quote'] ? $current['quote']->toPublicArray() + ['note' => $current['quote']->note === null ? null : __($current['quote']->note)] : null,
             'gas_units' => $this->fees->gasUnits(),
         ];
     }

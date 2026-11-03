@@ -80,7 +80,7 @@ class MasterNodeAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'บันทึกแล้ว — ต้องตั้ง MASTERNODE_REGISTRY_ADDRESS ใน .env จึงจะมีผลจริง',
+            'message' => __('บันทึกแล้ว — ต้องตั้ง MASTERNODE_REGISTRY_ADDRESS ใน .env จึงจะมีผลจริง'),
         ]);
     }
 

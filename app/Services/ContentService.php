@@ -121,11 +121,11 @@ class ContentService
 
         // เคยหลุดขึ้นเว็บเป็นบทความชื่อ "Untitled" (id 258, 2026-08-06) — JSON โดนตัดกลางทาง ระบบเก็บข้อความดิบไว้แล้ว publish
         if ($title === '' || $title === 'Untitled' || mb_strlen(strip_tags($content)) < self::MIN_CONTENT_CHARS) {
-            throw new \RuntimeException('AI ตอบกลับไม่ครบ (ไม่มีหัวข้อ หรือเนื้อหาถูกตัดกลางทาง) — ไม่ได้บันทึกบทความ ลองใหม่อีกครั้ง');
+            throw new \RuntimeException(__('AI ตอบกลับไม่ครบ (ไม่มีหัวข้อ หรือเนื้อหาถูกตัดกลางทาง) — ไม่ได้บันทึกบทความ ลองใหม่อีกครั้ง'));
         }
 
         if (! $this->inLanguage($title, $content, $language)) {
-            throw new \RuntimeException('AI เขียนผิดภาษา (ขอ'.($language === 'th' ? 'ภาษาไทย' : 'ภาษาอังกฤษ').') — ไม่ได้บันทึกบทความ ลองใหม่อีกครั้ง');
+            throw new \RuntimeException(__('AI เขียนผิดภาษา (ขอ:lang) — ไม่ได้บันทึกบทความ ลองใหม่อีกครั้ง', ['lang' => $language === 'th' ? __('ภาษาไทย') : __('ภาษาอังกฤษ')]));
         }
 
         $addresses = $brief['addresses'] ?? [];
@@ -273,31 +273,31 @@ class ContentService
         return [
             'cloudflare' => [
                 'name' => 'Cloudflare FLUX',
-                'description' => 'FLUX.1-schnell — ฟรี คุณภาพสูง เร็ว (แนะนำ)',
+                'description' => __('FLUX.1-schnell — ฟรี คุณภาพสูง เร็ว (แนะนำ)'),
                 'requires_key' => false,
                 'setting_key' => null,
             ],
             'pollinations' => [
                 'name' => 'Pollinations.ai',
-                'description' => 'ฟรี ไม่ต้อง API key — ภาพสไตล์ artistic',
+                'description' => __('ฟรี ไม่ต้อง API key — ภาพสไตล์ artistic'),
                 'requires_key' => false,
                 'setting_key' => null,
             ],
             'together' => [
                 'name' => 'Together.ai (FLUX)',
-                'description' => 'FLUX.1 Schnell — คุณภาพสูง ภาพสมจริง',
+                'description' => __('FLUX.1 Schnell — คุณภาพสูง ภาพสมจริง'),
                 'requires_key' => true,
                 'setting_key' => 'together_api_key',
             ],
             'huggingface' => [
                 'name' => 'Hugging Face',
-                'description' => 'SDXL-Lightning — เร็ว หลายโมเดล',
+                'description' => __('SDXL-Lightning — เร็ว หลายโมเดล'),
                 'requires_key' => true,
                 'setting_key' => 'huggingface_api_key',
             ],
             'gemini' => [
                 'name' => 'Google Gemini',
-                'description' => 'Imagen — คุณภาพระดับ Google (500 รูป/วัน ฟรี)',
+                'description' => __('Imagen — คุณภาพระดับ Google (500 รูป/วัน ฟรี)'),
                 'requires_key' => true,
                 'setting_key' => 'gemini_api_key',
             ],

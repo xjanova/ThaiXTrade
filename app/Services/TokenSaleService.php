@@ -464,7 +464,7 @@ class TokenSaleService
         $phase = SalePhase::whereKey($locked->sale_phase_id)->lockForUpdate()->first();
 
         if (! $phase) {
-            throw new PurchaseException('ไม่พบเฟสของออเดอร์นี้แล้ว — ต้องคืนเงินใน Stripe');
+            throw new PurchaseException(__('ไม่พบเฟสของออเดอร์นี้แล้ว — ต้องคืนเงินใน Stripe'));
         }
 
         $tpixAmount = (float) $locked->tpix_amount;
@@ -474,11 +474,11 @@ class TokenSaleService
             || WhitelistEntry::where('sale_phase_id', $phase->id)->where('wallet_address', $wallet)->exists();
 
         if (! $whitelisted) {
-            throw new PurchaseException('กระเป๋านี้ไม่อยู่ใน whitelist ของเฟสแล้ว — เพิ่มกลับก่อน หรือคืนเงินใน Stripe');
+            throw new PurchaseException(__('กระเป๋านี้ไม่อยู่ใน whitelist ของเฟสแล้ว — เพิ่มกลับก่อน หรือคืนเงินใน Stripe'));
         }
 
         if ($this->exceedsWalletCap($phase, $wallet, $tpixAmount)) {
-            throw new PurchaseException('เกินเพดานต่อกระเป๋าของเฟสนี้ — ปรับเพดานก่อน หรือคืนเงินใน Stripe');
+            throw new PurchaseException(__('เกินเพดานต่อกระเป๋าของเฟสนี้ — ปรับเพดานก่อน หรือคืนเงินใน Stripe'));
         }
 
         if (! $wasReversed) {
@@ -492,7 +492,7 @@ class TokenSaleService
         // เทียบหลังบวกด้วยเลขจากฐานข้อมูล: float ก่อนบวกปฏิเสธออเดอร์ที่พอดีโควตาเป๊ะ · จำนวนเหรียญบัตรละเอียดถึง 8 ตำแหน่ง
         if (bccomp((string) $phase->refresh()->sold, (string) $phase->allocation, 8) > 0) {
             throw new PurchaseException(
-                'โควตาเฟสนี้เหลือ '.number_format($remaining, 2).' TPIX ไม่พอคืน '.number_format($tpixAmount, 2).' TPIX — ต้องคืนเงินใน Stripe'
+                __('โควตาเฟสนี้เหลือ :remaining TPIX ไม่พอคืน :amount TPIX — ต้องคืนเงินใน Stripe', ['remaining' => number_format($remaining, 2), 'amount' => number_format($tpixAmount, 2)])
             );
         }
 

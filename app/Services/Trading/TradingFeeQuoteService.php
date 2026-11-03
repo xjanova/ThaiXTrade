@@ -90,7 +90,7 @@ class TradingFeeQuoteService
             'fee_usd' => round($onchainFee['fee_amount'], 8),
             // เก็บก่อนวางไม้เหมือนกัน แต่คืนแล้วโดนหักค่าแก๊ส
             'refund_full' => false,
-            'refund_note' => 'ยกเลิกไม้แล้วคืนให้ โดยหักค่าแก๊สของธุรกรรมคืนออกก่อน',
+            'refund_note' => __('ยกเลิกไม้แล้วคืนให้ โดยหักค่าแก๊สของธุรกรรมคืนออกก่อน'),
         ];
 
         if (! $this->enabled()) {
@@ -98,7 +98,7 @@ class TradingFeeQuoteService
                 'enabled' => false,
                 'order_value_usd' => $orderValueUsd,
                 'balance' => 0.0,
-                'tpix' => ['available' => false, 'reason' => 'ยังไม่เปิดใช้ค่าบริการแบบ TPIX'],
+                'tpix' => ['available' => false, 'reason' => __('ยังไม่เปิดใช้ค่าบริการแบบ TPIX')],
                 'onchain' => $onchain,
                 'recommended' => 'onchain',
                 'can_place' => true,
@@ -116,7 +116,7 @@ class TradingFeeQuoteService
                 'enabled' => true,
                 'order_value_usd' => $orderValueUsd,
                 'balance' => $balance,
-                'tpix' => ['available' => false, 'reason' => 'ยังไม่ได้ตั้งค่าบริการสำหรับไม้ขนาดนี้'],
+                'tpix' => ['available' => false, 'reason' => __('ยังไม่ได้ตั้งค่าบริการสำหรับไม้ขนาดนี้')],
                 'onchain' => $onchain,
                 'recommended' => 'onchain',
                 'can_place' => true,
@@ -137,7 +137,7 @@ class TradingFeeQuoteService
             'shortfall' => $hasEnough ? 0.0 : round($feeTpix - $balance, 8),
             // คลังเป็นบัญชีในระบบเรา คืนได้ทันทีเต็มจำนวน ไม่มีค่าแก๊ส
             'refund_full' => true,
-            'refund_note' => 'ยกเลิกไม้แล้วคืนเข้าคลังเต็มจำนวน ไม่มีค่าแก๊ส',
+            'refund_note' => __('ยกเลิกไม้แล้วคืนเข้าคลังเต็มจำนวน ไม่มีค่าแก๊ส'),
         ];
 
         return [
@@ -180,7 +180,7 @@ class TradingFeeQuoteService
     /** ค่าบริการเป็นศูนย์ทุกทาง — รูปร่างเหมือน quote() ปกติเพื่อให้หน้าเว็บไม่ต้องแยกเคส */
     private function waived(float $orderValueUsd): array
     {
-        $note = 'เช่าบอท AI อยู่ — ค่าวางไม้รวมอยู่ในค่าเช่าแล้ว';
+        $note = __('เช่าบอท AI อยู่ — ค่าวางไม้รวมอยู่ในค่าเช่าแล้ว');
 
         return [
             'enabled' => true,
@@ -192,19 +192,19 @@ class TradingFeeQuoteService
                 'available' => true,
                 'fee_tpix' => 0.0,
                 'tier_id' => null,
-                'tier_label' => 'ฟรี (เช่าบอทอยู่)',
+                'tier_label' => __('ฟรี (เช่าบอทอยู่)'),
                 'tier_range' => '—',
                 'has_enough' => true,
                 'shortfall' => 0.0,
                 'refund_full' => true,
-                'refund_note' => 'ไม่ได้เก็บค่าบริการ จึงไม่มีอะไรต้องคืน',
+                'refund_note' => __('ไม่ได้เก็บค่าบริการ จึงไม่มีอะไรต้องคืน'),
             ],
             'onchain' => [
                 'available' => true,
                 'fee_rate' => 0.0,
                 'fee_usd' => 0.0,
                 'refund_full' => true,
-                'refund_note' => 'ไม่ได้เก็บค่าบริการ จึงไม่มีอะไรต้องคืน',
+                'refund_note' => __('ไม่ได้เก็บค่าบริการ จึงไม่มีอะไรต้องคืน'),
             ],
             'recommended' => 'tpix_credit',
             'can_place' => true,

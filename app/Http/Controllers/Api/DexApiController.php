@@ -204,7 +204,7 @@ class DexApiController extends Controller
     {
         return response()->json([
             'success' => false,
-            'error' => ['code' => 'PAIR_NOT_FOUND', 'message' => "ไม่มีคู่ {$symbol} บน TPIX DEX"],
+            'error' => ['code' => 'PAIR_NOT_FOUND', 'message' => __('ไม่มีคู่ :symbol บน TPIX DEX', ['symbol' => $symbol])],
         ], 404);
     }
 

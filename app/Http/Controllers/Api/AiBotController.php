@@ -275,7 +275,7 @@ class AiBotController extends Controller
                 'gross_value' => (float) $t->gross_value,
                 'fee' => (float) $t->fee,
                 'realized_pnl' => $t->realized_pnl !== null ? (float) $t->realized_pnl : null,
-                'reason' => $t->reason,
+                'reason' => BotRunner::localizeReason($t->reason),
                 'created_at' => $t->created_at?->toIso8601String(),
             ])
             ->all();
@@ -392,7 +392,7 @@ class AiBotController extends Controller
             'timeframe' => $decision->timeframe,
             'mode' => $decision->mode,
             'action' => $decision->action,
-            'reason' => $decision->reason,
+            'reason' => BotRunner::localizeReason($decision->reason),
             'risk_level' => $decision->risk_level,
             /*
              * decimal cast ของ Laravel คืนค่าเป็น string ("0.00000000")
@@ -476,7 +476,7 @@ class AiBotController extends Controller
         $plan = AiBotPlan::active()->where('code', $validated['plan_code'])->first();
 
         if (! $plan) {
-            return $this->failure('PLAN_NOT_FOUND', 'ไม่พบแพลนที่เลือก', 404);
+            return $this->failure('PLAN_NOT_FOUND', __('ไม่พบแพลนที่เลือก'), 404);
         }
 
         try {
@@ -550,7 +550,7 @@ class AiBotController extends Controller
         if (! $this->pairHasCandles($validated['pair'], $validated['timeframe'])) {
             return $this->failure(
                 'PAIR_NO_CANDLES',
-                'คู่ '.strtoupper($validated['pair']).' ยังไม่มีข้อมูลแท่งเทียนให้บอทใช้ตัดสินใจ — เลือกคู่อื่นก่อน'
+                __('คู่ :pair ยังไม่มีข้อมูลแท่งเทียนให้บอทใช้ตัดสินใจ — เลือกคู่อื่นก่อน', ['pair' => strtoupper($validated['pair'])])
             );
         }
 
@@ -577,7 +577,7 @@ class AiBotController extends Controller
         $bot = $this->findBot($wallet, $id);
 
         if (! $bot) {
-            return $this->failure('BOT_NOT_FOUND', 'ไม่พบบอทตัวนี้', 404);
+            return $this->failure('BOT_NOT_FOUND', __('ไม่พบบอทตัวนี้'), 404);
         }
 
         // ส่งบอทเดิมไปด้วย เพื่อให้กลยุทธ์ที่มันใช้อยู่ยังแก้ไขต่อได้แม้จะถูกปิดไปแล้ว
@@ -632,7 +632,7 @@ class AiBotController extends Controller
         if (($validated['template'] ?? null) && ! $template) {
             abort(response()->json([
                 'success' => false,
-                'error' => ['code' => 'TEMPLATE_NOT_FOUND', 'message' => 'ไม่พบเทมเพลตนี้ของกลยุทธ์ที่เลือก'],
+                'error' => ['code' => 'TEMPLATE_NOT_FOUND', 'message' => __('ไม่พบเทมเพลตนี้ของกลยุทธ์ที่เลือก')],
             ], 422));
         }
 
@@ -662,7 +662,7 @@ class AiBotController extends Controller
         $bot = $this->findBot($wallet, $id);
 
         if (! $bot) {
-            return $this->failure('BOT_NOT_FOUND', 'ไม่พบบอทตัวนี้', 404);
+            return $this->failure('BOT_NOT_FOUND', __('ไม่พบบอทตัวนี้'), 404);
         }
 
         $validated = $request->validate([
@@ -674,7 +674,9 @@ class AiBotController extends Controller
             if ($bot->isBanned()) {
                 return $this->failure(
                     'BOT_BANNED',
-                    'บอทตัวนี้ถูกทีมงานระงับไว้'.($bot->banned_reason ? ' — '.$bot->banned_reason : ''),
+                    $bot->banned_reason
+                        ? __('บอทตัวนี้ถูกทีมงานระงับไว้ — :reason', ['reason' => $bot->banned_reason])
+                        : __('บอทตัวนี้ถูกทีมงานระงับไว้'),
                     403
                 );
             }
@@ -705,7 +707,7 @@ class AiBotController extends Controller
         $bot = $this->findBot($wallet, $id);
 
         if (! $bot) {
-            return $this->failure('BOT_NOT_FOUND', 'ไม่พบบอทตัวนี้', 404);
+            return $this->failure('BOT_NOT_FOUND', __('ไม่พบบอทตัวนี้'), 404);
         }
 
         $bot->delete();
@@ -728,11 +730,11 @@ class AiBotController extends Controller
         $bot = $this->findBot($wallet, $id);
 
         if (! $bot) {
-            return $this->failure('BOT_NOT_FOUND', 'ไม่พบบอทตัวนี้', 404);
+            return $this->failure('BOT_NOT_FOUND', __('ไม่พบบอทตัวนี้'), 404);
         }
 
         if ($bot->status !== 'running') {
-            return $this->failure('BOT_NOT_RUNNING', 'บอทตัวนี้ยังไม่ได้เริ่มทำงาน');
+            return $this->failure('BOT_NOT_RUNNING', __('บอทตัวนี้ยังไม่ได้เริ่มทำงาน'));
         }
 
         /*
@@ -743,7 +745,9 @@ class AiBotController extends Controller
         if ($bot->isBanned()) {
             return $this->failure(
                 'BOT_BANNED',
-                'บอทตัวนี้ถูกทีมงานระงับไว้'.($bot->banned_reason ? ' — '.$bot->banned_reason : ''),
+                $bot->banned_reason
+                    ? __('บอทตัวนี้ถูกทีมงานระงับไว้ — :reason', ['reason' => $bot->banned_reason])
+                    : __('บอทตัวนี้ถูกทีมงานระงับไว้'),
                 403
             );
         }
@@ -751,7 +755,7 @@ class AiBotController extends Controller
         $plan = $this->bots->activeSubscription($wallet)?->plan;
 
         if ($plan?->runsInCloud()) {
-            return $this->failure('CLOUD_BOT', 'บอทของแพลนนี้เดินบนคลาวด์อยู่แล้ว ไม่ต้องสั่งจากหน้าเว็บ');
+            return $this->failure('CLOUD_BOT', __('บอทของแพลนนี้เดินบนคลาวด์อยู่แล้ว ไม่ต้องสั่งจากหน้าเว็บ'));
         }
 
         /*
@@ -796,7 +800,7 @@ class AiBotController extends Controller
         if (! $lock->get()) {
             return response()->json(['success' => true, 'data' => [
                 'skipped' => true,
-                'reason' => 'บอทตัวนี้กำลังคิดรอบนี้อยู่จากอีกหน้าต่าง',
+                'reason' => __('บอทตัวนี้กำลังคิดรอบนี้อยู่จากอีกหน้าต่าง'),
                 'next_in_seconds' => $minSeconds,
             ]]);
         }
@@ -811,7 +815,7 @@ class AiBotController extends Controller
                 if ($elapsed < $minSeconds - self::BROWSER_TICK_SLACK_SECONDS) {
                     return response()->json(['success' => true, 'data' => [
                         'skipped' => true,
-                        'reason' => 'ยังไม่ถึงรอบถัดไป',
+                        'reason' => __('ยังไม่ถึงรอบถัดไป'),
                         'next_in_seconds' => max(1, $minSeconds - $elapsed),
                     ]]);
                 }
@@ -829,6 +833,11 @@ class AiBotController extends Controller
             $result = $runner->tick($bot);
         } finally {
             $lock->release();
+        }
+
+        // เหตุผลจาก BotRunner เป็นภาษาไทยเสมอ (ตัวเดียวกับที่ลงฐานข้อมูล) — แปลตอนตอบกลับ
+        if (isset($result['reason']) && is_string($result['reason'])) {
+            $result['reason'] = BotRunner::localizeReason($result['reason']);
         }
 
         return response()->json(['success' => true, 'data' => array_merge($result, [
@@ -985,7 +994,7 @@ class AiBotController extends Controller
                 'slippage_cost' => (float) $t->slippage_cost,
                 'realized_pnl' => $t->realized_pnl === null ? null : (float) $t->realized_pnl,
                 'strategy' => $t->strategy,
-                'reason' => $t->reason,
+                'reason' => BotRunner::localizeReason($t->reason),
                 'risk_level' => $t->risk_level,
                 'created_at' => $t->created_at->toIso8601String(),
             ])
@@ -1082,7 +1091,7 @@ class AiBotController extends Controller
             return response()->json(['success' => true, 'data' => [
                 'enabled' => false,
                 'view' => null,
-                'reason' => 'ยังไม่ได้เปิดใช้การวิเคราะห์ตลาดด้วย AI',
+                'reason' => __('ยังไม่ได้เปิดใช้การวิเคราะห์ตลาดด้วย AI'),
             ]]);
         }
 
@@ -1099,7 +1108,7 @@ class AiBotController extends Controller
             return response()->json(['success' => true, 'data' => [
                 'enabled' => true,
                 'view' => null,
-                'reason' => 'ยังไม่มีมุมมองล่าสุด — บอทกำลังตัดสินใจจากกฎล้วน',
+                'reason' => __('ยังไม่มีมุมมองล่าสุด — บอทกำลังตัดสินใจจากกฎล้วน'),
             ]]);
         }
 
@@ -1139,7 +1148,7 @@ class AiBotController extends Controller
                 'ok' => false,
                 'provider' => $advisor->name(),
                 'text' => '',
-                'reason' => $advisor->advise([])['reason'] ?? 'ยังไม่พร้อมใช้งาน',
+                'reason' => __($advisor->advise([])['reason'] ?? 'ยังไม่พร้อมใช้งาน'),
             ]]);
         }
 
@@ -1154,18 +1163,24 @@ class AiBotController extends Controller
                 'ok' => false,
                 'provider' => $advisor->name(),
                 'text' => '',
-                'reason' => 'ยังไม่มีไม้ที่ปิดแล้วให้วิเคราะห์ — เปิดบอทเดินสักพักก่อนแล้วค่อยกลับมาถาม',
+                'reason' => __('ยังไม่มีไม้ที่ปิดแล้วให้วิเคราะห์ — เปิดบอทเดินสักพักก่อนแล้วค่อยกลับมาถาม'),
             ]]);
         }
 
         // แคชต่อ wallet — รีเฟรชหน้าไม่ควรยิง LLM ใหม่ทุกครั้ง
+        // แยกตามภาษาด้วย: advise() แปลเหตุผลที่ล้มเหลวตามภาษาของคำขอที่สร้างแคช
         $minutes = (int) config('aibot_advisor.cache_minutes', 15);
-        $key = 'aibot:advice:'.$wallet.':'.md5(json_encode($stats['overall']));
+        $key = 'aibot:advice:'.app()->getLocale().':'.$wallet.':'.md5(json_encode($stats['overall']));
 
         $result = Cache::remember($key, now()->addMinutes($minutes), fn () => $advisor->advise([
             'stats' => $stats['overall'],
             'by_strategy' => $stats['by_strategy'],
         ]));
+
+        // แคชแยกตามภาษาแล้ว — __() ตรงนี้เป็นแค่ตาข่ายกันพลาด (ข้อความที่แปลแล้วจะผ่านออกไปตามเดิม)
+        if (isset($result['reason']) && is_string($result['reason'])) {
+            $result['reason'] = __($result['reason']);
+        }
 
         return response()->json(['success' => true, 'data' => $result]);
     }
@@ -1176,7 +1191,7 @@ class AiBotController extends Controller
         $result = $this->broker->reset($this->wallet($request));
 
         if (! ($result['ok'] ?? false)) {
-            return $this->failure('RESET_LIMIT', $result['reason'] ?? 'ล้างพอร์ตไม่สำเร็จ');
+            return $this->failure('RESET_LIMIT', __($result['reason'] ?? 'ล้างพอร์ตไม่สำเร็จ'));
         }
 
         return $this->demo($request, $market);
@@ -1194,7 +1209,7 @@ class AiBotController extends Controller
         $bot = $this->findBot($wallet, $id);
 
         if (! $bot) {
-            return $this->failure('BOT_NOT_FOUND', 'ไม่พบบอทตัวนี้', 404);
+            return $this->failure('BOT_NOT_FOUND', __('ไม่พบบอทตัวนี้'), 404);
         }
 
         $validated = $request->validate(['mode' => ['required', 'string', 'in:demo,live']]);
@@ -1202,11 +1217,11 @@ class AiBotController extends Controller
         if ($validated['mode'] === 'live') {
             // ยังไม่เปิดโหมดจริงทั้งระบบ — ให้ทุกคนอยู่โหมดทดลองไปก่อน
             if (! config('aibot.live_enabled', false)) {
-                return $this->failure('LIVE_DISABLED', 'ตอนนี้เปิดให้ใช้เฉพาะโหมดทดลองก่อน');
+                return $this->failure('LIVE_DISABLED', __('ตอนนี้เปิดให้ใช้เฉพาะโหมดทดลองก่อน'));
             }
 
             if (! $this->bots->activeSubscription($wallet)) {
-                return $this->failure('NO_SUBSCRIPTION', 'ต้องเช่าบอทก่อนถึงจะใช้โหมดจริงได้');
+                return $this->failure('NO_SUBSCRIPTION', __('ต้องเช่าบอทก่อนถึงจะใช้โหมดจริงได้'));
             }
 
             /*
@@ -1223,11 +1238,11 @@ class AiBotController extends Controller
                 $funded = $botWallet->find($wallet);
 
                 if (! $funded) {
-                    return $this->failure('BOT_WALLET_REQUIRED', 'โหมดจริงใช้กระเป๋าบอทแยก — สร้างกระเป๋าบอทและโอนทุนเข้าก่อน');
+                    return $this->failure('BOT_WALLET_REQUIRED', __('โหมดจริงใช้กระเป๋าบอทแยก — สร้างกระเป๋าบอทและโอนทุนเข้าก่อน'));
                 }
 
                 if ($funded->balanceOf('USDT') <= 0) {
-                    return $this->failure('BOT_WALLET_EMPTY', 'กระเป๋าบอทยังไม่มี USDT — โอนทุนของบอทเข้ากระเป๋าบอทก่อนเปิดโหมดจริง');
+                    return $this->failure('BOT_WALLET_EMPTY', __('กระเป๋าบอทยังไม่มี USDT — โอนทุนของบอทเข้ากระเป๋าบอทก่อนเปิดโหมดจริง'));
                 }
             }
         }
@@ -1250,7 +1265,27 @@ class AiBotController extends Controller
             'pair' => ['required', 'string', 'regex:/^[A-Za-z0-9]{2,15}\/[A-Za-z0-9]{2,15}$/'],
         ]);
 
-        return response()->json(['success' => true, 'data' => $risk->assess(strtoupper($validated['pair']))]);
+        $assessment = $risk->assess(strtoupper($validated['pair']));
+
+        // เหตุผลจากด่านความเสี่ยงเป็นภาษาไทยเสมอ (ตัวเดียวกับที่บอทลงฐานข้อมูล/แคช) — แปลตอนตอบกลับ
+        $assessment['reasons'] = $this->localizeReasons($assessment['reasons'] ?? []);
+
+        foreach (['market', 'news'] as $part) {
+            if (isset($assessment[$part]['reasons']) && is_array($assessment[$part]['reasons'])) {
+                $assessment[$part]['reasons'] = $this->localizeReasons($assessment[$part]['reasons']);
+            }
+        }
+
+        return response()->json(['success' => true, 'data' => $assessment]);
+    }
+
+    /**
+     * @param  array<mixed>  $reasons
+     * @return array<mixed>
+     */
+    private function localizeReasons(array $reasons): array
+    {
+        return array_map(fn ($r) => is_string($r) ? BotRunner::localizeReason($r) : $r, $reasons);
     }
 
     // =========================================================================
@@ -1300,7 +1335,7 @@ class AiBotController extends Controller
             // ข้อความปริยาย ("The selected strategy is invalid") ทำให้ผู้ใช้คิดว่าตัวเอง
             // กรอกผิด ทั้งที่กลยุทธ์นั้นมีอยู่จริงแค่ยังเปิดใช้ไม่ได้
             'strategy.in' => $this->strategyRejectedMessage($request->input('strategy')),
-            'timeframe.in' => 'กลยุทธ์นี้ใช้กรอบเวลาได้เฉพาะ '.implode(' · ', $timeframes),
+            'timeframe.in' => __('กลยุทธ์นี้ใช้กรอบเวลาได้เฉพาะ :timeframes', ['timeframes' => implode(' · ', $timeframes)]),
         ]);
 
         return $validated;
@@ -1345,14 +1380,14 @@ class AiBotController extends Controller
     private function strategyRejectedMessage(mixed $code): string
     {
         if (! is_string($code)) {
-            return 'ไม่พบกลยุทธ์ที่เลือก';
+            return __('ไม่พบกลยุทธ์ที่เลือก');
         }
 
         $status = $this->availability->check($code);
 
         return $status['available']
-            ? 'ไม่พบกลยุทธ์ที่เลือก'
-            : 'กลยุทธ์นี้ยังเปิดใช้งานไม่ได้ — '.$status['reason'];
+            ? __('ไม่พบกลยุทธ์ที่เลือก')
+            : __('กลยุทธ์นี้ยังเปิดใช้งานไม่ได้ — :reason', ['reason' => __((string) $status['reason'])]);
     }
 
     private function findBot(string $wallet, int $id): ?AiBotConfig
@@ -1490,7 +1525,8 @@ class AiBotController extends Controller
             'worker_last_beat_at' => $liveness['worker_last_beat_at'],
             'last_run_at' => $bot->last_run_at?->toIso8601String(),
             'last_signal_at' => $bot->last_signal_at?->toIso8601String(),
-            'last_reason' => $bot->last_reason,
+            // เขียนโดย BotRunner (cron ไม่มีภาษาผู้ใช้) เป็นภาษาไทยเสมอ — แปลตอนแสดงผล
+            'last_reason' => BotRunner::localizeReason($bot->last_reason),
             'position' => $this->openPosition($bot),
             'created_at' => $bot->created_at->toIso8601String(),
         ];
@@ -1568,7 +1604,8 @@ class AiBotController extends Controller
             'success' => false,
             'error' => [
                 'code' => $code,
-                'message' => $message ?? self::ERROR_MESSAGES[$code] ?? 'ทำรายการไม่สำเร็จ',
+                // ข้อความที่ผู้เรียกส่งมาแปลแล้วที่ต้นทาง · ข้อความจากตารางรหัสแปลที่นี่
+                'message' => $message ?? __(self::ERROR_MESSAGES[$code] ?? 'ทำรายการไม่สำเร็จ'),
             ],
         ], $status);
     }

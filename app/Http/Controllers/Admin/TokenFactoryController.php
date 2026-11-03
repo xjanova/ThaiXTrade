@@ -35,7 +35,7 @@ class TokenFactoryController extends Controller
         $factoryConfig = $this->tokenFactoryService->getFactoryConfig();
 
         return Inertia::render('Admin/TokenFactory/Index', [
-            'tokens' => $tokens,
+            'tokens' => $this->tokenFactoryService->presentTokens($tokens),
             'stats' => $stats,
             'currentStatus' => $status,
             'currentSearch' => $search,
@@ -55,12 +55,12 @@ class TokenFactoryController extends Controller
         try {
             $this->tokenFactoryService->approveToken($token);
         } catch (\InvalidArgumentException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', __($e->getMessage()));
         }
 
         AuditLog::log('token_factory.approve', $token);
 
-        return back()->with('success', "อนุมัติ {$token->symbol} แล้ว — กำลังสร้างเหรียญบนเชน");
+        return back()->with('success', __('อนุมัติ :symbol แล้ว — กำลังสร้างเหรียญบนเชน', ['symbol' => $token->symbol]));
     }
 
     public function reject(Request $request, int $id): RedirectResponse
@@ -72,12 +72,12 @@ class TokenFactoryController extends Controller
         try {
             $this->tokenFactoryService->rejectToken($token, $request->input('reason'));
         } catch (\InvalidArgumentException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', __($e->getMessage()));
         }
 
         AuditLog::log('token_factory.reject', $token, null, ['reason' => $request->input('reason')]);
 
-        return back()->with('success', "ปฏิเสธ {$token->symbol} แล้ว");
+        return back()->with('success', __('ปฏิเสธ :symbol แล้ว', ['symbol' => $token->symbol]));
     }
 
     public function toggleVerified(int $id): RedirectResponse
@@ -88,12 +88,14 @@ class TokenFactoryController extends Controller
         try {
             $token = $this->tokenFactoryService->toggleVerified($token);
         } catch (\InvalidArgumentException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', __($e->getMessage()));
         }
 
         AuditLog::log('token_factory.verify_toggle', $token, ['is_verified' => $before], ['is_verified' => (bool) $token->is_verified]);
 
-        return back()->with('success', $token->is_verified ? "{$token->symbol} ได้ป้าย Verified แล้ว" : "ถอดป้าย Verified ของ {$token->symbol} แล้ว");
+        return back()->with('success', $token->is_verified
+            ? __(':symbol ได้ป้าย Verified แล้ว', ['symbol' => $token->symbol])
+            : __('ถอดป้าย Verified ของ :symbol แล้ว', ['symbol' => $token->symbol]));
     }
 
     public function toggleListed(int $id): RedirectResponse
@@ -104,14 +106,14 @@ class TokenFactoryController extends Controller
         try {
             $token = $this->tokenFactoryService->toggleListed($token);
         } catch (\InvalidArgumentException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', __($e->getMessage()));
         }
 
         AuditLog::log('token_factory.list_toggle', $token, ['is_listed' => $before], ['is_listed' => (bool) $token->is_listed]);
 
         return back()->with('success', $token->is_listed
-            ? "ลิสต์ {$token->symbol} แล้ว — คู่เทรดจะเปิดในรอบซิงก์ถัดไป (ถ้ามีพูลสภาพคล่อง)"
-            : "เลิกลิสต์ {$token->symbol} แล้ว — คู่เทรดจะถูกปิดในรอบซิงก์ถัดไป");
+            ? __('ลิสต์ :symbol แล้ว — คู่เทรดจะเปิดในรอบซิงก์ถัดไป (ถ้ามีพูลสภาพคล่อง)', ['symbol' => $token->symbol])
+            : __('เลิกลิสต์ :symbol แล้ว — คู่เทรดจะถูกปิดในรอบซิงก์ถัดไป', ['symbol' => $token->symbol]));
     }
 
     /**
@@ -127,7 +129,7 @@ class TokenFactoryController extends Controller
         $request->validate(['logo' => TokenLogoStorage::rules()], TokenLogoStorage::messages('logo'));
 
         if ($token->status !== 'deployed' || ! $token->contract_address) {
-            return back()->with('error', 'ตั้งโลโก้ได้เฉพาะเหรียญที่ deploy แล้ว');
+            return back()->with('error', __('ตั้งโลโก้ได้เฉพาะเหรียญที่ deploy แล้ว'));
         }
 
         $before = $token->logo_url;
@@ -142,7 +144,7 @@ class TokenFactoryController extends Controller
 
         AuditLog::log('token_factory.logo_update', $token, ['logo_url' => $before], ['logo_url' => $url]);
 
-        return back()->with('success', "เปลี่ยนโลโก้ {$token->symbol} แล้ว");
+        return back()->with('success', __('เปลี่ยนโลโก้ :symbol แล้ว', ['symbol' => $token->symbol]));
     }
 
     public function retry(int $id): RedirectResponse
@@ -152,12 +154,12 @@ class TokenFactoryController extends Controller
         try {
             $this->tokenFactoryService->approveToken($token);
         } catch (\InvalidArgumentException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', __($e->getMessage()));
         }
 
         AuditLog::log('token_factory.retry', $token);
 
-        return back()->with('success', "สั่ง deploy {$token->symbol} ใหม่แล้ว");
+        return back()->with('success', __('สั่ง deploy :symbol ใหม่แล้ว', ['symbol' => $token->symbol]));
     }
 
     /**
@@ -171,12 +173,12 @@ class TokenFactoryController extends Controller
         try {
             $this->tokenFactoryService->resetStuckDeployment($token);
         } catch (\InvalidArgumentException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', __($e->getMessage()));
         }
 
         AuditLog::log('token_factory.reset_stuck', $token, ['status' => 'deploying'], ['status' => 'failed']);
 
-        return back()->with('success', "รีเซ็ต {$token->symbol} เป็น failed แล้ว — ตรวจสอบก่อนกด retry");
+        return back()->with('success', __('รีเซ็ต :symbol เป็น failed แล้ว — ตรวจสอบก่อนกด retry', ['symbol' => $token->symbol]));
     }
 
     /** ตรวจผลธุรกรรมที่ส่งไปแล้วอีกครั้ง — ไม่ส่งธุรกรรมใหม่ */
@@ -187,12 +189,12 @@ class TokenFactoryController extends Controller
         try {
             $this->tokenFactoryService->recheckDeployment($token);
         } catch (\InvalidArgumentException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', __($e->getMessage()));
         }
 
         AuditLog::log('token_factory.recheck', $token);
 
-        return back()->with('success', "สั่งตรวจผลธุรกรรมของ {$token->symbol} แล้ว");
+        return back()->with('success', __('สั่งตรวจผลธุรกรรมของ :symbol แล้ว', ['symbol' => $token->symbol]));
     }
 
     /**
@@ -201,7 +203,7 @@ class TokenFactoryController extends Controller
     public function refundManual(Request $request, int $id): RedirectResponse
     {
         $request->validate(['tx_hash' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/']], [
-            'tx_hash.regex' => 'tx hash ต้องขึ้นต้นด้วย 0x ตามด้วยตัวอักษรฐานสิบหก 64 ตัว',
+            'tx_hash.regex' => __('tx hash ต้องขึ้นต้นด้วย 0x ตามด้วยตัวอักษรฐานสิบหก 64 ตัว'),
         ]);
 
         $token = FactoryToken::findOrFail($id);
@@ -210,7 +212,7 @@ class TokenFactoryController extends Controller
             $token = $this->refunds->confirmManual($token, (string) $request->input('tx_hash'));
         } catch (TokenFactoryException $e) {
             // รวม REFUND_TX_PENDING (ยังยืนยันไม่ครบ) — ข้อความบอกให้กดซ้ำ
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', __($e->getMessage()));
         }
 
         AuditLog::log('token_factory.refund_manual', $token, null, [
@@ -218,7 +220,7 @@ class TokenFactoryController extends Controller
             'refund_amount_wei' => $token->refund_amount_wei,
         ]);
 
-        return back()->with('success', "ยืนยันการคืนค่าธรรมเนียม {$token->symbol} แล้ว");
+        return back()->with('success', __('ยืนยันการคืนค่าธรรมเนียม :symbol แล้ว', ['symbol' => $token->symbol]));
     }
 
     /**
@@ -231,7 +233,7 @@ class TokenFactoryController extends Controller
         try {
             $payout = $this->refunds->queueAuto($token);
         } catch (TokenFactoryException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', __($e->getMessage()));
         }
 
         AuditLog::log('token_factory.refund_auto', $token, null, [
@@ -239,6 +241,6 @@ class TokenFactoryController extends Controller
             'refund_amount_wei' => $payout->amount_wei,
         ]);
 
-        return back()->with('success', "เข้าคิวจ่ายคืน {$token->symbol} แล้ว (คิว #{$payout->id}) — ระบบจะส่งในรอบถัดไป");
+        return back()->with('success', __('เข้าคิวจ่ายคืน :symbol แล้ว (คิว #:id) — ระบบจะส่งในรอบถัดไป', ['symbol' => $token->symbol, 'id' => $payout->id]));
     }
 }

@@ -4,7 +4,7 @@
  * แสดงบทความที่ publish แล้ว (AI-generated + manual)
  * Developed by Xman Studio
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import axios from 'axios';
@@ -16,7 +16,6 @@ const isLoading = ref(true);
 const currentPage = ref(1);
 const totalPages = ref(1);
 const activeCategory = ref('all');
-const activeLanguage = ref('th');
 
 const categories = [
     // เก็บ key + emoji แยกกัน แล้วแปลตอน render — เปลี่ยนภาษาได้ทันทีโดยไม่ต้อง reload
@@ -30,17 +29,34 @@ const categories = [
     { id: 'technology', icon: '🔬', labelKey: 'blog.technology' },
 ];
 
+// บทความตามภาษาที่เลือก — หมวดที่ยังไม่มีฉบับอังกฤษ (เช่นข่าวที่ AI เขียนเป็นไทย) ถอยไปแสดงฉบับไทย
+// ดีกว่าโชว์หน้าว่างเหมือนไม่มีบทความเลย
+let fetchSeq = 0;
 async function fetchArticles() {
+    const seq = ++fetchSeq;
     isLoading.value = true;
     try {
-        const params = { page: currentPage.value, language: activeLanguage.value };
-        if (activeCategory.value !== 'all') params.category = activeCategory.value;
-        const { data } = await axios.get('/api/v1/articles', { params });
+        const base = { page: currentPage.value };
+        if (activeCategory.value !== 'all') base.category = activeCategory.value;
+        let { data } = await axios.get('/api/v1/articles', { params: { ...base, language: locale.value } });
+        if (!(data.data || []).length && locale.value !== 'th' && currentPage.value === 1) {
+            ({ data } = await axios.get('/api/v1/articles', { params: { ...base, language: 'th' } }));
+        }
+        // ผู้ใช้กดหมวด/สลับภาษาซ้ำระหว่างรอ — ทิ้งคำตอบเก่าที่มาถึงทีหลัง
+        if (seq !== fetchSeq) return;
         articles.value = data.data || [];
         totalPages.value = data.meta?.last_page || 1;
-    } catch { articles.value = []; }
+    } catch {
+        if (seq !== fetchSeq) return;
+        articles.value = [];
+    }
     isLoading.value = false;
 }
+
+watch(locale, () => {
+    currentPage.value = 1;
+    fetchArticles();
+});
 
 function setCategory(cat) {
     activeCategory.value = cat;

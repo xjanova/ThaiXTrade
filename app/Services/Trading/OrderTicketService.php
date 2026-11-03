@@ -81,7 +81,7 @@ class OrderTicketService
         $quote = $this->quotes->quote($wallet, $orderValueUsd, $chainId, $tradingPairId);
 
         if (! ($quote['tpix']['available'] ?? false)) {
-            throw new RuntimeException($quote['tpix']['reason'] ?? 'ยังใช้ค่าบริการแบบ TPIX ไม่ได้');
+            throw new RuntimeException($quote['tpix']['reason'] ?? __('ยังใช้ค่าบริการแบบ TPIX ไม่ได้'));
         }
 
         $fee = (float) $quote['tpix']['fee_tpix'];

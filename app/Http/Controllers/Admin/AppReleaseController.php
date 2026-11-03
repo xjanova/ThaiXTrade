@@ -92,7 +92,7 @@ class AppReleaseController extends Controller
             SiteSetting::set('app_release', $key, '');
             $this->clearReleaseCaches();
 
-            return back()->with('success', 'กลับไปใช้รุ่นล่าสุดอัตโนมัติแล้ว');
+            return back()->with('success', __('กลับไปใช้รุ่นล่าสุดอัตโนมัติแล้ว'));
         }
 
         // หา release ที่ตรงกับ tag จาก cache

@@ -346,7 +346,11 @@ class MarketDataService
             ]);
 
             if ($response->failed()) {
-                throw new \RuntimeException("ดึงแท่งเทียน {$symbol} {$interval} ไม่สำเร็จ: HTTP {$response->status()}");
+                throw new \RuntimeException(__('ดึงแท่งเทียน :symbol :interval ไม่สำเร็จ: HTTP :status', [
+                    'symbol' => $symbol,
+                    'interval' => $interval,
+                    'status' => $response->status(),
+                ]));
             }
 
             $rows = $response->json();

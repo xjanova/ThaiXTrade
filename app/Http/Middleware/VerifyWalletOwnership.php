@@ -41,7 +41,7 @@ class VerifyWalletOwnership
                 'success' => false,
                 'error' => [
                     'code' => 'WALLET_MISMATCH',
-                    'message' => 'กระเป๋าผู้สร้างต้องเป็นกระเป๋าเดียวกับที่ยืนยันตัวตน',
+                    'message' => __('กระเป๋าผู้สร้างต้องเป็นกระเป๋าเดียวกับที่ยืนยันตัวตน'),
                 ],
             ], 403);
         }
@@ -64,7 +64,7 @@ class VerifyWalletOwnership
                 'success' => false,
                 'error' => [
                     'code' => 'WALLET_MISMATCH',
-                    'message' => 'กระเป๋าในลิงก์ต้องเป็นกระเป๋าเดียวกับที่ยืนยันตัวตน',
+                    'message' => __('กระเป๋าในลิงก์ต้องเป็นกระเป๋าเดียวกับที่ยืนยันตัวตน'),
                 ],
             ], 403);
         }

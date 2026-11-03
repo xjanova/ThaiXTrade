@@ -40,12 +40,12 @@ class DiscordAutoMod
         $guildId = $this->settings->guildId();
 
         if ($guildId === null || ! $this->settings->hasBotToken()) {
-            return ['ok' => false, 'message' => 'ยังตั้งค่าไม่ครบ (โทเค็นบอท / Guild ID)'];
+            return ['ok' => false, 'message' => __('ยังตั้งค่าไม่ครบ (โทเค็นบอท / Guild ID)')];
         }
 
         $existing = $this->client->request('GET', "/guilds/{$guildId}/auto-moderation/rules");
         if (! $existing['ok']) {
-            return ['ok' => false, 'message' => 'อ่านกฎ AutoMod ไม่ได้: '.$existing['error'].' — ให้สิทธิ์ Manage Server กับบอท'];
+            return ['ok' => false, 'message' => __('อ่านกฎ AutoMod ไม่ได้: :error — ให้สิทธิ์ Manage Server กับบอท', ['error' => __((string) $existing['error'])])];
         }
 
         $roles = $this->client->request('GET', "/guilds/{$guildId}/roles");
@@ -99,8 +99,8 @@ class DiscordAutoMod
         return [
             'ok' => $failed === 0,
             'message' => $failed === 0
-                ? 'ติดตั้งกฎ AutoMod ครบ '.count($results).' กฎ — Discord บล็อกข้อความที่เข้าข่ายได้ทันที'
-                : "ติดตั้งไม่สำเร็จ {$failed} กฎ — ดูรายละเอียดในตาราง",
+                ? __('ติดตั้งกฎ AutoMod ครบ :count กฎ — Discord บล็อกข้อความที่เข้าข่ายได้ทันที', ['count' => count($results)])
+                : __('ติดตั้งไม่สำเร็จ :count กฎ — ดูรายละเอียดในตาราง', ['count' => $failed]),
             'rules' => $results,
         ];
     }

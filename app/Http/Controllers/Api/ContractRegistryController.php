@@ -60,7 +60,7 @@ class ContractRegistryController extends Controller
         if ($request->boolean('force')) {
             return response()->json([
                 'error' => 'force is not available over the API',
-                'hint' => 'รัน php artisan tpix:contract-registry-set <key> <address> --force บนเซิร์ฟเวอร์',
+                'hint' => __('รัน php artisan tpix:contract-registry-set <key> <address> --force บนเซิร์ฟเวอร์'),
             ], 403);
         }
 
@@ -74,14 +74,14 @@ class ContractRegistryController extends Controller
 
         foreach ($validated['contracts'] as $key => $address) {
             if (! isset(ContractRegistry::CONTRACTS[$key])) {
-                $rejected[$key] = 'ไม่รู้จักสัญญาชื่อนี้';
+                $rejected[$key] = __('ไม่รู้จักสัญญาชื่อนี้');
 
                 continue;
             }
 
             // ที่อยู่ต้องมีโค้ดอยู่จริงบนเชน — ไม่งั้นเรากำลังชี้ระบบไปที่ความว่างเปล่า
             if (! $this->registry->hasCode($address)) {
-                $rejected[$key] = "eth_getCode คืน 0x — ไม่มีสัญญาอยู่ที่ {$address}";
+                $rejected[$key] = __('eth_getCode คืน 0x — ไม่มีสัญญาอยู่ที่ :address', ['address' => $address]);
 
                 continue;
             }
@@ -119,7 +119,7 @@ class ContractRegistryController extends Controller
         if ($expected === '') {
             return response()->json([
                 'error' => 'contract registry not configured',
-                'hint' => 'ตั้ง CONTRACT_REGISTRY_TOKEN ใน .env ก่อน',
+                'hint' => __('ตั้ง CONTRACT_REGISTRY_TOKEN ใน .env ก่อน'),
             ], 503);
         }
 

@@ -108,7 +108,7 @@ class ContentController extends Controller
         $article = Article::create($validated);
 
         return redirect("/admin/content/{$article->id}/edit")
-            ->with('success', "สร้างบทความ \"{$article->title}\" สำเร็จ!");
+            ->with('success', __('สร้างบทความ ":title" สำเร็จ!', ['title' => $article->title]));
     }
 
     /**
@@ -144,9 +144,9 @@ class ContentController extends Controller
                 $validated['model'] ?? null,
             );
 
-            return back()->with('success', "สร้างบทความ \"{$article->title}\" สำเร็จ!");
+            return back()->with('success', __('สร้างบทความ ":title" สำเร็จ!', ['title' => $article->title]));
         } catch (\Exception $e) {
-            return back()->with('error', 'สร้างบทความไม่สำเร็จ: '.$e->getMessage());
+            return back()->with('error', __('สร้างบทความไม่สำเร็จ: :error', ['error' => __($e->getMessage())]));
         }
     }
 
@@ -176,7 +176,7 @@ class ContentController extends Controller
 
         $article->update($validated);
 
-        return back()->with('success', 'บทความอัปเดตเรียบร้อย');
+        return back()->with('success', __('บทความอัปเดตเรียบร้อย'));
     }
 
     /**
@@ -186,7 +186,7 @@ class ContentController extends Controller
     {
         Article::findOrFail($id)->delete();
 
-        return back()->with('success', 'ลบบทความเรียบร้อย');
+        return back()->with('success', __('ลบบทความเรียบร้อย'));
     }
 
     /**

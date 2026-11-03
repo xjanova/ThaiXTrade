@@ -80,19 +80,19 @@ class DiscordPermissions
         $guildId = $this->settings->guildId();
 
         if ($guildId === null || ! $this->settings->hasBotToken()) {
-            return ['ok' => false, 'error' => 'ยังตั้งค่าไม่ครบ (โทเค็นบอท / Guild ID)'];
+            return ['ok' => false, 'error' => __('ยังตั้งค่าไม่ครบ (โทเค็นบอท / Guild ID)')];
         }
 
         $me = $this->client->me();
         $roles = $this->client->request('GET', "/guilds/{$guildId}/roles");
 
         if (! $me['ok'] || ! $roles['ok']) {
-            return ['ok' => false, 'error' => ($me['ok'] ? $roles : $me)['error']];
+            return ['ok' => false, 'error' => __((string) ($me['ok'] ? $roles : $me)['error'])];
         }
 
         $member = $this->client->request('GET', "/guilds/{$guildId}/members/".($me['data']['id'] ?? ''));
         if (! $member['ok']) {
-            return ['ok' => false, 'error' => $member['error']];
+            return ['ok' => false, 'error' => __((string) $member['error'])];
         }
 
         $byId = collect((array) $roles['data'])->keyBy(fn ($r) => (string) $r['id']);
@@ -123,7 +123,7 @@ class DiscordPermissions
         $guildId = $this->settings->guildId();
 
         if ($guildId === null || ! $this->settings->hasBotToken()) {
-            return ['ok' => false, 'error' => 'ยังตั้งค่าไม่ครบ (โทเค็นบอท / Guild ID)'];
+            return ['ok' => false, 'error' => __('ยังตั้งค่าไม่ครบ (โทเค็นบอท / Guild ID)')];
         }
 
         $me = $this->client->me();
@@ -132,7 +132,7 @@ class DiscordPermissions
 
         foreach ([$me, $roles, $channels] as $response) {
             if (! $response['ok']) {
-                return ['ok' => false, 'error' => $response['error']];
+                return ['ok' => false, 'error' => __((string) $response['error'])];
             }
         }
 
@@ -140,7 +140,7 @@ class DiscordPermissions
         $member = $this->client->request('GET', "/guilds/{$guildId}/members/{$botId}");
 
         if (! $member['ok']) {
-            return ['ok' => false, 'error' => $member['error']];
+            return ['ok' => false, 'error' => __((string) $member['error'])];
         }
 
         $channelsById = collect((array) $channels['data'])->keyBy('id');

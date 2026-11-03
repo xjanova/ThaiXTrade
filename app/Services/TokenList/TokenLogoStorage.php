@@ -53,12 +53,12 @@ class TokenLogoStorage
     public static function messages(string $field): array
     {
         return [
-            "{$field}.mimes" => 'โลโก้ต้องเป็นไฟล์ PNG หรือ WebP เท่านั้น',
-            "{$field}.mimetypes" => 'โลโก้ต้องเป็นไฟล์ PNG หรือ WebP เท่านั้น',
-            "{$field}.max" => 'โลโก้ต้องมีขนาดไม่เกิน '.self::MAX_KB.' KB',
-            "{$field}.dimensions" => 'โลโก้ต้องเป็นสี่เหลี่ยมจัตุรัส ขนาดอย่างน้อย '.self::MIN_PX.'×'.self::MIN_PX.' พิกเซล (แนะนำ 256×256 ขึ้นไป)',
-            "{$field}.required" => 'กรุณาเลือกไฟล์โลโก้',
-            "{$field}.file" => 'อัปโหลดไฟล์ไม่สำเร็จ',
+            "{$field}.mimes" => __('โลโก้ต้องเป็นไฟล์ PNG หรือ WebP เท่านั้น'),
+            "{$field}.mimetypes" => __('โลโก้ต้องเป็นไฟล์ PNG หรือ WebP เท่านั้น'),
+            "{$field}.max" => __('โลโก้ต้องมีขนาดไม่เกิน :kb KB', ['kb' => self::MAX_KB]),
+            "{$field}.dimensions" => __('โลโก้ต้องเป็นสี่เหลี่ยมจัตุรัส ขนาดอย่างน้อย :px×:px พิกเซล (แนะนำ 256×256 ขึ้นไป)', ['px' => self::MIN_PX]),
+            "{$field}.required" => __('กรุณาเลือกไฟล์โลโก้'),
+            "{$field}.file" => __('อัปโหลดไฟล์ไม่สำเร็จ'),
         ];
     }
 

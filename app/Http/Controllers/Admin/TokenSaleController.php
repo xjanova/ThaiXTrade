@@ -150,12 +150,12 @@ class TokenSaleController extends Controller
         try {
             $tx = $crediter->creditReceived($payment, auth('admin')->user()?->email);
         } catch (PurchaseException $e) {
-            return redirect()->back()->withErrors(['crypto' => $e->getMessage()]);
+            return redirect()->back()->withErrors(['crypto' => __($e->getMessage())]);
         }
 
         $this->forgetSaleCache();
 
-        return redirect()->back()->with('success', 'ออกเหรียญ '.number_format((float) $tx->tpix_amount, 2).' TPIX ตามยอดที่ได้รับแล้ว');
+        return redirect()->back()->with('success', __('ออกเหรียญ :amount TPIX ตามยอดที่ได้รับแล้ว', ['amount' => number_format((float) $tx->tpix_amount, 2)]));
     }
 
     /**
@@ -170,10 +170,10 @@ class TokenSaleController extends Controller
         try {
             $crediter->markResolved(SaleCryptoPayment::findOrFail($id), $validated['note'], auth('admin')->user()?->email);
         } catch (PurchaseException $e) {
-            return redirect()->back()->withErrors(['crypto' => $e->getMessage()]);
+            return redirect()->back()->withErrors(['crypto' => __($e->getMessage())]);
         }
 
-        return redirect()->back()->with('success', 'บันทึกการจัดการแล้ว');
+        return redirect()->back()->with('success', __('บันทึกการจัดการแล้ว'));
     }
 
     /**
@@ -223,7 +223,7 @@ class TokenSaleController extends Controller
             ])->all(),
             'skipped' => collect($plan['skipped'])->map(fn ($s) => [
                 'name' => $s['phase']->name,
-                'reason' => $s['reason'],
+                'reason' => __($s['reason']),
             ])->all(),
         ];
     }
@@ -246,7 +246,7 @@ class TokenSaleController extends Controller
         $sale = $launcher->targetSale(isset($validated['sale_id']) ? (int) $validated['sale_id'] : null);
 
         if ($sale === null) {
-            return redirect()->back()->with('error', 'ไม่พบรอบขายที่จะเปิด');
+            return redirect()->back()->with('error', __('ไม่พบรอบขายที่จะเปิด'));
         }
 
         $result = $launcher->launch(
@@ -259,8 +259,8 @@ class TokenSaleController extends Controller
         $this->forgetSaleCache();
 
         return $result['ok']
-            ? redirect()->back()->with('success', $result['message'])
-            : redirect()->back()->with('error', $result['message']);
+            ? redirect()->back()->with('success', __($result['message']))
+            : redirect()->back()->with('error', __($result['message']));
     }
 
     /**
@@ -278,8 +278,8 @@ class TokenSaleController extends Controller
         return redirect()->back()->with(
             'success',
             $validated['armed']
-                ? 'เปิดขายอัตโนมัติแล้ว — ระบบจะเริ่มรอบขายเองภายใน 1 ชั่วโมงหลังพร้อมครบทุกข้อ'
-                : 'ปิดการเปิดขายอัตโนมัติแล้ว — ต้องกดเปิดเอง'
+                ? __('เปิดขายอัตโนมัติแล้ว — ระบบจะเริ่มรอบขายเองภายใน 1 ชั่วโมงหลังพร้อมครบทุกข้อ')
+                : __('ปิดการเปิดขายอัตโนมัติแล้ว — ต้องกดเปิดเอง')
         );
     }
 
@@ -304,7 +304,7 @@ class TokenSaleController extends Controller
         if (blank($raw)) {
             $launcher->setRoundEndsAt(null);
 
-            return redirect()->back()->with('success', 'ยกเลิกวันจบรอบแล้ว — กลับไปใช้เฟสต่อกันตามเวลา');
+            return redirect()->back()->with('success', __('ยกเลิกวันจบรอบแล้ว — กลับไปใช้เฟสต่อกันตามเวลา'));
         }
 
         // เลือกแค่วันที่ (ช่อง date) = จบตอนสิ้นวันนั้น ไม่ใช่เที่ยงคืนต้นวัน
@@ -315,7 +315,7 @@ class TokenSaleController extends Controller
 
         $launcher->setRoundEndsAt($at);
 
-        return redirect()->back()->with('success', 'ล็อกวันจบรอบ '.$at->format('Y-m-d H:i').' แล้ว — ราคาขั้นบันได ขยับเมื่อขั้นก่อนขายหมด');
+        return redirect()->back()->with('success', __('ล็อกวันจบรอบ :date แล้ว — ราคาขั้นบันได ขยับเมื่อขั้นก่อนขายหมด', ['date' => $at->format('Y-m-d H:i')]));
     }
 
     /**
@@ -340,7 +340,7 @@ class TokenSaleController extends Controller
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date|after:starts_at',
         ], [
-            'sale_wallet_address.required' => 'เปิดรับ USDT แล้วต้องกรอกกระเป๋ารับเงินก่อนตั้งเป็น Active',
+            'sale_wallet_address.required' => __('เปิดรับ USDT แล้วต้องกรอกกระเป๋ารับเงินก่อนตั้งเป็น Active'),
         ]);
 
         // เรียงตามลำดับเดียวกันเสมอ บันทึกประวัติจะได้ไม่ขึ้นว่าเปลี่ยนทั้งที่ค่าเดิม
@@ -448,7 +448,7 @@ class TokenSaleController extends Controller
             $confirmed = $bank->confirm($tx, auth('admin')->user()?->email, $request->boolean('honor_expired'));
             $bank->queueInitialPayout($confirmed);
         } catch (PurchaseException $e) {
-            return redirect()->back()->withErrors(['bank' => $e->getMessage()]);
+            return redirect()->back()->withErrors(['bank' => __($e->getMessage())]);
         }
 
         $this->forgetSaleCache();
@@ -460,7 +460,7 @@ class TokenSaleController extends Controller
 
         return redirect()->back()->with(
             'success',
-            "ยืนยันการโอนเงิน {$reference} แล้ว — เข้าคิวจ่าย ".number_format((float) $confirmed->tpix_amount, 2).' TPIX'
+            __('ยืนยันการโอนเงิน :reference แล้ว — เข้าคิวจ่าย :amount TPIX', ['reference' => $reference, 'amount' => number_format((float) $confirmed->tpix_amount, 2)])
         );
     }
 
@@ -482,10 +482,10 @@ class TokenSaleController extends Controller
                 $this->recordTransactionChange('token_sale.bank_reject', $rejected, 'pending');
             });
         } catch (PurchaseException $e) {
-            return redirect()->back()->withErrors(['bank' => $e->getMessage()]);
+            return redirect()->back()->withErrors(['bank' => __($e->getMessage())]);
         }
 
-        return redirect()->back()->with('success', 'ปฏิเสธคำสั่งซื้อแล้ว');
+        return redirect()->back()->with('success', __('ปฏิเสธคำสั่งซื้อแล้ว'));
     }
 
     /** ลงบันทึกพร้อมกระเป๋าและยอด — audit_logs ตอบได้เองว่าเงินก้อนไหนไปถึงใคร ไม่ต้องตามไปดูแถวรายการ */
@@ -507,16 +507,16 @@ class TokenSaleController extends Controller
         $payout = $bank->queueInitialPayout(SaleTransaction::findOrFail($id), auth('admin')->id());
 
         if (! $payout) {
-            return redirect()->back()->withErrors(['bank' => 'ออเดอร์นี้ไม่มียอดให้เข้าคิวจ่าย']);
+            return redirect()->back()->withErrors(['bank' => __('ออเดอร์นี้ไม่มียอดให้เข้าคิวจ่าย')]);
         }
 
         if (! $payout->wasRecentlyCreated) {
             return redirect()->back()->withErrors([
-                'bank' => "ออเดอร์นี้มีรายการจ่าย #{$payout->id} ที่ยังไม่จบอยู่แล้ว (สถานะ: {$payout->status})",
+                'bank' => __('ออเดอร์นี้มีรายการจ่าย #:id ที่ยังไม่จบอยู่แล้ว (สถานะ: :status)', ['id' => $payout->id, 'status' => $payout->status]),
             ]);
         }
 
-        return redirect()->back()->with('success', "เข้าคิวจ่ายใหม่แล้ว {$payout->amount_tpix} TPIX — รออนุมัติที่หน้าคลัง");
+        return redirect()->back()->with('success', __('เข้าคิวจ่ายใหม่แล้ว :amount TPIX — รออนุมัติที่หน้าคลัง', ['amount' => $payout->amount_tpix]));
     }
 
     /**
@@ -530,12 +530,12 @@ class TokenSaleController extends Controller
         $payouts = $claims->requeueDeadPayouts(SaleTransaction::findOrFail($id), auth('admin')->id());
 
         if ($payouts->isEmpty()) {
-            return redirect()->back()->withErrors(['claim' => 'ออเดอร์นี้ไม่มียอด claim ที่กู้ได้ — รายการที่ยังไม่จบหรืออาจโอนไปแล้วกู้ไม่ได้']);
+            return redirect()->back()->withErrors(['claim' => __('ออเดอร์นี้ไม่มียอด claim ที่กู้ได้ — รายการที่ยังไม่จบหรืออาจโอนไปแล้วกู้ไม่ได้')]);
         }
 
         $amount = Wei::format(Wei::sum($payouts->pluck('amount_wei')->all()));
 
-        return redirect()->back()->with('success', "เข้าคิว claim ใหม่แล้ว {$amount} TPIX — รออนุมัติที่หน้าคลัง");
+        return redirect()->back()->with('success', __('เข้าคิว claim ใหม่แล้ว :amount TPIX — รออนุมัติที่หน้าคลัง', ['amount' => $amount]));
     }
 
     /**
@@ -548,7 +548,7 @@ class TokenSaleController extends Controller
         try {
             $order = $stripe->restoreDisputedOrder(SaleTransaction::findOrFail($id), auth('admin')->user()?->email);
         } catch (PurchaseException $e) {
-            return redirect()->back()->with('error', $e->getMessage());
+            return redirect()->back()->with('error', __($e->getMessage()));
         }
 
         $this->forgetSaleCache();
@@ -556,9 +556,9 @@ class TokenSaleController extends Controller
 
         // แถวจ่ายที่ chargeback หยุดไว้ไม่กลับมาเอง ต้องผ่านอนุมัติที่หน้าคลังเหมือนการกู้ claim ทุกครั้ง
         $claimOffer = $claims->requeueOffer($order);
-        $note = $claimOffer ? " · ยอด claim ที่ถูกหยุดไว้ {$claimOffer['amount_tpix']} TPIX กด 'เข้าคิว claim ใหม่' ได้" : '';
+        $note = $claimOffer ? __(" · ยอด claim ที่ถูกหยุดไว้ :amount TPIX กด 'เข้าคิว claim ใหม่' ได้", ['amount' => $claimOffer['amount_tpix']]) : '';
 
-        return redirect()->back()->with('success', "กู้ออเดอร์ #{$order->id} แล้ว".$note);
+        return redirect()->back()->with('success', __('กู้ออเดอร์ #:id แล้ว:note', ['id' => $order->id, 'note' => $note]));
     }
 
     /**
@@ -749,7 +749,7 @@ class TokenSaleController extends Controller
                 // หยุดไม่ทัน = เหรียญออกไปแล้ว คืนโควตาไม่ได้ ไม่งั้นขายเหรียญก้อนเดียวกันซ้ำ
                 // โยนใต้ธุรกรรมเพื่อย้อนแถวที่เพิ่งหยุด ปฏิเสธแล้วต้องไม่มีอะไรเปลี่ยน
                 if (bccomp($tokensLeftWei, '0', 0) > 0) {
-                    throw new PurchaseException('เหรียญของรายการนี้ออกจากคลังแล้ว '.Wei::format($tokensLeftWei).' TPIX — บันทึกคืนเงินไม่ได้');
+                    throw new PurchaseException(__('เหรียญของรายการนี้ออกจากคลังแล้ว :amount TPIX — บันทึกคืนเงินไม่ได้', ['amount' => Wei::format($tokensLeftWei)]));
                 }
 
                 // คืนยอดขายกลับไป phase + sale
@@ -762,7 +762,7 @@ class TokenSaleController extends Controller
                 return $tx;
             });
         } catch (PurchaseException $e) {
-            return redirect()->back()->with('error', $e->getMessage());
+            return redirect()->back()->with('error', __($e->getMessage()));
         }
 
         return redirect()->back()->with('success', "Transaction #{$tx->id} refunded. Allocation returned.");

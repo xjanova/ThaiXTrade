@@ -103,7 +103,7 @@ class TradingFeeTierController extends Controller
         TradingFeeTier::create($validated);
         AuditLog::log('trading_fee_tier.create', null, null, $validated);
 
-        return back()->with('success', 'เพิ่มขั้นค่าบริการแล้ว');
+        return back()->with('success', __('เพิ่มขั้นค่าบริการแล้ว'));
     }
 
     public function update(Request $request, TradingFeeTier $tier): RedirectResponse
@@ -114,7 +114,7 @@ class TradingFeeTierController extends Controller
         $tier->update($validated);
         AuditLog::log('trading_fee_tier.update', null, $before, $validated);
 
-        return back()->with('success', 'บันทึกขั้นค่าบริการแล้ว');
+        return back()->with('success', __('บันทึกขั้นค่าบริการแล้ว'));
     }
 
     public function destroy(TradingFeeTier $tier): RedirectResponse
@@ -122,7 +122,7 @@ class TradingFeeTierController extends Controller
         AuditLog::log('trading_fee_tier.delete', null, $tier->toArray(), null);
         $tier->delete();
 
-        return back()->with('success', 'ลบขั้นค่าบริการแล้ว');
+        return back()->with('success', __('ลบขั้นค่าบริการแล้ว'));
     }
 
     /** ค่าตั้งรวมของระบบค่าบริการ */
@@ -152,7 +152,7 @@ class TradingFeeTierController extends Controller
             SiteSetting::set('trading', 'ticket_ttl_minutes', (string) $validated['ticket_ttl_minutes'], 'number');
         });
 
-        return back()->with('success', 'บันทึกการตั้งค่าค่าบริการแล้ว');
+        return back()->with('success', __('บันทึกการตั้งค่าค่าบริการแล้ว'));
     }
 
     private function validateTier(Request $request, ?int $ignoreId = null): array

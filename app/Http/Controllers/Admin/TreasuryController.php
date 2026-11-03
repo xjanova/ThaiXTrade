@@ -80,6 +80,17 @@ class TreasuryController extends Controller
             ->paginate(25)
             ->withQueryString();
 
+        // เหตุผลที่ cron เขียนลงฐานข้อมูลเป็นภาษาไทย — แปลตอนแสดง (ข้อความคงที่แปลได้ ที่เหลือผ่านไปเหมือนเดิม)
+        // แตะแค่ค่าที่ส่งไปหน้าจอ ไม่ save กลับ
+        $payouts->getCollection()->each(function (TreasuryPayout $p) {
+            foreach (['failure_reason', 'last_error'] as $field) {
+                $value = $p->getAttribute($field);
+                if (is_string($value) && $value !== '' && is_string($translated = __($value))) {
+                    $p->setAttribute($field, $translated);
+                }
+            }
+        });
+
         return Inertia::render('Admin/Treasury/Payouts', [
             'payouts' => $payouts,
             'filters' => ['status' => $status],
@@ -110,7 +121,7 @@ class TreasuryController extends Controller
             'memo' => ['nullable', 'string', 'max:500'],
             'idempotency_key' => ['required', 'string', 'max:100', 'not_regex:'.TreasuryPayout::SYSTEM_KEY_PATTERN],
         ], [
-            'idempotency_key.not_regex' => 'คีย์นี้สงวนไว้ให้รายการที่ระบบสร้าง',
+            'idempotency_key.not_regex' => __('คีย์นี้สงวนไว้ให้รายการที่ระบบสร้าง'),
         ]);
 
         $amountWei = Wei::toWei($validated['amount']);
@@ -121,7 +132,7 @@ class TreasuryController extends Controller
             return response()->json([
                 'success' => true,
                 'duplicate' => true,
-                'message' => 'รายการนี้ถูกสร้างไว้แล้ว ไม่ได้สร้างซ้ำ',
+                'message' => __('รายการนี้ถูกสร้างไว้แล้ว ไม่ได้สร้างซ้ำ'),
                 'data' => $existing,
             ]);
         }
@@ -137,7 +148,7 @@ class TreasuryController extends Controller
         if (! $check['ok']) {
             return response()->json([
                 'success' => false,
-                'message' => 'สร้างรายการไม่ได้',
+                'message' => __('สร้างรายการไม่ได้'),
                 'errors' => $check['errors'],
             ], 422);
         }
@@ -160,7 +171,7 @@ class TreasuryController extends Controller
                 return response()->json([
                     'success' => true,
                     'duplicate' => true,
-                    'message' => 'รายการนี้ถูกสร้างไว้แล้ว ไม่ได้สร้างซ้ำ',
+                    'message' => __('รายการนี้ถูกสร้างไว้แล้ว ไม่ได้สร้างซ้ำ'),
                     'data' => $existing,
                 ]);
             }
@@ -183,13 +194,13 @@ class TreasuryController extends Controller
             $payout = TreasuryPayout::lockForUpdate()->find($id);
 
             if (! $payout) {
-                return ['code' => 404, 'body' => ['success' => false, 'message' => 'ไม่พบรายการ']];
+                return ['code' => 404, 'body' => ['success' => false, 'message' => __('ไม่พบรายการ')]];
             }
 
             if (! $payout->isOpen()) {
                 return ['code' => 409, 'body' => [
                     'success' => false,
-                    'message' => 'รายการนี้ถูกดำเนินการไปแล้ว (สถานะ: '.$payout->status.')',
+                    'message' => __('รายการนี้ถูกดำเนินการไปแล้ว (สถานะ: :status)', ['status' => $payout->status]),
                 ]];
             }
 
@@ -204,7 +215,7 @@ class TreasuryController extends Controller
             if (! $check['ok']) {
                 return ['code' => 422, 'body' => [
                     'success' => false,
-                    'message' => 'อนุมัติไม่ได้ กฎเปลี่ยนไปตั้งแต่ตอนสร้างรายการ',
+                    'message' => __('อนุมัติไม่ได้ กฎเปลี่ยนไปตั้งแต่ตอนสร้างรายการ'),
                     'errors' => $check['errors'],
                 ]];
             }
@@ -234,13 +245,13 @@ class TreasuryController extends Controller
             $payout = TreasuryPayout::lockForUpdate()->find($id);
 
             if (! $payout) {
-                return ['code' => 404, 'body' => ['success' => false, 'message' => 'ไม่พบรายการ']];
+                return ['code' => 404, 'body' => ['success' => false, 'message' => __('ไม่พบรายการ')]];
             }
 
             if (! $payout->isOpen()) {
                 return ['code' => 409, 'body' => [
                     'success' => false,
-                    'message' => 'รายการนี้ถูกดำเนินการไปแล้ว (สถานะ: '.$payout->status.')',
+                    'message' => __('รายการนี้ถูกดำเนินการไปแล้ว (สถานะ: :status)', ['status' => $payout->status]),
                 ]];
             }
 
@@ -277,7 +288,7 @@ class TreasuryController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'ระบบจ่ายเงินยังไม่พร้อมใช้งาน',
+                'message' => __('ระบบจ่ายเงินยังไม่พร้อมใช้งาน'),
                 'readiness' => $readiness,
             ], 423); // 423 Locked
         }
@@ -286,7 +297,7 @@ class TreasuryController extends Controller
             $payout = TreasuryPayout::lockForUpdate()->find($id);
 
             if (! $payout) {
-                return ['code' => 404, 'body' => ['success' => false, 'message' => 'ไม่พบรายการ']];
+                return ['code' => 404, 'body' => ['success' => false, 'message' => __('ไม่พบรายการ')]];
             }
 
             // ส่งได้เฉพาะรายการที่อนุมัติแล้วเท่านั้น และต้องยังไม่เคยมี tx
@@ -294,7 +305,7 @@ class TreasuryController extends Controller
             if ($payout->status !== TreasuryPayout::STATUS_APPROVED || $payout->tx_hash) {
                 return ['code' => 409, 'body' => [
                     'success' => false,
-                    'message' => 'รายการนี้ส่งไม่ได้ (สถานะ: '.$payout->status.')',
+                    'message' => __('รายการนี้ส่งไม่ได้ (สถานะ: :status)', ['status' => $payout->status]),
                 ]];
             }
 
@@ -308,7 +319,7 @@ class TreasuryController extends Controller
             if (! $check['ok']) {
                 return ['code' => 422, 'body' => [
                     'success' => false,
-                    'message' => 'ส่งไม่ได้ กฎเปลี่ยนไปตั้งแต่ตอนอนุมัติ',
+                    'message' => __('ส่งไม่ได้ กฎเปลี่ยนไปตั้งแต่ตอนอนุมัติ'),
                     'errors' => $check['errors'],
                 ]];
             }
@@ -317,7 +328,7 @@ class TreasuryController extends Controller
 
             return ['code' => 200, 'body' => [
                 'success' => true,
-                'message' => 'เข้าคิวส่งขึ้นเชนแล้ว ระบบจะเซ็นและส่งให้ภายใน 1 นาที',
+                'message' => __('เข้าคิวส่งขึ้นเชนแล้ว ระบบจะเซ็นและส่งให้ภายใน 1 นาที'),
                 'data' => $payout->fresh(),
             ]];
         });
@@ -354,7 +365,7 @@ class TreasuryController extends Controller
         if (TreasuryWhitelist::where('address', strtolower($validated['address']))->exists()) {
             return response()->json([
                 'success' => false,
-                'message' => 'ที่อยู่นี้อยู่ใน whitelist แล้ว',
+                'message' => __('ที่อยู่นี้อยู่ใน whitelist แล้ว'),
             ], 422);
         }
 

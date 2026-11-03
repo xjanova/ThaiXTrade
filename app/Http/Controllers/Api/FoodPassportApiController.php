@@ -483,11 +483,11 @@ class FoodPassportApiController extends Controller
                     'budget' => '40,000,000 FDP (40%)',
                 ],
                 'use_cases' => [
-                    'reward' => 'เกษตรกรได้ FDP เมื่อผ่านการรับรอง',
-                    'payment' => 'จ่าย FDP เป็นค่าตรวจสอบคุณภาพ',
-                    'staking' => 'ล็อค FDP เพื่อเพิ่ม Trust Score',
-                    'governance' => 'โหวตเรื่อง food safety standards',
-                    'trade' => 'เทรดบน TPIX TRADE DEX (FDP/TPIX)',
+                    'reward' => __('เกษตรกรได้ FDP เมื่อผ่านการรับรอง'),
+                    'payment' => __('จ่าย FDP เป็นค่าตรวจสอบคุณภาพ'),
+                    'staking' => __('ล็อค FDP เพื่อเพิ่ม Trust Score'),
+                    'governance' => __('โหวตเรื่อง food safety standards'),
+                    'trade' => __('เทรดบน TPIX TRADE DEX (FDP/TPIX)'),
                 ],
                 'tokenomics' => [
                     ['label' => 'Farmer Rewards', 'percent' => 40, 'amount' => '40,000,000'],

@@ -76,7 +76,7 @@ class ValidatorKycAdminController extends Controller
         ]);
 
         if (! preg_match('/^0x[0-9a-fA-F]{40}$/', $address)) {
-            return $this->fail('INVALID_ADDRESS', 'ที่อยู่ผู้สมัครไม่ถูกต้อง');
+            return $this->fail('INVALID_ADDRESS', __('ที่อยู่ผู้สมัครไม่ถูกต้อง'));
         }
         $applicant = strtolower($address);
         $txHash = strtolower($validated['tx_hash']);
@@ -89,36 +89,36 @@ class ValidatorKycAdminController extends Controller
 
         $contract = $this->kyc->address();
         if ($contract === null) {
-            return $this->fail('KYC_NOT_CONFIGURED', 'ยังไม่ได้ตั้งที่อยู่สัญญา ValidatorKYC ในทะเบียนสัญญา', 503);
+            return $this->fail('KYC_NOT_CONFIGURED', __('ยังไม่ได้ตั้งที่อยู่สัญญา ValidatorKYC ในทะเบียนสัญญา'), 503);
         }
 
         $receipt = $this->rpc->receipt($txHash);
         if ($receipt === null) {
-            return $this->fail('TX_NOT_FOUND', 'ยังไม่เห็นธุรกรรมนี้บนเชน — รอสักครู่แล้วกดตรวจอีกครั้ง', 409);
+            return $this->fail('TX_NOT_FOUND', __('ยังไม่เห็นธุรกรรมนี้บนเชน — รอสักครู่แล้วกดตรวจอีกครั้ง'), 409);
         }
         if (strtolower((string) ($receipt['status'] ?? '')) !== '0x1') {
-            return $this->fail('TX_FAILED', 'ธุรกรรมนี้ไม่สำเร็จบนเชน (revert) — สถานะ KYC ไม่เปลี่ยน');
+            return $this->fail('TX_FAILED', __('ธุรกรรมนี้ไม่สำเร็จบนเชน (revert) — สถานะ KYC ไม่เปลี่ยน'));
         }
 
         $tx = $this->rpc->transaction($txHash);
         if ($tx === null || strtolower((string) ($tx['to'] ?? '')) !== strtolower($contract)) {
-            return $this->fail('TX_WRONG_CONTRACT', 'ธุรกรรมนี้ไม่ได้เรียกสัญญา ValidatorKYC ที่เว็บใช้อยู่');
+            return $this->fail('TX_WRONG_CONTRACT', __('ธุรกรรมนี้ไม่ได้เรียกสัญญา ValidatorKYC ที่เว็บใช้อยู่'));
         }
 
         $call = $this->kyc->decodeWrite((string) ($tx['input'] ?? ''));
         if ($call === null || $call['action'] !== $validated['action'] || $call['applicant'] !== $applicant) {
-            return $this->fail('TX_MISMATCH', 'ธุรกรรมนี้ไม่ใช่รายการที่ขอให้ตรวจ (คนละคำสั่งหรือคนละผู้สมัคร)');
+            return $this->fail('TX_MISMATCH', __('ธุรกรรมนี้ไม่ใช่รายการที่ขอให้ตรวจ (คนละคำสั่งหรือคนละผู้สมัคร)'));
         }
 
         $owner = $this->kyc->owner();
         $signer = strtolower((string) ($tx['from'] ?? ''));
         if ($owner === null || $signer !== $owner) {
-            return $this->fail('TX_NOT_OWNER', 'ผู้เซ็นธุรกรรมไม่ใช่ owner ของสัญญา');
+            return $this->fail('TX_NOT_OWNER', __('ผู้เซ็นธุรกรรมไม่ใช่ owner ของสัญญา'));
         }
 
         $record = $this->kyc->record($applicant);
         if ($record === null || ! in_array($record['status'], self::EXPECTED_STATUS[$call['action']], true)) {
-            return $this->fail('CHAIN_STATE_MISMATCH', 'สถานะบนสัญญายังไม่ตรงกับรายการนี้ — ลองตรวจอีกครั้งในอีกสักครู่', 409);
+            return $this->fail('CHAIN_STATE_MISMATCH', __('สถานะบนสัญญายังไม่ตรงกับรายการนี้ — ลองตรวจอีกครั้งในอีกสักครู่'), 409);
         }
 
         $submission = null;
@@ -126,10 +126,10 @@ class ValidatorKycAdminController extends Controller
             if (! empty($validated['kyc_submission_uuid'])) {
                 $submission = KycSubmission::where('uuid', $validated['kyc_submission_uuid'])->first();
                 if ($submission === null || $this->hasher->hash($submission) !== $call['kyc_hash']) {
-                    return $this->fail('HASH_NOT_FROM_SUBMISSION', 'hash บนเชนไม่ตรงกับใบ KYC ที่อ้าง — ประวัติไม่ถูกบันทึก');
+                    return $this->fail('HASH_NOT_FROM_SUBMISSION', __('hash บนเชนไม่ตรงกับใบ KYC ที่อ้าง — ประวัติไม่ถูกบันทึก'));
                 }
             } elseif (trim((string) ($validated['note'] ?? '')) === '') {
-                return $this->fail('NOTE_REQUIRED', 'hash ที่ไม่ได้มาจากใบ KYC ของเว็บต้องมีเหตุผลกำกับ');
+                return $this->fail('NOTE_REQUIRED', __('hash ที่ไม่ได้มาจากใบ KYC ของเว็บต้องมีเหตุผลกำกับ'));
             }
         }
 

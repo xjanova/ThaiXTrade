@@ -535,37 +535,39 @@ class TokenFactoryPolicy
         ];
 
         if ($type === null) {
-            $result['errors'] = ['token_type' => 'ไม่รู้จักประเภทเหรียญนี้'];
+            $result['errors'] = ['token_type' => __('ไม่รู้จักประเภทเหรียญนี้')];
 
             return $result;
         }
 
         $typeConfig = $policy['types'][$type];
-        $typeLabel = self::TYPES[$type]['label_th'];
+        $typeLabel = __(self::TYPES[$type]['label_th']);
 
         // ── ประเภทต้องเปิดอยู่ ─────────────────────────────────────────────
         if ($typeConfig['state'] === self::STATE_LOCKED) {
-            $errors['token_type'] = "{$typeLabel} ถูกล็อก — {$typeConfig['locked_reason']}";
+            $errors['token_type'] = __(':label ถูกล็อก — :reason', ['label' => $typeLabel, 'reason' => __((string) $typeConfig['locked_reason'])]);
         } elseif ($typeConfig['state'] !== self::STATE_ON) {
-            $errors['token_type'] = "ผู้ดูแลระบบปิดการสร้าง{$typeLabel}ไว้";
+            $errors['token_type'] = __('ผู้ดูแลระบบปิดการสร้าง:labelไว้', ['label' => $typeLabel]);
         }
 
         // ── ตัวเลือกที่ขอใช้ต้องเปิดอยู่ทุกตัว ─────────────────────────────
         $options = $this->requestedOptions($tokenType, $sub);
         foreach ($options as $option) {
             $optionConfig = $policy['options'][$option];
-            $label = self::OPTIONS[$option]['label_th'];
+            $label = __(self::OPTIONS[$option]['label_th']);
 
             if ($optionConfig['state'] === self::STATE_LOCKED) {
-                $errors["sub_options.{$option}"] = "ตัวเลือก {$label} ถูกล็อก — {$optionConfig['locked_reason']}";
+                $errors["sub_options.{$option}"] = __('ตัวเลือก :label ถูกล็อก — :reason', ['label' => $label, 'reason' => __((string) $optionConfig['locked_reason'])]);
             } elseif ($optionConfig['state'] !== self::STATE_ON) {
-                $errors["sub_options.{$option}"] = "ผู้ดูแลระบบปิดตัวเลือก {$label} ไว้";
+                $errors["sub_options.{$option}"] = __('ผู้ดูแลระบบปิดตัวเลือก :label ไว้', ['label' => $label]);
             }
 
             $requires = self::OPTIONS[$option]['requires'];
             if ($requires !== null && ! in_array($requires, $options, true)) {
-                $errors["sub_options.{$option}"] = "ตัวเลือก {$label} ต้องเปิด "
-                    .self::OPTIONS[$requires]['label_th'].' ด้วย';
+                $errors["sub_options.{$option}"] = __('ตัวเลือก :label ต้องเปิด :required ด้วย', [
+                    'label' => $label,
+                    'required' => __(self::OPTIONS[$requires]['label_th']),
+                ]);
             }
         }
 
@@ -584,10 +586,12 @@ class TokenFactoryPolicy
         $missing = array_values(array_diff($requiredAcks, $acks));
         if ($missing !== []) {
             $labels = array_map(
-                fn (string $key) => self::TYPES[$key]['label_th'] ?? self::OPTIONS[$key]['label_th'] ?? $key,
+                fn (string $key) => isset(self::TYPES[$key]['label_th']) || isset(self::OPTIONS[$key]['label_th'])
+                    ? __(self::TYPES[$key]['label_th'] ?? self::OPTIONS[$key]['label_th'])
+                    : $key,
                 $missing
             );
-            $errors['risk_ack'] = 'ต้องติ๊กยอมรับความเสี่ยงก่อน: '.implode(', ', $labels);
+            $errors['risk_ack'] = __('ต้องติ๊กยอมรับความเสี่ยงก่อน: :labels', ['labels' => implode(', ', $labels)]);
         }
 
         // ── ทศนิยม / จำนวน ─────────────────────────────────────────────────
@@ -595,14 +599,15 @@ class TokenFactoryPolicy
         $decimals = $isNft ? 0 : (int) ($request['decimals'] ?? 18);
         if (! $isNft && ($decimals < $typeConfig['decimals_min'] || $decimals > $typeConfig['decimals_max'])) {
             $errors['decimals'] = $typeConfig['decimals_min'] === $typeConfig['decimals_max']
-                ? "ทศนิยมต้องเป็น {$typeConfig['decimals_min']} เท่านั้น"
-                : "ทศนิยมต้องอยู่ระหว่าง {$typeConfig['decimals_min']}–{$typeConfig['decimals_max']}";
+                ? __('ทศนิยมต้องเป็น :decimals เท่านั้น', ['decimals' => (string) $typeConfig['decimals_min']])
+                : __('ทศนิยมต้องอยู่ระหว่าง :min–:max', ['min' => (string) $typeConfig['decimals_min'], 'max' => (string) $typeConfig['decimals_max']]);
         }
 
         $supply = trim((string) ($request['total_supply'] ?? ''));
         if ($supply !== '' && ctype_digit($supply) && bccomp($supply, (string) $typeConfig['max_supply'], 0) > 0) {
-            $errors['total_supply'] = 'จำนวนเหรียญเกินเพดานที่ผู้ดูแลกำหนด ('
-                .number_format((float) $typeConfig['max_supply']).')';
+            $errors['total_supply'] = __('จำนวนเหรียญเกินเพดานที่ผู้ดูแลกำหนด (:max)', [
+                'max' => number_format((float) $typeConfig['max_supply']),
+            ]);
         }
 
         // ── ชื่อ / สัญลักษณ์ ───────────────────────────────────────────────
@@ -610,12 +615,12 @@ class TokenFactoryPolicy
         if ($symbol !== '') {
             $max = (int) $policy['symbol_max_length'];
             if (! preg_match('/^[A-Z0-9]+$/', $symbol)) {
-                $errors['symbol'] = 'สัญลักษณ์ใช้ได้เฉพาะตัวอักษรอังกฤษ A–Z และตัวเลข 0–9';
+                $errors['symbol'] = __('สัญลักษณ์ใช้ได้เฉพาะตัวอักษรอังกฤษ A–Z และตัวเลข 0–9');
             } elseif (strlen($symbol) < 2 || strlen($symbol) > $max) {
-                $errors['symbol'] = "สัญลักษณ์ต้องยาว 2–{$max} ตัวอักษร";
+                $errors['symbol'] = __('สัญลักษณ์ต้องยาว 2–:max ตัวอักษร', ['max' => (string) $max]);
             } elseif (($reserved = $this->reservedAllowlist($symbol)) !== null
                 && ! in_array(strtolower((string) ($request['creator'] ?? '')), $reserved, true)) {
-                $errors['symbol'] = "สัญลักษณ์ {$symbol} สงวนไว้สำหรับโครงการทางการ ใช้ไม่ได้";
+                $errors['symbol'] = __('สัญลักษณ์ :symbol สงวนไว้สำหรับโครงการทางการ ใช้ไม่ได้', ['symbol' => $symbol]);
             }
         }
 
@@ -623,9 +628,9 @@ class TokenFactoryPolicy
         if ($name !== '') {
             $max = (int) $policy['name_max_length'];
             if (mb_strlen($name) < 2 || mb_strlen($name) > $max) {
-                $errors['name'] = "ชื่อเหรียญต้องยาว 2–{$max} ตัวอักษร";
+                $errors['name'] = __('ชื่อเหรียญต้องยาว 2–:max ตัวอักษร', ['max' => (string) $max]);
             } elseif (preg_match('/[\p{C}]/u', $name)) {
-                $errors['name'] = 'ชื่อเหรียญมีอักขระที่ใช้ไม่ได้';
+                $errors['name'] = __('ชื่อเหรียญมีอักขระที่ใช้ไม่ได้');
             }
         }
 
@@ -738,23 +743,27 @@ class TokenFactoryPolicy
     /**
      * ตัวเลือก/ประเภทในคำขอเดิมที่ตอนนี้ไม่ได้เปิดแล้ว — ใช้ตอนแอดมินกดอนุมัติ.
      *
-     * @return string[] ข้อความภาษาไทย
+     * @param  string|null  $locale  ภาษาของข้อความ (null = ภาษาของ request ปัจจุบัน)
+     * @return string[] ข้อความตามภาษา $locale
      */
-    public function stateViolations(string $tokenType, array $sub): array
+    public function stateViolations(string $tokenType, array $sub, ?string $locale = null): array
     {
         $type = self::policyTypeFor($tokenType);
         if ($type === null) {
-            return ['ไม่รู้จักประเภทเหรียญนี้'];
+            return [__('ไม่รู้จักประเภทเหรียญนี้', [], $locale)];
         }
 
         $violations = [];
         if (! $this->typeEnabled($type)) {
-            $violations[] = self::TYPES[$type]['label_th'].($this->typeState($type) === self::STATE_LOCKED ? ' ถูกล็อก' : ' ถูกปิดอยู่');
+            $violations[] = __($this->typeState($type) === self::STATE_LOCKED ? ':label ถูกล็อก' : ':label ถูกปิดอยู่', [
+                'label' => __(self::TYPES[$type]['label_th'], [], $locale),
+            ], $locale);
         }
         foreach ($this->requestedOptions($tokenType, $sub) as $option) {
             if ($this->optionState($option) !== self::STATE_ON) {
-                $violations[] = 'ตัวเลือก '.self::OPTIONS[$option]['label_th']
-                    .($this->optionState($option) === self::STATE_LOCKED ? ' ถูกล็อก' : ' ถูกปิดอยู่');
+                $violations[] = __($this->optionState($option) === self::STATE_LOCKED ? 'ตัวเลือก :label ถูกล็อก' : 'ตัวเลือก :label ถูกปิดอยู่', [
+                    'label' => __(self::OPTIONS[$option]['label_th'], [], $locale),
+                ], $locale);
             }
         }
 
@@ -886,7 +895,7 @@ class TokenFactoryPolicy
         if (array_key_exists('refund_mode', $input)) {
             $mode = (string) $input['refund_mode'];
             if (! in_array($mode, [self::REFUND_MANUAL, self::REFUND_AUTO], true)) {
-                $errors['refund_mode'] = 'วิธีคืนค่าธรรมเนียมต้องเป็น "แอดมินโอนเอง" หรือ "จ่ายอัตโนมัติ"';
+                $errors['refund_mode'] = __('วิธีคืนค่าธรรมเนียมต้องเป็น "แอดมินโอนเอง" หรือ "จ่ายอัตโนมัติ"');
             } else {
                 $next['refund_mode'] = $mode;
             }
@@ -895,7 +904,7 @@ class TokenFactoryPolicy
         if (array_key_exists('fee_wallet', $input)) {
             $wallet = strtolower(trim((string) $input['fee_wallet']));
             if ($wallet !== '' && ! preg_match('/^0x[a-f0-9]{40}$/', $wallet)) {
-                $errors['fee_wallet'] = 'ที่อยู่กระเป๋ารับค่าธรรมเนียมไม่ถูกต้อง';
+                $errors['fee_wallet'] = __('ที่อยู่กระเป๋ารับค่าธรรมเนียมไม่ถูกต้อง');
             } else {
                 $next['fee_wallet'] = $wallet;
             }
@@ -914,7 +923,7 @@ class TokenFactoryPolicy
             }
             $value = filter_var($input[$key], FILTER_VALIDATE_INT);
             if ($value === false || $value < $min || $value > $max) {
-                $errors[$key] = "{$label} ต้องอยู่ระหว่าง {$min}–{$max}";
+                $errors[$key] = __(':label ต้องอยู่ระหว่าง :min–:max', ['label' => __($label), 'min' => (string) $min, 'max' => (string) $max]);
             } else {
                 $next[$key] = $value;
             }
@@ -939,7 +948,7 @@ class TokenFactoryPolicy
                 } elseif (is_int($index) && is_string($row)) {
                     [$symbol, $wallets] = [$row, []];
                 } else {
-                    $errors["reserved_symbols.{$index}"] = 'รูปแบบสัญลักษณ์สงวนไม่ถูกต้อง';
+                    $errors["reserved_symbols.{$index}"] = __('รูปแบบสัญลักษณ์สงวนไม่ถูกต้อง');
 
                     continue;
                 }
@@ -952,13 +961,13 @@ class TokenFactoryPolicy
                 if ($symbol === '') {
                     // แถวว่างที่แอดมินกดเพิ่มไว้ข้ามได้ — แต่มีกระเป๋าโดยไม่มีสัญลักษณ์แปลว่าข้อมูลหาย
                     if ((array) $wallets !== []) {
-                        $errors["reserved_symbols.{$index}"] = 'ใส่กระเป๋าแล้วแต่ไม่ได้ใส่สัญลักษณ์';
+                        $errors["reserved_symbols.{$index}"] = __('ใส่กระเป๋าแล้วแต่ไม่ได้ใส่สัญลักษณ์');
                     }
 
                     continue;
                 }
                 if (! preg_match('/^[A-Z0-9]{1,20}$/', $symbol)) {
-                    $errors["reserved_symbols.{$index}"] = "สัญลักษณ์สงวน {$symbol} ไม่ถูกต้อง";
+                    $errors["reserved_symbols.{$index}"] = __('สัญลักษณ์สงวน :symbol ไม่ถูกต้อง', ['symbol' => $symbol]);
 
                     continue;
                 }
@@ -967,7 +976,7 @@ class TokenFactoryPolicy
                 foreach ((array) $wallets as $wallet) {
                     $wallet = strtolower(trim((string) $wallet));
                     if (! preg_match('/^0x[a-f0-9]{40}$/', $wallet)) {
-                        $errors["reserved_symbols.{$index}"] = "กระเป๋าที่อนุญาตให้ใช้ {$symbol} ไม่ถูกต้อง";
+                        $errors["reserved_symbols.{$index}"] = __('กระเป๋าที่อนุญาตให้ใช้ :symbol ไม่ถูกต้อง', ['symbol' => $symbol]);
 
                         continue 2;
                     }
@@ -985,14 +994,14 @@ class TokenFactoryPolicy
             if (! isset(self::TYPES[$key]) || ! is_array($row)) {
                 continue;
             }
-            $label = self::TYPES[$key]['label_th'];
+            $label = __(self::TYPES[$key]['label_th']);
 
             if (array_key_exists('state', $row)) {
                 $state = (string) $row['state'];
                 if (isset(self::LOCKED["types.{$key}"]) && $state !== self::STATE_OFF && $state !== self::STATE_LOCKED) {
-                    $errors["types.{$key}.state"] = "{$label} ถูกล็อกในโค้ด เปิดไม่ได้ — ".self::LOCKED["types.{$key}"];
+                    $errors["types.{$key}.state"] = __(':label ถูกล็อกในโค้ด เปิดไม่ได้ — :reason', ['label' => $label, 'reason' => __(self::LOCKED["types.{$key}"])]);
                 } elseif (! in_array($state, [self::STATE_ON, self::STATE_OFF, self::STATE_LOCKED], true)) {
-                    $errors["types.{$key}.state"] = "สถานะของ{$label}ไม่ถูกต้อง";
+                    $errors["types.{$key}.state"] = __('สถานะของ:labelไม่ถูกต้อง', ['label' => $label]);
                 } else {
                     $next['types'][$key]['state'] = $state === self::STATE_ON ? self::STATE_ON : self::STATE_OFF;
                 }
@@ -1001,7 +1010,7 @@ class TokenFactoryPolicy
             if (array_key_exists('fee', $row)) {
                 $fee = filter_var($row['fee'], FILTER_VALIDATE_FLOAT);
                 if ($fee === false || $fee <= 0 || $fee > self::MAX_FEE) {
-                    $errors["types.{$key}.fee"] = "ค่าธรรมเนียม{$label}ต้องมากกว่า 0 และไม่เกิน ".number_format(self::MAX_FEE).' TPIX';
+                    $errors["types.{$key}.fee"] = __('ค่าธรรมเนียม:labelต้องมากกว่า 0 และไม่เกิน :max TPIX', ['label' => $label, 'max' => number_format(self::MAX_FEE)]);
                 } else {
                     $next['types'][$key]['fee'] = round($fee, 6);
                 }
@@ -1010,7 +1019,7 @@ class TokenFactoryPolicy
             if (array_key_exists('max_supply', $row)) {
                 $supply = trim((string) $row['max_supply']);
                 if (! preg_match('/^[1-9][0-9]*$/', $supply) || bccomp($supply, self::MAX_SUPPLY_CEILING, 0) > 0) {
-                    $errors["types.{$key}.max_supply"] = "เพดานจำนวนเหรียญของ{$label}ต้องเป็นจำนวนเต็มบวกไม่เกิน 10^30";
+                    $errors["types.{$key}.max_supply"] = __('เพดานจำนวนเหรียญของ:labelต้องเป็นจำนวนเต็มบวกไม่เกิน 10^30', ['label' => $label]);
                 } else {
                     $next['types'][$key]['max_supply'] = $supply;
                 }
@@ -1019,7 +1028,7 @@ class TokenFactoryPolicy
             $min = array_key_exists('decimals_min', $row) ? filter_var($row['decimals_min'], FILTER_VALIDATE_INT) : $next['types'][$key]['decimals_min'];
             $max = array_key_exists('decimals_max', $row) ? filter_var($row['decimals_max'], FILTER_VALIDATE_INT) : $next['types'][$key]['decimals_max'];
             if ($min === false || $max === false || $min < 0 || $max > 18 || $min > $max) {
-                $errors["types.{$key}.decimals"] = "ช่วงทศนิยมของ{$label}ต้องอยู่ใน 0–18 และค่าต่ำสุดไม่เกินค่าสูงสุด";
+                $errors["types.{$key}.decimals"] = __('ช่วงทศนิยมของ:labelต้องอยู่ใน 0–18 และค่าต่ำสุดไม่เกินค่าสูงสุด', ['label' => $label]);
             } else {
                 $next['types'][$key]['decimals_min'] = $min;
                 $next['types'][$key]['decimals_max'] = $max;
@@ -1037,14 +1046,14 @@ class TokenFactoryPolicy
             if (! isset(self::OPTIONS[$key]) || ! is_array($row)) {
                 continue;
             }
-            $label = self::OPTIONS[$key]['label_th'];
+            $label = __(self::OPTIONS[$key]['label_th']);
 
             if (array_key_exists('state', $row)) {
                 $state = (string) $row['state'];
                 if (isset(self::LOCKED["options.{$key}"]) && $state !== self::STATE_OFF && $state !== self::STATE_LOCKED) {
-                    $errors["options.{$key}.state"] = "ตัวเลือก {$label} ถูกล็อกในโค้ด เปิดไม่ได้ — ".self::LOCKED["options.{$key}"];
+                    $errors["options.{$key}.state"] = __('ตัวเลือก :label ถูกล็อกในโค้ด เปิดไม่ได้ — :reason', ['label' => $label, 'reason' => __(self::LOCKED["options.{$key}"])]);
                 } elseif (! in_array($state, [self::STATE_ON, self::STATE_OFF, self::STATE_LOCKED], true)) {
-                    $errors["options.{$key}.state"] = "สถานะของตัวเลือก {$label} ไม่ถูกต้อง";
+                    $errors["options.{$key}.state"] = __('สถานะของตัวเลือก :label ไม่ถูกต้อง', ['label' => $label]);
                 } else {
                     $next['options'][$key]['state'] = $state === self::STATE_ON ? self::STATE_ON : self::STATE_OFF;
                 }
@@ -1053,7 +1062,7 @@ class TokenFactoryPolicy
             if (array_key_exists('fee', $row)) {
                 $fee = filter_var($row['fee'], FILTER_VALIDATE_FLOAT);
                 if ($fee === false || $fee <= 0 || $fee > self::MAX_FEE) {
-                    $errors["options.{$key}.fee"] = "ค่าธรรมเนียมตัวเลือก {$label} ต้องมากกว่า 0 และไม่เกิน ".number_format(self::MAX_FEE).' TPIX';
+                    $errors["options.{$key}.fee"] = __('ค่าธรรมเนียมตัวเลือก :label ต้องมากกว่า 0 และไม่เกิน :max TPIX', ['label' => $label, 'max' => number_format(self::MAX_FEE)]);
                 } else {
                     $next['options'][$key]['fee'] = round($fee, 6);
                 }
@@ -1247,7 +1256,7 @@ class TokenFactoryPolicy
 
             if (isset(self::SELECT_CHOICES[$key])) {
                 if (! in_array($value, self::SELECT_CHOICES[$key], true)) {
-                    $errors[$field] = "ค่าของ {$key} ไม่ถูกต้อง";
+                    $errors[$field] = __('ค่าของ :key ไม่ถูกต้อง', ['key' => $key]);
                 }
 
                 continue;
@@ -1255,7 +1264,7 @@ class TokenFactoryPolicy
 
             if (in_array($key, self::ADDRESS_KEYS, true)) {
                 if (! is_string($value) || ! preg_match('/^0x[a-fA-F0-9]{40}$/', $value)) {
-                    $errors[$field] = 'ที่อยู่กระเป๋าไม่ถูกต้อง';
+                    $errors[$field] = __('ที่อยู่กระเป๋าไม่ถูกต้อง');
                 }
 
                 continue;
@@ -1264,14 +1273,14 @@ class TokenFactoryPolicy
             if (in_array($key, self::URI_KEYS, true)) {
                 if (! is_string($value) || mb_strlen($value) > 500
                     || ! (str_starts_with($value, 'https://') || str_starts_with($value, 'ipfs://'))) {
-                    $errors[$field] = 'ที่อยู่ข้อมูลต้องขึ้นต้นด้วย https:// หรือ ipfs:// และยาวไม่เกิน 500 ตัวอักษร';
+                    $errors[$field] = __('ที่อยู่ข้อมูลต้องขึ้นต้นด้วย https:// หรือ ipfs:// และยาวไม่เกิน 500 ตัวอักษร');
                 }
 
                 continue;
             }
 
             if (is_array($value) || is_object($value) || ! is_numeric($value)) {
-                $errors[$field] = "ค่าของ {$key} ต้องเป็นตัวเลข";
+                $errors[$field] = __('ค่าของ :key ต้องเป็นตัวเลข', ['key' => $key]);
 
                 continue;
             }
@@ -1282,11 +1291,11 @@ class TokenFactoryPolicy
                 $fraction = $plain !== null && str_contains($plain, '.') ? strlen(explode('.', $plain)[1]) : 0;
 
                 if ($plain === null) {
-                    $errors[$field] = "ค่าของ {$key} ต้องเป็นตัวเลขไม่ติดลบ";
+                    $errors[$field] = __('ค่าของ :key ต้องเป็นตัวเลขไม่ติดลบ', ['key' => $key]);
                 } elseif ($fraction > $maxDecimals) {
                     $errors[$field] = $maxDecimals === 0
-                        ? "ค่าของ {$key} ต้องเป็นจำนวนเต็ม"
-                        : "ค่าของ {$key} มีทศนิยมได้ไม่เกิน {$maxDecimals} ตำแหน่ง";
+                        ? __('ค่าของ :key ต้องเป็นจำนวนเต็ม', ['key' => $key])
+                        : __('ค่าของ :key มีทศนิยมได้ไม่เกิน :decimals ตำแหน่ง', ['key' => $key, 'decimals' => (string) $maxDecimals]);
                 }
 
                 continue;
@@ -1294,7 +1303,7 @@ class TokenFactoryPolicy
 
             $number = (float) $value;
             if ($number < 0) {
-                $errors[$field] = "ค่าของ {$key} ติดลบไม่ได้";
+                $errors[$field] = __('ค่าของ :key ติดลบไม่ได้', ['key' => $key]);
 
                 continue;
             }
@@ -1302,7 +1311,7 @@ class TokenFactoryPolicy
             if (isset(self::NUMBER_RANGES[$key])) {
                 [$min, $max] = self::NUMBER_RANGES[$key];
                 if ($number < $min || $number > $max) {
-                    $errors[$field] = "ค่าของ {$key} ต้องอยู่ระหว่าง {$min}–{$max}";
+                    $errors[$field] = __('ค่าของ :key ต้องอยู่ระหว่าง :min–:max', ['key' => $key, 'min' => (string) $min, 'max' => (string) $max]);
                 }
             }
         }
@@ -1311,18 +1320,18 @@ class TokenFactoryPolicy
         if ($this->truthy($sub, 'mint_cap_enabled') && in_array('mint_cap', $allowed, true)) {
             $cap = (string) (self::plainDecimal($sub['mint_cap'] ?? null) ?? '');
             if (! ctype_digit($cap) || $cap === '' || bccomp($cap, '0', 0) <= 0) {
-                $errors['sub_options.mint_cap'] = 'ต้องระบุเพดาน mint เป็นจำนวนเต็มบวก';
+                $errors['sub_options.mint_cap'] = __('ต้องระบุเพดาน mint เป็นจำนวนเต็มบวก');
             } elseif ($supply !== '' && ctype_digit($supply) && bccomp($cap, $supply, 0) < 0) {
-                $errors['sub_options.mint_cap'] = 'เพดาน mint ต้องไม่ต่ำกว่าจำนวนเหรียญตั้งต้น';
+                $errors['sub_options.mint_cap'] = __('เพดาน mint ต้องไม่ต่ำกว่าจำนวนเหรียญตั้งต้น');
             } elseif (bccomp($cap, (string) $typeConfig['max_supply'], 0) > 0) {
-                $errors['sub_options.mint_cap'] = 'เพดาน mint เกินเพดานจำนวนเหรียญที่ผู้ดูแลกำหนด';
+                $errors['sub_options.mint_cap'] = __('เพดาน mint เกินเพดานจำนวนเหรียญที่ผู้ดูแลกำหนด');
             }
         }
 
         // จำนวนสำรองต้องไม่เกินจำนวนทั้งหมดของคอลเลกชัน
         if (isset($sub['reserve_count']) && is_numeric($sub['reserve_count']) && $supply !== '' && ctype_digit($supply)
             && bccomp((string) (int) $sub['reserve_count'], $supply, 0) > 0) {
-            $errors['sub_options.reserve_count'] = 'จำนวนสำรองต้องไม่เกินจำนวน NFT ทั้งหมด';
+            $errors['sub_options.reserve_count'] = __('จำนวนสำรองต้องไม่เกินจำนวน NFT ทั้งหมด');
         }
 
         return $errors;

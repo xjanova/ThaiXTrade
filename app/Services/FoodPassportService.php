@@ -90,7 +90,7 @@ class FoodPassportService
         // ต้องมี trace อย่างน้อย 2 records
         $traceCount = $product->traces()->count();
         if ($traceCount < 2) {
-            throw new \RuntimeException('ต้องมีข้อมูล trace อย่างน้อย 2 จุดก่อน mint ใบรับรอง');
+            throw new \RuntimeException(__('ต้องมีข้อมูล trace อย่างน้อย 2 จุดก่อน mint ใบรับรอง'));
         }
 
         // สร้าง certificate data summary
@@ -234,11 +234,11 @@ class FoodPassportService
     private function buildJourney(FoodProduct $product): array
     {
         $stageLabels = [
-            'farm' => ['name' => 'ฟาร์ม / แหล่งผลิต', 'icon' => 'seedling', 'color' => '#22C55E'],
-            'processing' => ['name' => 'โรงงานแปรรูป', 'icon' => 'factory', 'color' => '#F59E0B'],
-            'storage' => ['name' => 'คลังสินค้า', 'icon' => 'warehouse', 'color' => '#6366F1'],
-            'transport' => ['name' => 'ขนส่ง', 'icon' => 'truck', 'color' => '#3B82F6'],
-            'retail' => ['name' => 'ร้านค้า / ผู้บริโภค', 'icon' => 'store', 'color' => '#EC4899'],
+            'farm' => ['name' => __('ฟาร์ม / แหล่งผลิต'), 'icon' => 'seedling', 'color' => '#22C55E'],
+            'processing' => ['name' => __('โรงงานแปรรูป'), 'icon' => 'factory', 'color' => '#F59E0B'],
+            'storage' => ['name' => __('คลังสินค้า'), 'icon' => 'warehouse', 'color' => '#6366F1'],
+            'transport' => ['name' => __('ขนส่ง'), 'icon' => 'truck', 'color' => '#3B82F6'],
+            'retail' => ['name' => __('ร้านค้า / ผู้บริโภค'), 'icon' => 'store', 'color' => '#EC4899'],
         ];
 
         $journey = [];

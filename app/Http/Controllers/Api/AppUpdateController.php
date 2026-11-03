@@ -580,7 +580,7 @@ class AppUpdateController extends Controller
                 'download_url' => $supported ? null : url('/download'),
                 'message' => $supported
                     ? null
-                    : 'รุ่นนี้เลิกให้บริการแล้ว กรุณาดาวน์โหลดรุ่นใหม่จาก tpix.online/download',
+                    : __('รุ่นนี้เลิกให้บริการแล้ว กรุณาดาวน์โหลดรุ่นใหม่จาก tpix.online/download'),
             ],
         ]);
     }

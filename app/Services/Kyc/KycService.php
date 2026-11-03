@@ -268,7 +268,7 @@ class KycService
         $maxKb = (int) config('kyc.uploads.max_size_kb', 8192);
 
         if ($file->getSize() > $maxKb * 1024) {
-            throw new RuntimeException("ไฟล์ใหญ่เกิน {$maxKb} KB");
+            throw new RuntimeException(__('ไฟล์ใหญ่เกิน :max KB', ['max' => $maxKb]));
         }
 
         // getMimeType() ของ Symfony อ่านจากเนื้อไฟล์ (finfo) ไม่ใช่จาก header ที่ client ส่ง

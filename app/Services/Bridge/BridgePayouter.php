@@ -356,30 +356,30 @@ class BridgePayouter
     {
         $hash = strtolower((string) $withdrawal->payout_tx_hash);
         if ($hash === '') {
-            return ['safe' => true, 'paid' => false, 'reason' => 'ยังไม่เคยส่ง'];
+            return ['safe' => true, 'paid' => false, 'reason' => __('ยังไม่เคยส่ง')];
         }
 
         $rpc = $this->config->rpc((int) $withdrawal->target_chain_id);
         if (! $rpc) {
-            return ['safe' => false, 'paid' => false, 'reason' => 'เชนปลายทางไม่อยู่ในค่าตั้งแล้ว — ตรวจด้วยมือบน explorer'];
+            return ['safe' => false, 'paid' => false, 'reason' => __('เชนปลายทางไม่อยู่ในค่าตั้งแล้ว — ตรวจด้วยมือบน explorer')];
         }
 
         $receipt = $rpc->receiptAny($hash)['receipt'];
 
         if ($receipt !== null) {
             return strtolower((string) ($receipt['status'] ?? '')) === '0x1'
-                ? ['safe' => false, 'paid' => true, 'reason' => 'ธุรกรรมเดิมจ่ายสำเร็จแล้วบนเชน']
-                : ['safe' => true, 'paid' => false, 'reason' => 'ธุรกรรมเดิม revert — เงินไม่ได้ออก'];
+                ? ['safe' => false, 'paid' => true, 'reason' => __('ธุรกรรมเดิมจ่ายสำเร็จแล้วบนเชน')]
+                : ['safe' => true, 'paid' => false, 'reason' => __('ธุรกรรมเดิม revert — เงินไม่ได้ออก')];
         }
 
         // ตัวธุรกรรมบอกว่าลงบล็อกแล้ว (มี blockNumber) แต่อ่านใบเสร็จไม่ได้ — อาจจ่ายไปแล้ว ห้ามเดา
         $own = $rpc->transactionAny($hash);
         if ($own !== null && ! empty($own['blockNumber'])) {
-            return ['safe' => false, 'paid' => false, 'reason' => 'ธุรกรรมเดิมลงบล็อกแล้วแต่อ่านใบเสร็จไม่ได้ — ลองใหม่ภายหลัง ห้ามจ่ายใหม่'];
+            return ['safe' => false, 'paid' => false, 'reason' => __('ธุรกรรมเดิมลงบล็อกแล้วแต่อ่านใบเสร็จไม่ได้ — ลองใหม่ภายหลัง ห้ามจ่ายใหม่')];
         }
 
         if ($withdrawal->payout_nonce === null) {
-            return ['safe' => false, 'paid' => false, 'reason' => 'รายการนี้ไม่มี nonce ของธุรกรรมเดิม — พิสูจน์บนเชนไม่ได้ ตรวจด้วยมือบน explorer'];
+            return ['safe' => false, 'paid' => false, 'reason' => __('รายการนี้ไม่มี nonce ของธุรกรรมเดิม — พิสูจน์บนเชนไม่ได้ ตรวจด้วยมือบน explorer')];
         }
 
         $from = strtolower((string) ($withdrawal->payout_from ?: $this->config->signerAddress('payout')));
@@ -387,11 +387,11 @@ class BridgePayouter
         $count = $from !== '' ? $rpc->nonceLatest($from) : null;
 
         if ($count === null) {
-            return ['safe' => false, 'paid' => false, 'reason' => 'อ่าน nonce ของกระเป๋าจ่ายไม่ได้ — ลองใหม่ภายหลัง'];
+            return ['safe' => false, 'paid' => false, 'reason' => __('อ่าน nonce ของกระเป๋าจ่ายไม่ได้ — ลองใหม่ภายหลัง')];
         }
 
         if ($count <= $nonce) {
-            return ['safe' => false, 'paid' => false, 'reason' => "nonce {$nonce} ยังว่าง ธุรกรรมเดิมยังลงบล็อกได้ — รอให้ลงบล็อก หรือให้เจ้าของส่งธุรกรรมแทนที่ด้วย nonce {$nonce} จากกระเป๋าจ่าย ห้ามจ่ายใหม่"];
+            return ['safe' => false, 'paid' => false, 'reason' => __('nonce :nonce ยังว่าง ธุรกรรมเดิมยังลงบล็อกได้ — รอให้ลงบล็อก หรือให้เจ้าของส่งธุรกรรมแทนที่ด้วย nonce :nonce จากกระเป๋าจ่าย ห้ามจ่ายใหม่', ['nonce' => $nonce])];
         }
 
         // nonce ถูกใช้แล้ว — ต้องเจอตัวที่ใช้มันจริง
@@ -423,8 +423,8 @@ class BridgePayouter
             }
         }
 
-        return ['safe' => false, 'paid' => false, 'reason' => "พิสูจน์ไม่ได้ว่าเงินไม่ได้ออก: ไม่เจอใบเสร็จของธุรกรรมเดิม (อาจเป็นเพราะ RPC) และไม่รู้ว่าธุรกรรมใดใช้ nonce {$nonce}"
-            ." — เปิดกระเป๋าจ่าย {$from} บน explorer หา nonce {$nonce} ถ้าเป็น {$hash} แปลว่าจ่ายไปแล้ว ถ้าเป็นธุรกรรมอื่นให้กรอก hash นั้นแล้วอนุมัติอีกครั้ง"];
+        return ['safe' => false, 'paid' => false, 'reason' => __('พิสูจน์ไม่ได้ว่าเงินไม่ได้ออก: ไม่เจอใบเสร็จของธุรกรรมเดิม (อาจเป็นเพราะ RPC) และไม่รู้ว่าธุรกรรมใดใช้ nonce :nonce'
+            .' — เปิดกระเป๋าจ่าย :from บน explorer หา nonce :nonce ถ้าเป็น :hash แปลว่าจ่ายไปแล้ว ถ้าเป็นธุรกรรมอื่นให้กรอก hash นั้นแล้วอนุมัติอีกครั้ง', ['nonce' => $nonce, 'from' => $from, 'hash' => $hash])];
     }
 
     /** ใบเสร็จของธุรกรรมนี้ เมื่อลงบล็อกแล้วจริงและเป็นของกระเป๋านี้ที่ nonce นี้ — เชื่อเฉพาะสิ่งที่อ่านเจอ ไม่เชื่อ "ไม่เจอ" */
@@ -466,16 +466,16 @@ class BridgePayouter
         $amountRaw = (string) $withdrawal->payout_amount_raw;
 
         if ($received === null) {
-            return ['safe' => false, 'paid' => false, 'reason' => "อ่าน log ของธุรกรรม {$txHash} ที่ใช้ nonce {$nonce} ไม่ได้ — ลองใหม่ภายหลัง ห้ามจ่ายใหม่"];
+            return ['safe' => false, 'paid' => false, 'reason' => __('อ่าน log ของธุรกรรม :tx ที่ใช้ nonce :nonce ไม่ได้ — ลองใหม่ภายหลัง ห้ามจ่ายใหม่', ['tx' => $txHash, 'nonce' => $nonce])];
         }
 
         if (bccomp($received, '0', 0) === 0) {
-            return ['safe' => true, 'paid' => false, 'reason' => "nonce {$nonce} ถูกใช้โดยธุรกรรม {$txHash} ที่ลงบล็อกแล้ว และไม่ได้โอน USDT ให้ผู้รับรายการนี้ — ธุรกรรมเดิมไม่มีทางลงบล็อก เงินไม่ได้ออก"];
+            return ['safe' => true, 'paid' => false, 'reason' => __('nonce :nonce ถูกใช้โดยธุรกรรม :tx ที่ลงบล็อกแล้ว และไม่ได้โอน USDT ให้ผู้รับรายการนี้ — ธุรกรรมเดิมไม่มีทางลงบล็อก เงินไม่ได้ออก', ['nonce' => $nonce, 'tx' => $txHash])];
         }
 
         // เงินก้อนนี้เป็นของรายการอื่น นับเป็นของรายการนี้ไม่ได้ (ผู้รับจะได้ไม่ครบ) แต่ก็ยืนยันไม่ได้ว่ารายการนี้ไม่ได้จ่าย
         if ($ofOtherWithdrawal) {
-            return ['safe' => false, 'paid' => false, 'reason' => "ธุรกรรม {$txHash} ที่ใช้ nonce {$nonce} เป็นของรายการถอนอื่น และโอน USDT เข้าผู้รับคนเดียวกัน — แยกเองไม่ได้ว่าเป็นเงินของรายการไหน ตรวจด้วยมือบน explorer ห้ามจ่ายใหม่"];
+            return ['safe' => false, 'paid' => false, 'reason' => __('ธุรกรรม :tx ที่ใช้ nonce :nonce เป็นของรายการถอนอื่น และโอน USDT เข้าผู้รับคนเดียวกัน — แยกเองไม่ได้ว่าเป็นเงินของรายการไหน ตรวจด้วยมือบน explorer ห้ามจ่ายใหม่', ['tx' => $txHash, 'nonce' => $nonce])];
         }
 
         if (strtolower((string) ($receipt['status'] ?? '')) === '0x1' && bccomp($received, $amountRaw, 0) === 0) {
@@ -484,13 +484,13 @@ class BridgePayouter
             return [
                 'safe' => false,
                 'paid' => true,
-                'reason' => "จ่ายแล้วด้วยธุรกรรมแทนที่ {$txHash} (nonce {$nonce}) ที่โอน USDT ครบยอดให้ผู้รับ — ธุรกรรมเดิม {$withdrawal->payout_tx_hash} ไม่มีทางลงบล็อก",
+                'reason' => __('จ่ายแล้วด้วยธุรกรรมแทนที่ :tx (nonce :nonce) ที่โอน USDT ครบยอดให้ผู้รับ — ธุรกรรมเดิม :old_tx ไม่มีทางลงบล็อก', ['tx' => $txHash, 'nonce' => $nonce, 'old_tx' => (string) $withdrawal->payout_tx_hash]),
                 'paid_tx' => $txHash,
                 'paid_block' => $block,
             ];
         }
 
-        return ['safe' => false, 'paid' => false, 'reason' => "ธุรกรรม {$txHash} ที่ใช้ nonce {$nonce} โอน USDT เข้าผู้รับ {$received} หน่วยดิบ ไม่ตรงกับยอดจ่าย {$amountRaw} — มีเงินถึงผู้รับแล้ว ตรวจด้วยมือบน explorer ห้ามจ่ายใหม่"];
+        return ['safe' => false, 'paid' => false, 'reason' => __('ธุรกรรม :tx ที่ใช้ nonce :nonce โอน USDT เข้าผู้รับ :received หน่วยดิบ ไม่ตรงกับยอดจ่าย :amount — มีเงินถึงผู้รับแล้ว ตรวจด้วยมือบน explorer ห้ามจ่ายใหม่', ['tx' => $txHash, 'nonce' => $nonce, 'received' => $received, 'amount' => $amountRaw])];
     }
 
     /** ยอด USDT รวมที่ใบเสร็จนี้โอนเข้าผู้รับของรายการ — null = อ่าน log ไม่ครบ ("อ่านไม่ได้" ต้องไม่กลายเป็น "ไม่มีการโอน") */

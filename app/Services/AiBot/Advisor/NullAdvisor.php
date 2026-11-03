@@ -12,7 +12,7 @@ namespace App\Services\AiBot\Advisor;
  */
 class NullAdvisor implements Advisor
 {
-    public function __construct(private readonly string $reason = 'ยังไม่ได้ตั้งค่าที่ปรึกษา AI') {}
+    public function __construct(private readonly ?string $reason = null) {}
 
     public function name(): string
     {
@@ -26,6 +26,6 @@ class NullAdvisor implements Advisor
 
     public function advise(array $context): array
     {
-        return ['ok' => false, 'provider' => 'null', 'text' => '', 'reason' => $this->reason];
+        return ['ok' => false, 'provider' => 'null', 'text' => '', 'reason' => $this->reason ?? __('ยังไม่ได้ตั้งค่าที่ปรึกษา AI')];
     }
 }

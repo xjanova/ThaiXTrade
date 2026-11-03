@@ -54,11 +54,11 @@ class KycApiController extends Controller
         try {
             $url = $this->thaiprompt->beginAppAuthorization($user);
         } catch (ThaipromptKycException $e) {
-            return $this->fail('THAIPROMPT_UNAVAILABLE', $e->getMessage(), 422);
+            return $this->fail('THAIPROMPT_UNAVAILABLE', __($e->getMessage()), 422);
         } catch (RuntimeException $e) {
             $this->thaiprompt->logUnexpected($e, $user);
 
-            return $this->fail('REQUEST_FAILED', ThaipromptKycService::ERR_UNEXPECTED, 500);
+            return $this->fail('REQUEST_FAILED', __(ThaipromptKycService::ERR_UNEXPECTED), 500);
         }
 
         return response()->json(['success' => true, 'data' => ['authorize_url' => $url]]);
@@ -80,12 +80,12 @@ class KycApiController extends Controller
         } catch (ThaipromptKycException $e) {
             $code = $e->getMessage() === ThaipromptKycService::ERR_TAKEN ? 'THAIPROMPT_TAKEN' : 'THAIPROMPT_LINK_FAILED';
 
-            return $this->fail($code, $e->getMessage(), 422);
+            return $this->fail($code, __($e->getMessage()), 422);
         } catch (RuntimeException $e) {
             $this->thaiprompt->logUnexpected($e, $user);
 
             // รหัสรับผลถูกดึงออกจากแคชตั้งแต่บรรทัดแรก แลกซ้ำไม่ได้แล้ว — รหัสนี้สั่งแอปเลิกเก็บไว้แลกต่อ
-            return $this->fail('THAIPROMPT_LINK_FAILED', ThaipromptKycService::ERR_UNEXPECTED, 500);
+            return $this->fail('THAIPROMPT_LINK_FAILED', __(ThaipromptKycService::ERR_UNEXPECTED), 500);
         }
 
         return response()->json(['success' => true, 'data' => $this->payload($user->fresh())]);
@@ -100,7 +100,7 @@ class KycApiController extends Controller
 
         $link = $user->thaipromptKycLink;
         if (! $link) {
-            return $this->fail('THAIPROMPT_NOT_LINKED', 'ยังไม่ได้เชื่อมบัญชี Thaiprompt', 404);
+            return $this->fail('THAIPROMPT_NOT_LINKED', __('ยังไม่ได้เชื่อมบัญชี Thaiprompt'), 404);
         }
 
         try {
@@ -108,11 +108,11 @@ class KycApiController extends Controller
         } catch (ThaipromptKycException $e) {
             $code = $e->getMessage() === ThaipromptKycService::ERR_RECONNECT ? 'THAIPROMPT_RECONNECT' : 'THAIPROMPT_UNAVAILABLE';
 
-            return $this->refreshFailed($user, $code, $e->getMessage(), 422);
+            return $this->refreshFailed($user, $code, __($e->getMessage()), 422);
         } catch (RuntimeException $e) {
             $this->thaiprompt->logUnexpected($e, $user);
 
-            return $this->refreshFailed($user, 'REQUEST_FAILED', ThaipromptKycService::ERR_UNEXPECTED, 500);
+            return $this->refreshFailed($user, 'REQUEST_FAILED', __(ThaipromptKycService::ERR_UNEXPECTED), 500);
         }
 
         return response()->json(['success' => true, 'data' => $this->payload($user->fresh())]);
@@ -167,7 +167,7 @@ class KycApiController extends Controller
     private function noAccount(): JsonResponse
     {
         // ไม่มีแถวผู้ใช้ของกระเป๋านี้ / ยังไม่ได้เซ็นยืนยัน — แอปพาไปเซ็นใหม่
-        return $this->fail('WALLET_NOT_VERIFIED', 'ยืนยันกระเป๋าก่อนดูสถานะการยืนยันตัวตน', 403);
+        return $this->fail('WALLET_NOT_VERIFIED', __('ยืนยันกระเป๋าก่อนดูสถานะการยืนยันตัวตน'), 403);
     }
 
     private function fail(string $code, string $message, int $status): JsonResponse

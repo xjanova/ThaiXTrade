@@ -40,6 +40,62 @@ class BotRunner
      */
     private const MINUTES_PER_BAR = ['1m' => 1, '5m' => 5, '15m' => 15, '1h' => 60, '4h' => 240, '1d' => 1440];
 
+    /** ป้ายนำหน้าของสัญญาณรอยืนยัน — หน้าเว็บอ่านป้ายนี้ตรงๆ จึงต้องคงเป็นข้อความเดิมทุกภาษา */
+    private const PENDING_PREFIX = '[รอยืนยัน] ';
+
+    /**
+     * แม่แบบเหตุผลที่มีค่าแทรก (ตัวเลข/รายการ) ซึ่งเครื่องยนต์บอทเขียนลงฐานข้อมูลเป็นภาษาไทยเสมอ.
+     *
+     * แปลตอนแสดงผลเท่านั้น (localizeReason) — เขียนลงฐานข้อมูลต้องเป็นข้อความเดิม เพราะ
+     * cron ไม่มีภาษาของผู้ใช้ และ AiBotDecision::isSameSituation เทียบเหตุผลตรงตัว
+     * ค่า = ชื่อ placeholder ที่ตัวมันเองเป็นเหตุผล (หรือรายการคั่นด้วย " · ") ซึ่งต้องแปลต่อ
+     */
+    private const REASON_TEMPLATES = [
+        // แบบเจาะจงต้องมาก่อน 'AI สั่งปิดไม้: :reasons' (AiViewGate ต่อท้ายด้วยอัตราทายถูก)
+        'AI สั่งปิดไม้: :why (ประวัติถูก :pct%)' => ['why'],
+        // BotRunner
+        'บอทเสนอให้ซื้อ — :reason' => ['reason'],
+        'บอทเสนอให้ขาย — :reason' => ['reason'],
+        'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว — บอทถูกพักไว้: :reason' => ['reason'],
+        'ตลาดเข้าภาวะตื่นตระหนก — เทออกทั้งหมด: :reasons' => ['reasons'],
+        'หยุดเข้าไม้ใหม่ชั่วคราว: :reasons' => ['reasons'],
+        'AI สั่งปิดไม้: :reasons' => ['reasons'],
+        'AI ลดขนาดไม้เหลือศูนย์รอบนี้: :reasons' => ['reasons'],
+        'แนวโน้มใหญ่ของตลาดเป็นขาลง (:symbol รายวันต่ำกว่า EMA :period อยู่ :pct%) — งดเปิดไม้ใหม่' => [],
+        'ถึงจุดตัดขาดทุนที่ตั้งไว้ (:pct%)' => [],
+        'ถึงเป้าทำกำไรที่ตั้งไว้ (+:pct%)' => [],
+        'ขาดทุนสะสมวันนี้ถึงเพดาน $:amount — ปิดไม้และพักบอท' => [],
+        'ไม่รู้จักกลยุทธ์ :strategy' => [],
+        // กลยุทธ์
+        'ถือครบ :bars แท่งแล้วยังไม่กำไร — ปิดไม้คืนทุน (time stop)' => [],
+        'ความผันผวนต่ำเกินไป (ATR :atr% < :min%) — ไม่คุ้มต้นทุนเข้า-ออก' => [],
+        'ตลาดกำลังมีทิศทาง (ER :er ≥ :max) — กริดใช้ได้เฉพาะตลาดออกข้าง' => [],
+        'ทะลุขอบบนแค่ :size ATR (ต้องการ ≥ :min) — ทะลุนิดเดียวหลอกบ่อย' => [],
+        'พักระหว่างไม้ อีก :seconds วิ' => [],
+        'โมเดลกลับข้าง ความมั่นใจฝั่งขาย :confidence%' => [],
+        'ความมั่นใจ :confidence% ยังไม่ถึงเกณฑ์ :threshold%' => [],
+        'โมเดลรวมสัญญาณให้ความมั่นใจ :confidence%' => [],
+        'RSI :rsi เข้าเขตซื้อมากเกินไป — ขายทำกำไร' => [],
+        'RSI :rsi ต่ำ แต่ราคาอยู่ใต้เส้นเทรนด์ใหญ่ (EMA 200) ถึง :pct% (ยอมได้ :tolerance%) — ไม่รับมีดตก' => [],
+        'RSI :rsi เข้าเขตขายมากเกินไป — เข้าซื้อสวน' => [],
+        // AiViewGate (เหตุผลจาก AI ที่ซ้อนอยู่ในรายการของ BotRunner)
+        'AI ไม่แนะนำเหรียญนี้ แต่ประวัติ avoid ที่ความมั่นใจระดับนี้ถูกแค่ :pct% — ไม่ห้ามเข้าไม้' => [],
+        'AI ไม่แนะนำเหรียญนี้รอบนี้: :why' => ['why'],
+        'AI ขอปิดไม้ แต่ประวัติ exit ที่ความมั่นใจระดับนี้ถูกแค่ :pct% — ไม่จ่ายค่าออก' => [],
+        'AI เห็นด้วยกับฝั่งซื้อ แต่ประวัติ buy ที่ความมั่นใจระดับนี้ถูกแค่ :pct% — ไม่ผ่อนเกณฑ์' => [],
+        'AI เห็นด้วยกับฝั่งซื้อ — ผ่อนเกณฑ์ความมั่นใจลง :points จุด' => [],
+        // MarketRiskService
+        'ราคาร่วง :pct% ใน 1 ชั่วโมง' => [],
+        'ราคาย่อ :pct% ใน 1 ชั่วโมง' => [],
+        'ราคาร่วง :pct% ใน 24 ชั่วโมง' => [],
+        'ราคาย่อ :pct% ใน 24 ชั่วโมง' => [],
+        'ความผันผวนพุ่งเป็น :ratio เท่าของปกติ' => [],
+        'วอลุ่มพุ่ง :ratio เท่าพร้อมราคาลง' => [],
+        'ข่าวความเสี่ยงสูง: :title' => [],
+        // ReserveService
+        'ไม่รู้จักทิศทาง :side' => [],
+    ];
+
     public function __construct(
         private readonly MarketDataService $market,
         private readonly MarketRiskService $risk,
@@ -794,5 +850,70 @@ class BotRunner
         }
 
         return ['action' => $action, 'reason' => $reason, 'risk' => $riskLevel];
+    }
+
+    /**
+     * แปลเหตุผลที่เครื่องยนต์บอทเขียนไว้ (ภาษาไทยเสมอ) เป็นภาษาของผู้ชม — ใช้ตอนแสดงผลเท่านั้น.
+     *
+     * ภาษาไทยคืนค่าเดิมตรงตัว · ข้อความที่ไม่รู้จักคืนค่าเดิม (เช่นพาดหัวข่าว ชื่อที่ทีมงานพิมพ์)
+     * ป้าย "[รอยืนยัน] " คงไว้เสมอ เพราะหน้าเว็บตัดป้ายนี้ออกแล้ววาดป้ายตามภาษาเอง
+     */
+    public static function localizeReason(?string $reason): ?string
+    {
+        if ($reason === null || $reason === '' || app()->isLocale('th')) {
+            return $reason;
+        }
+
+        return self::translateReason($reason);
+    }
+
+    private static function translateReason(string $reason, int $depth = 0): string
+    {
+        $exact = __($reason);
+
+        if (is_string($exact) && $exact !== $reason) {
+            return $exact;
+        }
+
+        // กันวนลึกผิดปกติ — เหตุผลซ้อนกันจริงไม่เกิน 3 ชั้น
+        if ($depth > 4) {
+            return $reason;
+        }
+
+        if (str_starts_with($reason, self::PENDING_PREFIX)) {
+            return self::PENDING_PREFIX.self::translateReason(substr($reason, strlen(self::PENDING_PREFIX)), $depth + 1);
+        }
+
+        foreach (self::REASON_TEMPLATES as $template => $nested) {
+            $pattern = '/^'.preg_replace('/\\\\?:([a-z_]+)/', '(?P<$1>.+?)', preg_quote($template, '/')).'$/su';
+
+            if (preg_match($pattern, $reason, $match) !== 1) {
+                continue;
+            }
+
+            $replace = [];
+
+            foreach ($match as $name => $value) {
+                if (is_string($name)) {
+                    $replace[$name] = in_array($name, $nested, true)
+                        ? self::translateList($value, $depth + 1)
+                        : $value;
+                }
+            }
+
+            $translated = __($template, $replace);
+
+            return is_string($translated) ? $translated : $reason;
+        }
+
+        return str_contains($reason, ' · ') ? self::translateList($reason, $depth + 1) : $reason;
+    }
+
+    private static function translateList(string $list, int $depth): string
+    {
+        return implode(' · ', array_map(
+            fn (string $part) => self::translateReason($part, $depth),
+            explode(' · ', $list),
+        ));
     }
 }

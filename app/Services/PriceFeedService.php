@@ -94,7 +94,7 @@ class PriceFeedService
             return $lastGood;
         }
 
-        throw new \RuntimeException("ไม่สามารถดึงราคาของ {$symbol} ได้ในขณะนี้");
+        throw new \RuntimeException(__('ไม่สามารถดึงราคาของ :symbol ได้ในขณะนี้', ['symbol' => $symbol]));
     }
 
     /**
@@ -137,7 +137,7 @@ class PriceFeedService
     public function convertToTpix(float $paymentAmount, string $currency, float $tpixPriceUsd): array
     {
         if ($tpixPriceUsd <= 0) {
-            throw new \RuntimeException('ราคา TPIX ของรอบขายนี้ตั้งค่าไม่ถูกต้อง');
+            throw new \RuntimeException(__('ราคา TPIX ของรอบขายนี้ตั้งค่าไม่ถูกต้อง'));
         }
 
         $currencyPriceUsd = $this->getPrice($currency);

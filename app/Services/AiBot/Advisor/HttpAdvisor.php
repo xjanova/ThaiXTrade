@@ -34,11 +34,11 @@ abstract class HttpAdvisor implements Advisor
     public function advise(array $context): array
     {
         if (($this->config['api_key'] ?? '') === '') {
-            return $this->fail('ยังไม่ได้ตั้งคีย์ของ '.$this->name());
+            return $this->fail(__('ยังไม่ได้ตั้งคีย์ของ :provider', ['provider' => $this->name()]));
         }
 
         if ($this->callsToday() >= $this->dailyLimit()) {
-            return $this->fail('ใช้โควตาคำแนะนำของวันนี้ครบแล้ว');
+            return $this->fail(__('ใช้โควตาคำแนะนำของวันนี้ครบแล้ว'));
         }
 
         try {
@@ -47,11 +47,11 @@ abstract class HttpAdvisor implements Advisor
             // ผู้ให้บริการล่มไม่ใช่เรื่องที่ผู้ใช้ต้องรับรู้เป็น error หน้าจอ
             Log::warning('AI advisor failed', ['provider' => $this->name(), 'error' => $e->getMessage()]);
 
-            return $this->fail('ขอคำแนะนำไม่สำเร็จ ลองใหม่อีกครั้ง');
+            return $this->fail(__('ขอคำแนะนำไม่สำเร็จ ลองใหม่อีกครั้ง'));
         }
 
         if ($text === null || trim($text) === '') {
-            return $this->fail('ไม่ได้รับคำตอบจากที่ปรึกษา');
+            return $this->fail(__('ไม่ได้รับคำตอบจากที่ปรึกษา'));
         }
 
         $this->countCall();

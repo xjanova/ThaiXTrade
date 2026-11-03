@@ -123,10 +123,10 @@ class KycController extends Controller
                 $request->ip(),
             );
         } catch (RuntimeException $e) {
-            return back()->withErrors(['kyc' => $e->getMessage()]);
+            return back()->withErrors(['kyc' => __($e->getMessage())]);
         }
 
-        return back()->with('success', 'ส่งเอกสารเรียบร้อย ทีมงานจะตรวจภายใน 1–3 วันทำการ');
+        return back()->with('success', __('ส่งเอกสารเรียบร้อย ทีมงานจะตรวจภายใน 1–3 วันทำการ'));
     }
 
     /**
@@ -138,7 +138,7 @@ class KycController extends Controller
 
         $this->kyc->cancel($submission);
 
-        return back()->with('success', 'ยกเลิกคำขอแล้ว');
+        return back()->with('success', __('ยกเลิกคำขอแล้ว'));
     }
 
     // =========================================================================
@@ -181,7 +181,7 @@ class KycController extends Controller
 
         return back()->with(
             'success',
-            'รับคำขอลบข้อมูลแล้ว ทีมงานจะดำเนินการและแจ้งผลกลับ'
+            __('รับคำขอลบข้อมูลแล้ว ทีมงานจะดำเนินการและแจ้งผลกลับ')
         );
     }
 

@@ -195,7 +195,7 @@ class ValidatorAdminController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'บันทึกแล้ว — รันคำสั่งด้านล่างบนเครื่องเชนเพื่อโหวตจริง',
+            'message' => __('บันทึกแล้ว — รันคำสั่งด้านล่างบนเครื่องเชนเพื่อโหวตจริง'),
             'data' => [
                 'validator_address' => $validatorAddress,
                 'vote' => $vote,

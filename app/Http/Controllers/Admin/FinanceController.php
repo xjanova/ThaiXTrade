@@ -131,7 +131,7 @@ class FinanceController extends Controller
         } catch (PurchaseException $e) {
             return response()->json([
                 'success' => false,
-                'error' => ['message' => $e->getMessage()],
+                'error' => ['message' => __($e->getMessage())],
             ], 409);
         } catch (\Throwable $e) {
             Log::error('Admin refund failed', [

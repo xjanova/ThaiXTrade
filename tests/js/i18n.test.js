@@ -190,3 +190,24 @@ describe('components react to a language switch', () => {
         expect(wrapper.text()).not.toContain('Time');
     });
 });
+
+// ข้อความที่เซิร์ฟเวอร์สร้าง (flash, error, ป้ายหลังบ้าน) ต้องเปลี่ยนตามปุ่มด้วย — เซิร์ฟเวอร์อ่านคุกกี้นี้ (SetLocale)
+describe('the server learns the chosen language', () => {
+    afterEach(() => setLocale('en'));
+
+    it('writes the tpix_locale cookie on every switch', () => {
+        setLocale('th');
+        expect(document.cookie).toContain('tpix_locale=th');
+        setLocale('en');
+        expect(document.cookie).toContain('tpix_locale=en');
+    });
+
+    it('announces the switch so the page can reload server props', () => {
+        const seen = [];
+        const onChange = (e) => seen.push(e.detail.locale);
+        window.addEventListener('tpix:locale-changed', onChange);
+        setLocale('th');
+        window.removeEventListener('tpix:locale-changed', onChange);
+        expect(seen).toEqual(['th']);
+    });
+});

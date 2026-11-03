@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\SetLocale;
 use App\Models\BridgeDeposit;
 use App\Models\BridgeReserveSnapshot;
 use App\Models\BridgeWithdrawal;
@@ -69,7 +70,8 @@ class BridgeAdminController extends Controller
             'state' => $this->state(),
             'snapshot' => $snapshot ? $snapshot->toPublicArray() + [
                 'unexplained_mint' => Wei::format((string) $snapshot->unexplained_mint_units, 6),
-                'note' => $snapshot->note,
+                // บันทึกจาก cron กระทบยอด (ไทย) — แปลตอนแสดง ข้อความที่มีค่าแทรกจะคงเดิม
+                'note' => $snapshot->note === null ? null : __($snapshot->note),
             ] : null,
             'deposits' => $deposits,
             'withdrawals' => $withdrawals,
@@ -83,10 +85,23 @@ class BridgeAdminController extends Controller
         ]);
     }
 
+    /** แคชแยกตามภาษา — คำแนะนำในด่านความพร้อมแปลตามภาษาของคำขอ */
+    private function stateCacheKey(?string $locale = null): string
+    {
+        return 'bridge:admin:state:'.($locale ?? app()->getLocale());
+    }
+
+    private function forgetState(): void
+    {
+        foreach (SetLocale::SUPPORTED as $locale) {
+            Cache::forget($this->stateCacheKey($locale));
+        }
+    }
+
     /** สถานะรวม + ด่านความพร้อม (ยิง RPC เชน TPIX ไม่กี่ครั้ง แคช 20 วิ) */
     private function state(): array
     {
-        return Cache::remember('bridge:admin:state', 20, function () {
+        return Cache::remember($this->stateCacheKey(), 20, function () {
             $readiness = $this->relayer->readiness();
             $onchain = $readiness['onchain'] ?? [];
             $fmt = fn ($v) => $v === null ? null : Wei::format((string) $v, 6);
@@ -94,7 +109,7 @@ class BridgeAdminController extends Controller
             return [
                 'installed' => $this->config->installed(),
                 'site_switch' => $this->config->siteSwitchOn(),
-                'switch_reason' => $this->config->switchReason(),
+                'switch_reason' => $this->config->switchReason() === null ? null : __($this->config->switchReason()),
                 'operational' => $this->config->operational(),
                 'readiness' => $readiness['checks'],
                 'mint_ready' => $readiness['ready'],
@@ -162,7 +177,7 @@ class BridgeAdminController extends Controller
         $actor = $request->user()?->name ?? 'admin';
 
         $this->config->setSiteSwitch($on, $on ? null : trim("ปิดโดย {$actor}".($reason ? ": {$reason}" : '')), 'manual');
-        Cache::forget('bridge:admin:state');
+        $this->forgetState();
 
         Log::warning('bridge: แอดมินเปลี่ยนสวิตช์', ['enabled' => $on, 'by' => $request->user()?->id, 'reason' => $reason]);
 
@@ -170,10 +185,10 @@ class BridgeAdminController extends Controller
         if ($on) {
             $latest = BridgeReserveSnapshot::latest('id')->first();
             if ($latest && $latest->status === BridgeReserveSnapshot::STATUS_DEFICIT) {
-                $warnings[] = 'ผลกระทบยอดล่าสุดยังขาดเงินหนุน — ระบบจะปิดเองอีกถ้ารอบหน้ายังขาด';
+                $warnings[] = __('ผลกระทบยอดล่าสุดยังขาดเงินหนุน — ระบบจะปิดเองอีกถ้ารอบหน้ายังขาด');
             }
             if (! $this->config->installed()) {
-                $warnings[] = 'BRIDGE_ENABLED ใน .env ยังเป็น false — สวิตช์นี้ยังไม่มีผลจนกว่าจะตั้ง';
+                $warnings[] = __('BRIDGE_ENABLED ใน .env ยังเป็น false — สวิตช์นี้ยังไม่มีผลจนกว่าจะตั้ง');
             }
         }
 
@@ -199,27 +214,27 @@ class BridgeAdminController extends Controller
         $merged = array_merge($this->config->limits(), $limits);
         $errors = [];
         if (bccomp(Wei::toWei($merged['max_deposit_per_tx'], 6), Wei::toWei($merged['min_deposit'], 6), 0) < 0) {
-            $errors[] = 'วงเงินฝากต่อครั้งต้องไม่น้อยกว่าขั้นต่ำ';
+            $errors[] = __('วงเงินฝากต่อครั้งต้องไม่น้อยกว่าขั้นต่ำ');
         }
         if (bccomp(Wei::toWei($merged['max_deposit_per_address_daily'], 6), Wei::toWei($merged['max_deposit_per_tx'], 6), 0) < 0) {
-            $errors[] = 'วงเงินต่อกระเป๋าต่อวันต้องไม่น้อยกว่าวงเงินต่อครั้ง';
+            $errors[] = __('วงเงินต่อกระเป๋าต่อวันต้องไม่น้อยกว่าวงเงินต่อครั้ง');
         }
         if (bccomp(Wei::toWei($merged['max_withdraw_per_tx'], 6), Wei::toWei($merged['min_withdraw'], 6), 0) < 0) {
-            $errors[] = 'วงเงินถอนต่อครั้งต้องไม่น้อยกว่าขั้นต่ำ';
+            $errors[] = __('วงเงินถอนต่อครั้งต้องไม่น้อยกว่าขั้นต่ำ');
         }
         foreach ((array) ($validated['fees'] ?? []) as $chainId => $fee) {
             if ($fee !== null && $fee !== '' && bccomp(Wei::toWei($fee, 6), Wei::toWei($merged['min_withdraw'], 6), 0) >= 0) {
-                $errors[] = "ค่าธรรมเนียมถอนของเชน {$chainId} ต้องน้อยกว่าขั้นต่ำการถอน ไม่งั้นผู้ใช้ได้ศูนย์";
+                $errors[] = __('ค่าธรรมเนียมถอนของเชน :chain ต้องน้อยกว่าขั้นต่ำการถอน ไม่งั้นผู้ใช้ได้ศูนย์', ['chain' => $chainId]);
             }
         }
         // ค่าธรรมเนียมฝาก ≥ ขั้นต่ำ = ฝากยอดขั้นต่ำแล้ว mint ได้ศูนย์ → รายการถูกนับเป็นฝุ่น (อนุมัติก็ไม่ได้) ผู้ใช้เสียทั้งก้อน
         if (bccomp(Wei::toWei($merged['deposit_fee'], 6), Wei::toWei($merged['min_deposit'], 6), 0) >= 0
             && bccomp(Wei::toWei($merged['deposit_fee'], 6), '0', 0) > 0) {
-            $errors[] = 'ค่าธรรมเนียมฝากต้องน้อยกว่ายอดฝากขั้นต่ำ ไม่งั้นผู้ฝากยอดขั้นต่ำได้ศูนย์';
+            $errors[] = __('ค่าธรรมเนียมฝากต้องน้อยกว่ายอดฝากขั้นต่ำ ไม่งั้นผู้ฝากยอดขั้นต่ำได้ศูนย์');
         }
 
         if ($errors !== []) {
-            return response()->json(['success' => false, 'message' => 'บันทึกไม่ได้', 'errors' => $errors], 422);
+            return response()->json(['success' => false, 'message' => __('บันทึกไม่ได้'), 'errors' => $errors], 422);
         }
 
         // วงเงินฝากต่อครั้งต้องไม่เกิน maxPerTx บนสัญญา — เกินกว่านั้นผ่านด่านเว็บได้แต่ mint ไม่ได้เลย (เงินค้าง vault)
@@ -229,12 +244,12 @@ class BridgeAdminController extends Controller
             $onchainMax = $minter ? $this->config->tpixRpc()->callUint($minter, 'maxPerTx()') : null;
 
             if ($minter && $onchainMax === null) {
-                return response()->json(['success' => false, 'message' => 'อ่าน maxPerTx บนสัญญาไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง'], 503);
+                return response()->json(['success' => false, 'message' => __('อ่าน maxPerTx บนสัญญาไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง')], 503);
             }
 
             if ($onchainMax !== null && bccomp(Wei::toWei($limits['max_deposit_per_tx'], 6), $onchainMax, 0) > 0) {
-                return response()->json(['success' => false, 'message' => 'บันทึกไม่ได้', 'errors' => [
-                    'วงเงินฝากต่อครั้งเกิน maxPerTx บนสัญญา ('.Wei::format($onchainMax, 6).' USDT) — เงินฝากที่เกินจะ mint ไม่ได้ เจ้าของต้อง setMaxPerTx ก่อน',
+                return response()->json(['success' => false, 'message' => __('บันทึกไม่ได้'), 'errors' => [
+                    __('วงเงินฝากต่อครั้งเกิน maxPerTx บนสัญญา (:max USDT) — เงินฝากที่เกินจะ mint ไม่ได้ เจ้าของต้อง setMaxPerTx ก่อน', ['max' => Wei::format($onchainMax, 6)]),
                 ]], 422);
             }
         }
@@ -254,7 +269,7 @@ class BridgeAdminController extends Controller
         }
 
         Cache::forget('bridge:info:public');
-        Cache::forget('bridge:admin:state');
+        $this->forgetState();
 
         return response()->json(['success' => true, 'data' => $this->settingsPayload()]);
     }
@@ -273,32 +288,32 @@ class BridgeAdminController extends Controller
             $deposit = BridgeDeposit::lockForUpdate()->find($id);
 
             if (! $deposit) {
-                return [404, ['success' => false, 'message' => 'ไม่พบรายการ']];
+                return [404, ['success' => false, 'message' => __('ไม่พบรายการ')]];
             }
 
             $approvable = $deposit->status === BridgeDeposit::STATUS_NEEDS_REVIEW
                 || ($deposit->status === BridgeDeposit::STATUS_IGNORED && $deposit->review_reason === 'below_minimum');
 
             if (! $approvable) {
-                return [409, ['success' => false, 'message' => "รายการนี้อนุมัติไม่ได้ (สถานะ: {$deposit->status})"]];
+                return [409, ['success' => false, 'message' => __('รายการนี้อนุมัติไม่ได้ (สถานะ: :status)', ['status' => $deposit->status])]];
             }
 
             $errors = [];
             if ($this->config->chain((int) $deposit->source_chain_id) === null) {
-                $errors[] = 'เชนต้นทางไม่อยู่ในรายการที่รองรับแล้ว';
+                $errors[] = __('เชนต้นทางไม่อยู่ในรายการที่รองรับแล้ว');
             }
             if (! hash_equals(Abi::depositId((int) $deposit->source_chain_id, $deposit->tx_hash, (int) $deposit->log_index), $deposit->deposit_id)) {
-                $errors[] = 'depositId ไม่ตรงกับ (เชน, tx, log) — ข้อมูลรายการผิดปกติ';
+                $errors[] = __('depositId ไม่ตรงกับ (เชน, tx, log) — ข้อมูลรายการผิดปกติ');
             }
             if (bccomp((string) $deposit->mint_units, '0', 0) <= 0) {
-                $errors[] = 'ยอดที่จะ mint เป็นศูนย์';
+                $errors[] = __('ยอดที่จะ mint เป็นศูนย์');
             }
             if (! Abi::isValidAddress($deposit->from_address)) {
-                $errors[] = 'ที่อยู่ผู้รับไม่ถูกต้อง';
+                $errors[] = __('ที่อยู่ผู้รับไม่ถูกต้อง');
             }
 
             if ($errors !== []) {
-                return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => $errors]];
+                return [422, ['success' => false, 'message' => __('อนุมัติไม่ได้'), 'errors' => $errors]];
             }
 
             /*
@@ -314,7 +329,7 @@ class BridgeAdminController extends Controller
                 $sender = $sourceRpc ? $this->policy->senderFacts($sourceRpc, (string) $deposit->from_address, (string) $deposit->tx_hash) : null;
 
                 if ($sender === null) {
-                    return [503, ['success' => false, 'message' => 'อ่านข้อมูลผู้ส่งจากเชนต้นทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                    return [503, ['success' => false, 'message' => __('อ่านข้อมูลผู้ส่งจากเชนต้นทางไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง')]];
                 }
 
                 $decision = $this->policy->evaluateDeposit([
@@ -324,7 +339,7 @@ class BridgeAdminController extends Controller
                 ] + $sender, $deposit->id, ignoreMinimum: true);
 
                 if ($decision['status'] === BridgeDeposit::STATUS_IGNORED) {
-                    return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => ["รายการนี้ทำต่อไม่ได้ ({$decision['reason']})"]]];
+                    return [422, ['success' => false, 'message' => __('อนุมัติไม่ได้'), 'errors' => [__('รายการนี้ทำต่อไม่ได้ (:reason)', ['reason' => $decision['reason']])]]];
                 }
 
                 if ($decision['status'] === BridgeDeposit::STATUS_NEEDS_REVIEW) {
@@ -338,7 +353,7 @@ class BridgeAdminController extends Controller
 
                     return [409, [
                         'success' => false,
-                        'message' => "ตรวจกับเชนแล้วพบข้อสงสัยอื่น ({$decision['reason']}) — ย้ายไปรอตรวจแล้ว ตรวจข้อนี้แล้วกดอนุมัติอีกครั้ง",
+                        'message' => __('ตรวจกับเชนแล้วพบข้อสงสัยอื่น (:reason) — ย้ายไปรอตรวจแล้ว ตรวจข้อนี้แล้วกดอนุมัติอีกครั้ง', ['reason' => $decision['reason']]),
                         'data' => $this->depositRow($deposit->fresh()),
                     ]];
                 }
@@ -352,10 +367,10 @@ class BridgeAdminController extends Controller
                 $dead = $this->relayer->mintTxDead($rpc, $deposit);
 
                 if ($dead === null) {
-                    return [503, ['success' => false, 'message' => 'อ่านสถานะธุรกรรม mint เดิมจากเชน TPIX ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                    return [503, ['success' => false, 'message' => __('อ่านสถานะธุรกรรม mint เดิมจากเชน TPIX ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง')]];
                 }
                 if (! $dead) {
-                    return [409, ['success' => false, 'message' => "ธุรกรรม mint เดิม ({$deposit->mint_tx_hash}, nonce {$deposit->mint_nonce}) ยังลงบล็อกได้ — รอให้ลงบล็อก หรือให้เจ้าของส่งธุรกรรมแทนที่ด้วย nonce เดิมจากกระเป๋า relayer ก่อน"]];
+                    return [409, ['success' => false, 'message' => __('ธุรกรรม mint เดิม (:tx, nonce :nonce) ยังลงบล็อกได้ — รอให้ลงบล็อก หรือให้เจ้าของส่งธุรกรรมแทนที่ด้วย nonce เดิมจากกระเป๋า relayer ก่อน', ['tx' => $deposit->mint_tx_hash, 'nonce' => $deposit->mint_nonce])]];
                 }
             }
 
@@ -364,7 +379,7 @@ class BridgeAdminController extends Controller
             $maxPerTx = $minter ? $rpc->callUint($minter, 'maxPerTx()') : null;
 
             if ($processed === null || $maxPerTx === null) {
-                return [503, ['success' => false, 'message' => 'อ่านสถานะจากเชน TPIX ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                return [503, ['success' => false, 'message' => __('อ่านสถานะจากเชน TPIX ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง')]];
             }
 
             if ($processed) {
@@ -374,16 +389,18 @@ class BridgeAdminController extends Controller
                 $mint = $this->relayer->findMint($rpc, $deposit);
 
                 if ($mint['state'] === 'unreadable') {
-                    return [503, ['success' => false, 'message' => 'อ่าน Minted จากเชน TPIX ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                    return [503, ['success' => false, 'message' => __('อ่าน Minted จากเชน TPIX ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง')]];
                 }
 
                 if (! $this->relayer->mintMatches($deposit, $mint)) {
                     $why = $mint['state'] === 'found'
-                        ? 'Minted บนเชนไปที่ '.$mint['to'].' จำนวน '.Wei::format($mint['units'], 6).' USDT (tx '.$mint['tx_hash'].') ไม่ตรงกับผู้ฝาก'
-                        : 'สัญญาบอกว่า mint แล้วแต่หา Minted ของ depositId นี้ไม่เจอ'.($mint['state'] === 'too_far' ? ' (ช่วงบล็อกไกลเกินกว่าจะไล่อัตโนมัติ)' : '');
+                        ? __('Minted บนเชนไปที่ :to จำนวน :amount USDT (tx :tx) ไม่ตรงกับผู้ฝาก', ['to' => $mint['to'], 'amount' => Wei::format($mint['units'], 6), 'tx' => $mint['tx_hash']])
+                        : ($mint['state'] === 'too_far'
+                            ? __('สัญญาบอกว่า mint แล้วแต่หา Minted ของ depositId นี้ไม่เจอ (ช่วงบล็อกไกลเกินกว่าจะไล่อัตโนมัติ)')
+                            : __('สัญญาบอกว่า mint แล้วแต่หา Minted ของ depositId นี้ไม่เจอ'));
 
-                    return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => [
-                        "{$why} — ห้ามปิดเป็นสำเร็จ: ผู้ฝากอาจยังไม่ได้เงิน ตรวจคีย์ relayer และคืนเงินจาก vault ด้วยมือ",
+                    return [422, ['success' => false, 'message' => __('อนุมัติไม่ได้'), 'errors' => [
+                        __(':why — ห้ามปิดเป็นสำเร็จ: ผู้ฝากอาจยังไม่ได้เงิน ตรวจคีย์ relayer และคืนเงินจาก vault ด้วยมือ', ['why' => $why]),
                     ]]];
                 }
 
@@ -397,13 +414,15 @@ class BridgeAdminController extends Controller
                     'last_error' => 'ยืนยันจาก Minted บนเชน: ไปถึงผู้ฝากครบแล้ว — ไม่ต้อง mint ซ้ำ',
                 ]);
 
-                return [200, ['success' => true, 'message' => 'Minted บนเชนไปถึงผู้ฝากครบแล้ว — ปรับสถานะเป็นสำเร็จ', 'data' => $this->depositRow($deposit->fresh())]];
+                return [200, ['success' => true, 'message' => __('Minted บนเชนไปถึงผู้ฝากครบแล้ว — ปรับสถานะเป็นสำเร็จ'), 'data' => $this->depositRow($deposit->fresh())]];
             }
 
             if (bccomp((string) $deposit->mint_units, $maxPerTx, 0) > 0) {
-                return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => [
-                    'ยอด '.Wei::format((string) $deposit->mint_units, 6).' เกินเพดานต่อครั้งบนสัญญา ('.Wei::format($maxPerTx, 6)
-                    .' USDT) — เจ้าของต้อง setMaxPerTx ก่อน หรือปฏิเสธแล้วคืนเงินจาก vault',
+                return [422, ['success' => false, 'message' => __('อนุมัติไม่ได้'), 'errors' => [
+                    __('ยอด :amount เกินเพดานต่อครั้งบนสัญญา (:max USDT) — เจ้าของต้อง setMaxPerTx ก่อน หรือปฏิเสธแล้วคืนเงินจาก vault', [
+                        'amount' => Wei::format((string) $deposit->mint_units, 6),
+                        'max' => Wei::format($maxPerTx, 6),
+                    ]),
                 ]]];
             }
 
@@ -425,7 +444,7 @@ class BridgeAdminController extends Controller
                 'last_error' => null,
             ]);
 
-            return [200, ['success' => true, 'message' => 'อนุมัติแล้ว — ระบบจะ mint ภายในรอบถัดไป', 'data' => $this->depositRow($deposit->fresh())]];
+            return [200, ['success' => true, 'message' => __('อนุมัติแล้ว — ระบบจะ mint ภายในรอบถัดไป'), 'data' => $this->depositRow($deposit->fresh())]];
         });
 
         return response()->json($result[1], $result[0]);
@@ -439,12 +458,12 @@ class BridgeAdminController extends Controller
             $deposit = BridgeDeposit::lockForUpdate()->find($id);
 
             if (! $deposit) {
-                return [404, ['success' => false, 'message' => 'ไม่พบรายการ']];
+                return [404, ['success' => false, 'message' => __('ไม่พบรายการ')]];
             }
 
             if (! in_array($deposit->status, [BridgeDeposit::STATUS_NEEDS_REVIEW, BridgeDeposit::STATUS_CONFIRMED], true)
                 || ($deposit->mint_tx_hash && $deposit->status !== BridgeDeposit::STATUS_NEEDS_REVIEW)) {
-                return [409, ['success' => false, 'message' => "รายการนี้ปฏิเสธไม่ได้ (สถานะ: {$deposit->status})"]];
+                return [409, ['success' => false, 'message' => __('รายการนี้ปฏิเสธไม่ได้ (สถานะ: :status)', ['status' => $deposit->status])]];
             }
 
             // เคยส่งธุรกรรม mint แล้ว (revert / nonce ถูกใช้ / ค้าง): ปฏิเสธ = แอดมินจะคืนเงินจาก vault ด้วยมือ
@@ -455,13 +474,13 @@ class BridgeAdminController extends Controller
                 $processed = $this->relayer->processedOnChain($rpc, $deposit->deposit_id);
 
                 if ($dead === null || $processed === null) {
-                    return [503, ['success' => false, 'message' => 'อ่านสถานะจากเชน TPIX ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง']];
+                    return [503, ['success' => false, 'message' => __('อ่านสถานะจากเชน TPIX ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง')]];
                 }
                 if ($processed) {
-                    return [409, ['success' => false, 'message' => 'สัญญาบอกว่า depositId นี้ mint ไปแล้ว — ปฏิเสธ (แล้วคืนเงิน) ไม่ได้ กดอนุมัติเพื่อให้ระบบตรวจผู้รับจาก Minted บนเชน']];
+                    return [409, ['success' => false, 'message' => __('สัญญาบอกว่า depositId นี้ mint ไปแล้ว — ปฏิเสธ (แล้วคืนเงิน) ไม่ได้ กดอนุมัติเพื่อให้ระบบตรวจผู้รับจาก Minted บนเชน')]];
                 }
                 if (! $dead) {
-                    return [409, ['success' => false, 'message' => "ธุรกรรม mint เดิม (nonce {$deposit->mint_nonce}) ยังลงบล็อกได้ — ปฏิเสธตอนนี้แล้วคืนเงินอาจได้สองต่อ รอให้ลงบล็อกหรือถูกแทนที่ก่อน"]];
+                    return [409, ['success' => false, 'message' => __('ธุรกรรม mint เดิม (nonce :nonce) ยังลงบล็อกได้ — ปฏิเสธตอนนี้แล้วคืนเงินอาจได้สองต่อ รอให้ลงบล็อกหรือถูกแทนที่ก่อน', ['nonce' => $deposit->mint_nonce])]];
                 }
             }
 
@@ -494,11 +513,11 @@ class BridgeAdminController extends Controller
             $withdrawal = BridgeWithdrawal::lockForUpdate()->find($id);
 
             if (! $withdrawal) {
-                return [404, ['success' => false, 'message' => 'ไม่พบรายการ']];
+                return [404, ['success' => false, 'message' => __('ไม่พบรายการ')]];
             }
 
             if ($withdrawal->status !== BridgeWithdrawal::STATUS_NEEDS_REVIEW) {
-                return [409, ['success' => false, 'message' => "รายการนี้อนุมัติไม่ได้ (สถานะ: {$withdrawal->status})"]];
+                return [409, ['success' => false, 'message' => __('รายการนี้อนุมัติไม่ได้ (สถานะ: :status)', ['status' => $withdrawal->status])]];
             }
 
             $check = $this->policy->evaluateWithdrawal([
@@ -511,7 +530,7 @@ class BridgeAdminController extends Controller
 
             // ตรวจแบบ "แอดมินรับรองแล้ว" (ข้าม KYC/วงเงิน) — ที่ยังไม่ผ่านคือจ่ายไม่ได้จริง (ปลายทางผิด/เชนปิด/ต่ำกว่าค่าธรรมเนียม)
             if ($check['status'] !== BridgeWithdrawal::STATUS_PENDING) {
-                return [422, ['success' => false, 'message' => 'อนุมัติไม่ได้', 'errors' => ["ไม่ผ่านกฎ: {$check['reason']} — ปฏิเสธแล้วคืนเงินด้วยมือแทน"]]];
+                return [422, ['success' => false, 'message' => __('อนุมัติไม่ได้'), 'errors' => [__('ไม่ผ่านกฎ: :reason — ปฏิเสธแล้วคืนเงินด้วยมือแทน', ['reason' => $check['reason']])]]];
             }
 
             if ($withdrawal->payout_tx_hash) {
@@ -529,11 +548,11 @@ class BridgeAdminController extends Controller
                         'payout_block_number' => $retry['paid_block'] ?? $withdrawal->payout_block_number,
                     ]);
 
-                    return [200, ['success' => true, 'message' => $retry['reason'].' — ปรับสถานะเป็นจ่ายแล้ว', 'data' => $this->withdrawalRow($withdrawal->fresh())]];
+                    return [200, ['success' => true, 'message' => __(':reason — ปรับสถานะเป็นจ่ายแล้ว', ['reason' => __($retry['reason'])]), 'data' => $this->withdrawalRow($withdrawal->fresh())]];
                 }
 
                 if (! $retry['safe']) {
-                    return [409, ['success' => false, 'message' => $retry['reason'], 'needs_nonce_proof' => true]];
+                    return [409, ['success' => false, 'message' => __($retry['reason']), 'needs_nonce_proof' => true]];
                 }
             }
 
@@ -552,7 +571,7 @@ class BridgeAdminController extends Controller
                 'last_error' => null,
             ]);
 
-            return [200, ['success' => true, 'message' => 'อนุมัติแล้ว — ระบบจะจ่ายภายในรอบถัดไป', 'data' => $this->withdrawalRow($withdrawal->fresh())]];
+            return [200, ['success' => true, 'message' => __('อนุมัติแล้ว — ระบบจะจ่ายภายในรอบถัดไป'), 'data' => $this->withdrawalRow($withdrawal->fresh())]];
         });
 
         return response()->json($result[1], $result[0]);
@@ -569,20 +588,20 @@ class BridgeAdminController extends Controller
             $withdrawal = BridgeWithdrawal::lockForUpdate()->find($id);
 
             if (! $withdrawal) {
-                return [404, ['success' => false, 'message' => 'ไม่พบรายการ']];
+                return [404, ['success' => false, 'message' => __('ไม่พบรายการ')]];
             }
 
             $open = in_array($withdrawal->status, [BridgeWithdrawal::STATUS_NEEDS_REVIEW, BridgeWithdrawal::STATUS_PENDING, BridgeWithdrawal::STATUS_AWAITING_LIQUIDITY], true);
 
             if (! $open) {
-                return [409, ['success' => false, 'message' => "รายการนี้ปฏิเสธไม่ได้ (สถานะ: {$withdrawal->status})"]];
+                return [409, ['success' => false, 'message' => __('รายการนี้ปฏิเสธไม่ได้ (สถานะ: :status)', ['status' => $withdrawal->status])]];
             }
 
             // เคยส่งธุรกรรมแล้ว: ต้องแน่ใจว่าเงินไม่ได้ออก ก่อนจะปิดรายการว่า "ไม่จ่าย"
             if ($withdrawal->payout_tx_hash) {
                 $retry = $this->payouter->retryCheck($withdrawal, $validated['nonce_tx_hash'] ?? null);
                 if ($retry['paid'] || ! $retry['safe']) {
-                    return [409, ['success' => false, 'message' => $retry['reason'], 'needs_nonce_proof' => ! $retry['paid']]];
+                    return [409, ['success' => false, 'message' => __($retry['reason']), 'needs_nonce_proof' => ! $retry['paid']]];
                 }
             }
 
@@ -610,8 +629,9 @@ class BridgeAdminController extends Controller
             'mint_nonce' => $d->mint_nonce,
             'mint_attempts' => $d->mint_attempts,
             'limits_overridden' => $d->limits_overridden,
-            'review_note' => $d->review_note,
-            'last_error' => $d->last_error,
+            'review_note' => $d->review_note === null ? null : __($d->review_note),
+            // ข้อความที่ตัว relay / cron บันทึกไว้เป็นไทย — แปลตอนแสดง (ข้อความที่มีค่าแทรกจะคงเดิม)
+            'last_error' => $d->last_error === null ? null : __($d->last_error),
             'token_decimals' => $d->token_decimals,
             'dust_raw' => (string) $d->dust_raw,
         ];
@@ -626,8 +646,8 @@ class BridgeAdminController extends Controller
             'payout_from' => $w->payout_from,
             'payout_attempts' => $w->payout_attempts,
             'limits_overridden' => $w->limits_overridden,
-            'review_note' => $w->review_note,
-            'last_error' => $w->last_error,
+            'review_note' => $w->review_note === null ? null : __($w->review_note),
+            'last_error' => $w->last_error === null ? null : __($w->last_error),
         ];
     }
 

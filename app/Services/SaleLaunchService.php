@@ -83,13 +83,13 @@ class SaleLaunchService
 
         $checks[] = $this->check(
             'sale',
-            'มีรอบขายพร้อมเฟสที่ยังขายได้',
+            __('มีรอบขายพร้อมเฟสที่ยังขายได้'),
             $sale !== null && $sellable !== null,
             true,
             $sale === null
-                ? 'ยังไม่มีรอบขายที่เปิดอยู่'
-                : ($sellable === null ? 'ทุกเฟสขายหมดโควตาแล้ว' : "เฟสแรกที่ขายได้: {$sellable->name}"),
-            'สร้างรอบขาย/เฟสที่ /admin/token-sales'
+                ? __('ยังไม่มีรอบขายที่เปิดอยู่')
+                : ($sellable === null ? __('ทุกเฟสขายหมดโควตาแล้ว') : __('เฟสแรกที่ขายได้: :name', ['name' => $sellable->name])),
+            __('สร้างรอบขาย/เฟสที่ /admin/token-sales')
         );
 
         // ── ช่องทางรับเงิน (ต้องมีอย่างน้อยหนึ่งทาง) ────────────────────
@@ -98,11 +98,14 @@ class SaleLaunchService
 
         $checks[] = $this->check(
             'payment',
-            'มีช่องทางรับเงินอย่างน้อย 1 ทาง',
+            __('มีช่องทางรับเงินอย่างน้อย 1 ทาง'),
             $stripeOn || $bankOn,
             true,
-            'บัตรเครดิต: '.($stripeOn ? 'เปิด' : 'ปิด').' · โอนเงิน: '.($bankOn ? 'เปิด' : 'ยังไม่ได้ใส่เลขบัญชี'),
-            'ใส่คีย์ Stripe หรือเลขบัญชีรับโอนที่ /admin/settings'
+            __('บัตรเครดิต: :card · โอนเงิน: :bank', [
+                'card' => $stripeOn ? __('เปิด') : __('ปิด'),
+                'bank' => $bankOn ? __('เปิด') : __('ยังไม่ได้ใส่เลขบัญชี'),
+            ]),
+            __('ใส่คีย์ Stripe หรือเลขบัญชีรับโอนที่ /admin/settings')
         );
 
         // ── กระเป๋าที่ใช้จ่ายเหรียญออก ──────────────────────────────────
@@ -111,11 +114,11 @@ class SaleLaunchService
 
         $checks[] = $this->check(
             'wallet',
-            'ตั้งกระเป๋าจ่ายเหรียญแล้ว',
+            __('ตั้งกระเป๋าจ่ายเหรียญแล้ว'),
             $walletSet,
             true,
-            $walletSet ? $wallet : 'ยังไม่ได้ตั้ง',
-            'ตั้งกระเป๋ารับค่าบริการที่ /admin/settings (ใบเดียวกับใบที่จ่ายเหรียญ)'
+            $walletSet ? $wallet : __('ยังไม่ได้ตั้ง'),
+            __('ตั้งกระเป๋ารับค่าบริการที่ /admin/settings (ใบเดียวกับใบที่จ่ายเหรียญ)')
         );
 
         // ── สวิตช์จ่ายเหรียญ ────────────────────────────────────────────
@@ -123,11 +126,11 @@ class SaleLaunchService
 
         $checks[] = $this->check(
             'payouts',
-            'เปิดระบบจ่ายเหรียญแล้ว',
+            __('เปิดระบบจ่ายเหรียญแล้ว'),
             $payouts,
             true,
-            $payouts ? 'เปิดอยู่' : 'ปิดอยู่ — ลูกค้าจ่ายเงินแล้วเหรียญจะค้างในคิว',
-            'ตั้ง TPIX_TREASURY_PAYOUTS_ENABLED=true ใน .env แล้ว php artisan config:cache'
+            $payouts ? __('เปิดอยู่') : __('ปิดอยู่ — ลูกค้าจ่ายเงินแล้วเหรียญจะค้างในคิว'),
+            __('ตั้ง TPIX_TREASURY_PAYOUTS_ENABLED=true ใน .env แล้ว php artisan config:cache')
         );
 
         // ── มีเหรียญให้จ่ายจริงไหม ──────────────────────────────────────
@@ -167,11 +170,11 @@ class SaleLaunchService
         if ($wallet === null) {
             return $this->check(
                 'funds',
-                'กระเป๋าจ่ายเหรียญมี TPIX',
+                __('กระเป๋าจ่ายเหรียญมี TPIX'),
                 false,
                 true,
-                'ยังไม่ได้ตั้งกระเป๋า จึงยังตรวจยอดไม่ได้',
-                'ตั้งกระเป๋าก่อน'
+                __('ยังไม่ได้ตั้งกระเป๋า จึงยังตรวจยอดไม่ได้'),
+                __('ตั้งกระเป๋าก่อน')
             );
         }
 
@@ -180,11 +183,11 @@ class SaleLaunchService
         if ($balance === null) {
             return $this->check(
                 'funds',
-                'กระเป๋าจ่ายเหรียญมี TPIX',
+                __('กระเป๋าจ่ายเหรียญมี TPIX'),
                 false,
                 true,
-                'ถามยอดจากเชนไม่สำเร็จ — ยังยืนยันไม่ได้ว่ามีเหรียญให้จ่าย',
-                'ตรวจว่า RPC ของเชน TPIX เข้าถึงได้จากเซิร์ฟเวอร์'
+                __('ถามยอดจากเชนไม่สำเร็จ — ยังยืนยันไม่ได้ว่ามีเหรียญให้จ่าย'),
+                __('ตรวจว่า RPC ของเชน TPIX เข้าถึงได้จากเซิร์ฟเวอร์')
             );
         }
 
@@ -193,21 +196,21 @@ class SaleLaunchService
             ? (float) $firstPhase->allocation * ((float) $firstPhase->vesting_tge_percent / 100)
             : 0.0;
 
-        $detail = number_format($balance, 2).' TPIX ในกระเป๋า';
+        $detail = __(':balance TPIX ในกระเป๋า', ['balance' => number_format($balance, 2)]);
         if ($tgeNeed > 0) {
-            $detail .= ' · ถ้าเฟสแรกขายหมดต้องจ่ายทันที '.number_format($tgeNeed, 2).' TPIX';
+            $detail .= ' · '.__('ถ้าเฟสแรกขายหมดต้องจ่ายทันที :need TPIX', ['need' => number_format($tgeNeed, 2)]);
             if ($balance < $tgeNeed) {
-                $detail .= ' (ยังไม่พอ — เติมได้ระหว่างทาง)';
+                $detail .= ' ('.__('ยังไม่พอ — เติมได้ระหว่างทาง').')';
             }
         }
 
         return $this->check(
             'funds',
-            'กระเป๋าจ่ายเหรียญมี TPIX',
+            __('กระเป๋าจ่ายเหรียญมี TPIX'),
             $balance > 0,
             true,
             $detail,
-            'โอน TPIX จากคลังเข้ากระเป๋าจ่ายเหรียญ'
+            __('โอน TPIX จากคลังเข้ากระเป๋าจ่ายเหรียญ')
         );
     }
 
@@ -335,7 +338,10 @@ class SaleLaunchService
                 'ends_at' => null,
                 'tiered' => true,
                 'until' => $until,
-                'blocked' => 'วันจบรอบขาย '.$until->format('Y-m-d H:i').' ต้องอยู่หลังวันเริ่ม '.$cursor->format('Y-m-d H:i'),
+                'blocked' => __('วันจบรอบขาย :until ต้องอยู่หลังวันเริ่ม :start', [
+                    'until' => $until->format('Y-m-d H:i'),
+                    'start' => $cursor->format('Y-m-d H:i'),
+                ]),
             ];
         }
 
@@ -345,7 +351,7 @@ class SaleLaunchService
             if ((float) $phase->sold > 0) {
                 $skipped[] = [
                     'phase' => $phase,
-                    'reason' => 'ขายไปแล้ว '.number_format((float) $phase->sold, 2).' TPIX',
+                    'reason' => __('ขายไปแล้ว :sold TPIX', ['sold' => number_format((float) $phase->sold, 2)]),
                 ];
 
                 continue;
@@ -412,7 +418,7 @@ class SaleLaunchService
         if (! $readiness['ready'] && ! $force) {
             return [
                 'ok' => false,
-                'message' => 'ยังไม่พร้อมขาย: '.implode(' · ', $readiness['blocking']),
+                'message' => __('ยังไม่พร้อมขาย: :blocking', ['blocking' => implode(' · ', $readiness['blocking'])]),
                 'plan' => null,
                 'readiness' => $readiness,
             ];
@@ -424,7 +430,7 @@ class SaleLaunchService
         if ($plan['blocked'] !== null) {
             return [
                 'ok' => false,
-                'message' => 'ยังเปิดขายไม่ได้: '.$plan['blocked'],
+                'message' => __('ยังเปิดขายไม่ได้: :reason', ['reason' => $plan['blocked']]),
                 'plan' => $plan,
                 'readiness' => $readiness,
             ];
@@ -433,7 +439,7 @@ class SaleLaunchService
         if ($plan['rows'] === []) {
             return [
                 'ok' => false,
-                'message' => 'ไม่มีเฟสที่เลื่อนได้ (ทุกเฟสขายไปแล้ว)',
+                'message' => __('ไม่มีเฟสที่เลื่อนได้ (ทุกเฟสขายไปแล้ว)'),
                 'plan' => $plan,
                 'readiness' => $readiness,
             ];
@@ -458,7 +464,7 @@ class SaleLaunchService
 
         return [
             'ok' => true,
-            'message' => 'เปิดรอบขายแล้ว เฟสแรกเริ่ม '.$plan['rows'][0]['starts_at']->format('Y-m-d H:i'),
+            'message' => __('เปิดรอบขายแล้ว เฟสแรกเริ่ม :start', ['start' => $plan['rows'][0]['starts_at']->format('Y-m-d H:i')]),
             'plan' => $plan,
             'readiness' => $readiness,
         ];

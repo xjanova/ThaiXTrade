@@ -272,7 +272,7 @@ class KycPurgeService
                         'purged_at' => $d->purged_at?->toIso8601String(),
                         // ใครเปิดดูเอกสารใบนี้บ้าง
                         'accessed_by' => $d->views->map(fn ($v) => [
-                            'admin' => $v->admin?->name ?? 'ทีมงาน',
+                            'admin' => $v->admin?->name ?? __('ทีมงาน'),
                             'viewed_at' => $v->viewed_at?->toIso8601String(),
                         ])->all(),
                     ])->all(),

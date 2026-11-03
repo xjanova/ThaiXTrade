@@ -85,7 +85,7 @@ class MemberController extends Controller
         $request->validate(['reason' => 'nullable|string|max:255']);
         $member->ban($request->reason ?? 'Banned by admin');
 
-        return back()->with('success', "แบน {$member->wallet_address} สำเร็จ");
+        return back()->with('success', __('แบน :wallet สำเร็จ', ['wallet' => $member->wallet_address]));
     }
 
     /**
@@ -95,7 +95,7 @@ class MemberController extends Controller
     {
         $member->unban();
 
-        return back()->with('success', "ปลดแบน {$member->wallet_address} สำเร็จ");
+        return back()->with('success', __('ปลดแบน :wallet สำเร็จ', ['wallet' => $member->wallet_address]));
     }
 
     /**
@@ -106,6 +106,6 @@ class MemberController extends Controller
         $request->validate(['kyc_status' => 'required|in:none,pending,approved,rejected']);
         $member->update(['kyc_status' => $request->kyc_status]);
 
-        return back()->with('success', "อัปเดต KYC เป็น {$request->kyc_status} สำเร็จ");
+        return back()->with('success', __('อัปเดต KYC เป็น :status สำเร็จ', ['status' => $request->kyc_status]));
     }
 }

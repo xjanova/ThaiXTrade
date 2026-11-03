@@ -132,7 +132,7 @@ class TreasuryService
         $enabled = (bool) config('treasury.payouts_enabled', false);
         $checks[] = [
             'key' => 'flag',
-            'label' => 'เปิดสวิตช์จ่ายเงินใน .env',
+            'label' => __('เปิดสวิตช์จ่ายเงินใน .env'),
             'hint' => 'TPIX_TREASURY_PAYOUTS_ENABLED=true',
             'ok' => $enabled,
         ];
@@ -142,7 +142,7 @@ class TreasuryService
         $keystore = $this->inspectKeystorePath($keystorePath);
         $checks[] = [
             'key' => 'keystore',
-            'label' => 'วางไฟล์ keystore ของกระเป๋าร้อนบนเซิร์ฟเวอร์',
+            'label' => __('วางไฟล์ keystore ของกระเป๋าร้อนบนเซิร์ฟเวอร์'),
             'hint' => $keystore['hint'],
             'ok' => $keystore['ok'],
         ];
@@ -166,12 +166,12 @@ class TreasuryService
 
         $checks[] = [
             'key' => 'keystore_matches_wallet',
-            'label' => 'keystore เป็นกระเป๋าใบเดียวกับที่จ่ายเหรียญ',
+            'label' => __('keystore เป็นกระเป๋าใบเดียวกับที่จ่ายเหรียญ'),
             'hint' => match (true) {
-                ! $keystore['ok'] => 'ยังไม่มี keystore ให้ตรวจ',
-                $keystoreOwner === null => 'อ่านที่อยู่จากไฟล์ keystore ไม่ได้',
+                ! $keystore['ok'] => __('ยังไม่มี keystore ให้ตรวจ'),
+                $keystoreOwner === null => __('อ่านที่อยู่จากไฟล์ keystore ไม่ได้'),
                 $sameWallet => $payoutWallet,
-                default => "keystore เป็นของ {$keystoreOwner} แต่ระบบจ่ายจาก {$payoutWallet} — เซ็นไม่ผ่านแน่นอน",
+                default => __('keystore เป็นของ :owner แต่ระบบจ่ายจาก :wallet — เซ็นไม่ผ่านแน่นอน', ['owner' => $keystoreOwner, 'wallet' => $payoutWallet]),
             },
             'ok' => $sameWallet,
         ];
@@ -180,8 +180,8 @@ class TreasuryService
         $passOk = filled(config('treasury.hot_wallet.passphrase'));
         $checks[] = [
             'key' => 'passphrase',
-            'label' => 'ตั้ง passphrase ของ keystore ใน .env',
-            'hint' => 'TPIX_HOT_WALLET_PASS=… (ห้ามเก็บใน database ห้าม commit)',
+            'label' => __('ตั้ง passphrase ของ keystore ใน .env'),
+            'hint' => __('TPIX_HOT_WALLET_PASS=… (ห้ามเก็บใน database ห้าม commit)'),
             'ok' => $passOk,
         ];
 
@@ -190,10 +190,10 @@ class TreasuryService
         $funded = $hot['readable'] && ! $hot['is_empty'];
         $checks[] = [
             'key' => 'funded',
-            'label' => 'เติมเงินเข้ากระเป๋าร้อน',
+            'label' => __('เติมเงินเข้ากระเป๋าร้อน'),
             'hint' => $hot['readable']
-                ? 'ยอดตอนนี้ '.$hot['balance_tpix'].' TPIX'
-                : 'อ่านยอดจากเชนไม่ได้',
+                ? __('ยอดตอนนี้ :balance TPIX', ['balance' => $hot['balance_tpix']])
+                : __('อ่านยอดจากเชนไม่ได้'),
             'ok' => $funded,
         ];
 
@@ -201,7 +201,7 @@ class TreasuryService
         $chainOk = $hot['readable'];
         $checks[] = [
             'key' => 'rpc',
-            'label' => 'ต่อ RPC ของเชนได้',
+            'label' => __('ต่อ RPC ของเชนได้'),
             'hint' => (string) config('treasury.rpc_url'),
             'ok' => $chainOk,
         ];
@@ -232,7 +232,7 @@ class TreasuryService
     private function inspectKeystorePath(string $path): array
     {
         if ($path === '') {
-            return ['ok' => false, 'hint' => 'ยังไม่ได้ตั้ง TPIX_HOT_WALLET_KEYSTORE'];
+            return ['ok' => false, 'hint' => __('ยังไม่ได้ตั้ง TPIX_HOT_WALLET_KEYSTORE')];
         }
 
         // เช็ค open_basedir ก่อน เพื่อบอกเหตุผลที่แท้จริงแทนที่จะบอกแค่ "ไม่พบไฟล์"
@@ -250,8 +250,10 @@ class TreasuryService
             if (! $allowed) {
                 return [
                     'ok' => false,
-                    'hint' => $path.' — อยู่นอก open_basedir ('.implode(', ', $baseDirs).') '
-                        .'PHP ฝั่งเว็บอ่านไม่ได้ ต้องย้ายไปไว้ใน /home/admin/ แต่นอก public_html',
+                    'hint' => __(':path — อยู่นอก open_basedir (:dirs) PHP ฝั่งเว็บอ่านไม่ได้ ต้องย้ายไปไว้ใน /home/admin/ แต่นอก public_html', [
+                        'path' => $path,
+                        'dirs' => implode(', ', $baseDirs),
+                    ]),
                 ];
             }
         }
@@ -267,7 +269,7 @@ class TreasuryService
 
         return [
             'ok' => $readable,
-            'hint' => $readable ? $path : $path.' — ยังไม่พบไฟล์หรืออ่านไม่ได้',
+            'hint' => $readable ? $path : __(':path — ยังไม่พบไฟล์หรืออ่านไม่ได้', ['path' => $path]),
         ];
     }
 
@@ -425,11 +427,11 @@ class TreasuryService
         $errors = [];
 
         if (! preg_match('/^0x[a-fA-F0-9]{40}$/', $toAddress)) {
-            $errors[] = 'ที่อยู่ปลายทางไม่ถูกรูปแบบ';
+            $errors[] = __('ที่อยู่ปลายทางไม่ถูกรูปแบบ');
         }
 
         if (bccomp($amountWei, '0', 0) <= 0) {
-            $errors[] = 'จำนวนเงินต้องมากกว่าศูนย์';
+            $errors[] = __('จำนวนเงินต้องมากกว่าศูนย์');
         }
 
         // whitelist
@@ -438,13 +440,13 @@ class TreasuryService
             && ! in_array($origin, TreasuryPayout::WHITELIST_EXEMPT_ORIGINS, true);
 
         if ($needsWhitelist && ! $entry) {
-            $errors[] = 'ปลายทางนี้ไม่อยู่ใน whitelist';
+            $errors[] = __('ปลายทางนี้ไม่อยู่ใน whitelist');
         }
 
         // วงเงินต่อครั้ง — ของปลายทางนี้ก่อน ถ้าไม่ตั้งไว้ใช้ค่ากลาง
         $maxPerTx = $this->maxPerTxWei($toAddress);
         if (bccomp($maxPerTx, '0', 0) > 0 && bccomp($amountWei, $maxPerTx, 0) > 0) {
-            $errors[] = 'เกินวงเงินต่อครั้ง ('.Wei::format($maxPerTx).' TPIX)';
+            $errors[] = __('เกินวงเงินต่อครั้ง (:max TPIX)', ['max' => Wei::format($maxPerTx)]);
         }
 
         // วงเงินต่อวัน
@@ -460,14 +462,14 @@ class TreasuryService
             }
 
             if (bccomp(bcadd($spent, $amountWei, 0), $maxPerDay, 0) > 0) {
-                $errors[] = 'เกินวงเงินต่อวัน (ใช้ไปแล้ว '.Wei::format($spent).' จาก '.Wei::format($maxPerDay).' TPIX)';
+                $errors[] = __('เกินวงเงินต่อวัน (ใช้ไปแล้ว :spent จาก :max TPIX)', ['spent' => Wei::format($spent), 'max' => Wei::format($maxPerDay)]);
             }
         }
 
         // เงินในกระเป๋าร้อนต้องพอ
         $hot = $this->hotWallet();
         if ($hot['readable'] && bccomp($hot['balance_wei'], $amountWei, 0) < 0) {
-            $errors[] = 'กระเป๋าร้อนมีเงินไม่พอ (มี '.$hot['balance_tpix'].' TPIX)';
+            $errors[] = __('กระเป๋าร้อนมีเงินไม่พอ (มี :balance TPIX)', ['balance' => $hot['balance_tpix']]);
         }
 
         return ['ok' => $errors === [], 'errors' => $errors];

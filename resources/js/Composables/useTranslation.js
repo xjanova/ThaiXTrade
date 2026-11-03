@@ -24,9 +24,19 @@ function getInitialLocale() {
 
 const currentLocale = ref(getInitialLocale());
 
+/**
+ * บอกภาษาให้เซิร์ฟเวอร์รู้ — ข้อความที่เซิร์ฟเวอร์สร้าง (แจ้งผล, error, ป้ายในหลังบ้าน) จะได้ตรงกับปุ่ม TH/EN
+ * ใช้คุกกี้เพราะไปกับทุกคำขอเอง ทั้ง axios, fetch และการโหลดหน้าเต็ม (อ่านที่ App\Http\Middleware\SetLocale)
+ */
+function syncServerLocale(locale) {
+    if (typeof document === 'undefined') return;
+    document.cookie = `tpix_locale=${locale}; path=/; max-age=31536000; SameSite=Lax`;
+}
+
 // ตั้ง lang attribute ใน <html>
 if (typeof document !== 'undefined') {
     document.documentElement.lang = currentLocale.value;
+    syncServerLocale(currentLocale.value);
 }
 
 /**
@@ -80,6 +90,9 @@ function setLocale(locale) {
         currentLocale.value = locale;
         localStorage.setItem('tpix_locale', locale);
         document.documentElement.lang = locale;
+        syncServerLocale(locale);
+        // ข้อความที่เซิร์ฟเวอร์ส่งมากับหน้านี้แล้วยังเป็นภาษาเดิม — app.js ฟังอีเวนต์นี้แล้วโหลด props ใหม่
+        window.dispatchEvent(new CustomEvent('tpix:locale-changed', { detail: { locale } }));
     }
 }
 

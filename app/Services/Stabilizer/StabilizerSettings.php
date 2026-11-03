@@ -198,16 +198,16 @@ class StabilizerSettings
         $dexReady = $dex->ready();
 
         $checks = [
-            ['key' => 'env_enabled', 'label' => 'เปิด STABILIZER_ENABLED=true ใน .env', 'ok' => $this->envEnabled()],
-            ['key' => 'wallet', 'label' => 'ตั้งที่อยู่กระเป๋า STABILIZER_WALLET_ADDRESS', 'ok' => $wallet !== null],
-            ['key' => 'keystore', 'label' => 'วางไฟล์ keystore (STABILIZER_KEYSTORE_PATH) ที่เซิร์ฟเวอร์อ่านได้', 'ok' => $keystore['ok']],
+            ['key' => 'env_enabled', 'label' => __('เปิด STABILIZER_ENABLED=true ใน .env'), 'ok' => $this->envEnabled()],
+            ['key' => 'wallet', 'label' => __('ตั้งที่อยู่กระเป๋า STABILIZER_WALLET_ADDRESS'), 'ok' => $wallet !== null],
+            ['key' => 'keystore', 'label' => __('วางไฟล์ keystore (STABILIZER_KEYSTORE_PATH) ที่เซิร์ฟเวอร์อ่านได้'), 'ok' => $keystore['ok']],
             [
                 'key' => 'keystore_matches',
-                'label' => 'keystore เป็นของกระเป๋าใบเดียวกับที่ประกาศ',
+                'label' => __('keystore เป็นของกระเป๋าใบเดียวกับที่ประกาศ'),
                 'ok' => $wallet !== null && $keystore['address'] !== null && strtolower($wallet) === $keystore['address'],
             ],
-            ['key' => 'passphrase', 'label' => 'ตั้ง STABILIZER_KEYSTORE_PASS ใน .env', 'ok' => $this->hasPassphrase()],
-            ['key' => 'dex', 'label' => 'สัญญา DEX บนเชน TPIX ครบและมีโค้ดจริง', 'ok' => $dexReady],
+            ['key' => 'passphrase', 'label' => __('ตั้ง STABILIZER_KEYSTORE_PASS ใน .env'), 'ok' => $this->hasPassphrase()],
+            ['key' => 'dex', 'label' => __('สัญญา DEX บนเชน TPIX ครบและมีโค้ดจริง'), 'ok' => $dexReady],
         ];
 
         return [
