@@ -11,201 +11,79 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTranslation } from '@/Composables/useTranslation';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
-const { t, locale } = useTranslation();
-const isTH = computed(() => locale.value === 'th');
+const { t } = useTranslation();
 
 const activeStep = ref(0);
 const lightboxImage = ref(null);
 
+const P = 'page.masterNodeGuide';
+
 const tiers = computed(() => [
     {
         id: 'light', name: 'Light Node',
-        stake: '10,000 TPIX', apy: '4-6%', lock: isTH.value ? '7 วัน' : '7 days',
+        stake: '10,000 TPIX', apy: '4-6%', lock: t(`${P}.tiers.lockDays`, { n: 7 }),
         reward: { monthly: '~42 TPIX', yearly: '~500 TPIX' },
-        hardware: isTH.value ? 'CPU 2 cores · RAM 4GB · SSD 50GB' : '2 CPU · 4GB RAM · 50GB SSD',
+        hardware: t(`${P}.tiers.hardware`, { cpu: 2, ram: '4GB', ssd: '50GB' }),
         color: 'cyan', icon: '💎',
     },
     {
         id: 'sentinel', name: 'Sentinel Node',
-        stake: '100,000 TPIX', apy: '7-9%', lock: isTH.value ? '30 วัน' : '30 days',
+        stake: '100,000 TPIX', apy: '7-9%', lock: t(`${P}.tiers.lockDays`, { n: 30 }),
         reward: { monthly: '~667 TPIX', yearly: '~8,000 TPIX' },
-        hardware: isTH.value ? 'CPU 4 cores · RAM 8GB · SSD 200GB' : '4 CPU · 8GB RAM · 200GB SSD',
+        hardware: t(`${P}.tiers.hardware`, { cpu: 4, ram: '8GB', ssd: '200GB' }),
         color: 'purple', icon: '🛡️',
     },
     {
         id: 'guardian', name: 'Guardian Node',
-        stake: '1,000,000 TPIX', apy: '10-12%', lock: isTH.value ? '90 วัน' : '90 days',
+        stake: '1,000,000 TPIX', apy: '10-12%', lock: t(`${P}.tiers.lockDays`, { n: 90 }),
         reward: { monthly: '~9,167 TPIX', yearly: '~110,000 TPIX' },
-        hardware: isTH.value ? 'CPU 8 cores · RAM 16GB · SSD 500GB' : '8 CPU · 16GB RAM · 500GB SSD',
+        hardware: t(`${P}.tiers.hardware`, { cpu: 8, ram: '16GB', ssd: '500GB' }),
         color: 'yellow', icon: '⚡',
     },
     {
         id: 'validator', name: 'Validator Node',
-        stake: '10,000,000 TPIX', apy: '15-20%', lock: isTH.value ? '180 วัน' : '180 days',
+        stake: '10,000,000 TPIX', apy: '15-20%', lock: t(`${P}.tiers.lockDays`, { n: 180 }),
         reward: { monthly: '~145,833 TPIX', yearly: '~1,750,000 TPIX' },
-        hardware: isTH.value ? 'CPU 16 cores · RAM 32GB · SSD 1TB' : '16 CPU · 32GB RAM · 1TB SSD',
+        hardware: t(`${P}.tiers.hardware`, { cpu: 16, ram: '32GB', ssd: '1TB' }),
         color: 'red', icon: '🔥',
     },
 ]);
 
-const steps = computed(() => isTH.value ? [
-    {
-        title: 'ดาวน์โหลดโปรแกรม',
-        desc: 'ดาวน์โหลด TPIX Master Node สำหรับ Windows',
-        details: [
-            'ไปที่หน้า TPIX Download ที่ tpix.online/download',
-            'ดาวน์โหลดไฟล์ "TPIX Master Node.exe" (Portable — ไม่ต้องติดตั้ง)',
-            'หรือดาวน์โหลด Installer (.exe) สำหรับติดตั้งถาวร',
-            'วางไว้ที่ใดก็ได้ เช่น Desktop หรือ Documents',
-        ],
-        tip: 'แนะนำ: ใช้เวอร์ชัน Portable เพื่อความสะดวก ไม่ต้องติดตั้ง แค่ดับเบิลคลิกก็ใช้ได้เลย',
-        img: 'step-download',
-    },
-    {
-        title: 'เปิดโปรแกรมและสร้างกระเป๋า',
-        desc: 'เปิด TPIX Master Node แล้วสร้างหรือนำเข้ากระเป๋าเงิน',
-        details: [
-            'ดับเบิลคลิกเปิด "TPIX Master Node.exe"',
-            'คลิกแท็บ "กระเป๋าเงิน" (Wallet) ในเมนูด้านซ้าย',
-            'คลิก "สร้างกระเป๋าใหม่" หรือ "นำเข้า Private Key" ถ้ามีอยู่แล้ว',
-            '⚠️ สำคัญมาก: บันทึก Private Key ไว้ที่ปลอดภัย! จะแสดงเพียงครั้งเดียว',
-            'Address ของคุณจะแสดงในหน้ากระเป๋า',
-        ],
-        tip: 'ถ้าคุณมี wallet จาก MetaMask หรือ Trust Wallet อยู่แล้ว สามารถ export private key แล้วนำเข้าได้เลย',
-        img: 'step-wallet',
-    },
-    {
-        title: 'เติม TPIX เข้ากระเป๋า',
-        desc: 'ส่ง TPIX เข้า address ของคุณให้เพียงพอกับ tier ที่ต้องการ',
-        details: [
-            'คัดลอก Address จากหน้ากระเป๋าในโปรแกรม',
-            'ส่ง TPIX จาก exchange หรือ wallet อื่นเข้ามา',
-            'จำนวนขั้นต่ำตาม tier: Light 10,000 / Sentinel 100,000 / Guardian 1,000,000 / Validator 10,000,000 TPIX',
-            'รอยืนยันบน TPIX Chain (ประมาณ 2-4 วินาที)',
-            'ตรวจสอบยอดในหน้ากระเป๋าของโปรแกรม กด "รีเฟรช" เพื่ออัปเดต',
-        ],
-        tip: 'ซื้อ TPIX ได้ที่ tpix.online/trade หรือ Bridge จาก BSC ที่ tpix.online/bridge',
-        img: 'step-fund',
-    },
-    {
-        title: 'ลงทะเบียนโหนดบนเชน (วางเงินค้ำ)',
-        desc: 'ทำที่หน้า tpix.online/masternode — ขั้นนี้คือขั้นที่เงินถูกล็อกเข้าสัญญาจริง',
-        details: [
-            'เปิด tpix.online/masternode แล้วเชื่อมกระเป๋าที่ถือ TPIX อยู่',
-            'กรอก "ที่อยู่เครื่องที่จะรันโหนด" เป็น IP:port เช่น 203.0.113.10:8545 — ที่อยู่นี้ถูกบันทึกลงเชนถาวร',
-            'เลือกระดับ: Light / Sentinel / Guardian / Validator (Validator ต้องผ่าน KYC ก่อน)',
-            'กดปุ่มวางค้ำแล้วเซ็นในกระเป๋า เงินจะถูกล็อกไว้ในสัญญาตามระยะล็อกของระดับนั้น',
-            'รอ tx ยืนยัน (~2-4 วินาที) แล้วการ์ด "โหนดของฉัน" จะขึ้นพร้อมวันปลดล็อก',
-        ],
-        tip: 'เริ่มจาก Light Node ก่อนได้ แต่การเปลี่ยนชั้นต้องปิดโหนดเดิม รอพ้นระยะล็อก แล้วลงทะเบียนใหม่ — สัญญาไม่มีปุ่มอัปเกรดในตัว',
-        img: 'step-tier',
-    },
-    {
-        title: 'เริ่มรันโหนด!',
-        desc: 'กด Launch เพื่อเริ่มรันโหนดของคุณ',
-        details: [
-            'คลิก "เริ่มรันโหนด" (Launch Node)',
-            'โปรแกรมจะเชื่อมต่อกับ TPIX Chain โดยอัตโนมัติ',
-            'สถานะจะเปลี่ยนเป็น "ทำงาน" (Running) เมื่อเชื่อมต่อสำเร็จ',
-            'ดู Dashboard เพื่อติดตามสถานะ Block Height, Peers, Uptime',
-            'โปรแกรมจะรันเป็น Background — ย่อลง System Tray ได้',
-            'รางวัลจะสะสมตาม uptime ของคุณ',
-        ],
-        tip: 'เปิดโปรแกรมทิ้งไว้ 24/7 เพื่อ uptime สูงสุดและรับรางวัลเต็มที่ ใช้คอมที่เปิดตลอดหรือ VPS/Cloud',
-        img: 'step-run',
-    },
-    {
-        title: 'ดูรางวัลและอัปเดตอัตโนมัติ',
-        desc: 'ติดตามรางวัลและให้โปรแกรมอัปเดตอัตโนมัติ',
-        details: [
-            'ดูรางวัลสะสมในหน้า Dashboard',
-            'โปรแกรมจะตรวจสอบอัปเดตจากเซิร์ฟเวอร์ TPIX อัตโนมัติทุก 30 นาที',
-            'เมื่อมีเวอร์ชันใหม่ จะแจ้งเตือนให้ดาวน์โหลด + ติดตั้งอัตโนมัติ',
-            'ดูประวัติรางวัลและ claim ได้เมื่อ contract พร้อม',
-            'หน้า "เครือข่าย" แสดง validators ทั้งหมดและสถานะ chain',
-        ],
-        tip: 'ยิ่งมีคนรันโหนดเยอะ = เครือข่ายยิ่งเสถียร ไม่ล่มง่าย! ชวนเพื่อนมารันด้วย',
-        img: 'step-rewards',
-    },
-] : [
-    {
-        title: 'Download the App',
-        desc: 'Download TPIX Master Node for Windows',
-        details: [
-            'Go to the TPIX Download page at tpix.online/download',
-            'Download "TPIX Master Node.exe" (Portable — no installation needed)',
-            'Or download the Installer (.exe) for permanent installation',
-            'Place it anywhere — Desktop, Documents, etc.',
-        ],
-        tip: 'Recommended: Use the Portable version for convenience. Just double-click to run!',
-        img: 'step-download',
-    },
-    {
-        title: 'Open App & Create Wallet',
-        desc: 'Open TPIX Master Node and create or import a wallet',
-        details: [
-            'Double-click "TPIX Master Node.exe" to open',
-            'Click the "Wallet" tab in the left sidebar',
-            'Click "Create New Wallet" or "Import Private Key" if you already have one',
-            '⚠️ Important: Save your Private Key securely! It is shown only once.',
-            'Your address will be displayed on the Wallet page',
-        ],
-        tip: 'If you already have a wallet from MetaMask or Trust Wallet, you can export the private key and import it.',
-        img: 'step-wallet',
-    },
-    {
-        title: 'Fund Your Wallet',
-        desc: 'Send enough TPIX to your address for your desired tier',
-        details: [
-            'Copy your Address from the Wallet page in the app',
-            'Send TPIX from an exchange or another wallet',
-            'Minimum amounts by tier: Light 10,000 / Sentinel 100,000 / Guardian 1,000,000 / Validator 10,000,000 TPIX',
-            'Wait for confirmation on TPIX Chain (~2-4 seconds)',
-            'Check balance on the Wallet page — click "Refresh" to update',
-        ],
-        tip: 'Buy TPIX at tpix.online/trade or Bridge from BSC at tpix.online/bridge',
-        img: 'step-fund',
-    },
-    {
-        title: 'Register On-Chain (Lock Your Stake)',
-        desc: 'Done at tpix.online/masternode — this is the step where your TPIX is actually locked into the contract',
-        details: [
-            'Open tpix.online/masternode and connect the wallet holding your TPIX',
-            'Enter your node endpoint as IP:port, e.g. 203.0.113.10:8545 — this is written to the chain permanently',
-            'Choose a tier: Light / Sentinel / Guardian / Validator (Validator requires KYC approval first)',
-            'Click stake and sign in your wallet — the TPIX is locked for the tier lock period',
-            'Wait for the tx (~2-4 seconds); your node card appears with its unlock date',
-        ],
-        tip: 'You can start with a Light Node, but changing tier means deregistering, waiting out the lock period, then registering again — the contract has no in-place upgrade.',
-        img: 'step-tier',
-    },
-    {
-        title: 'Launch Your Node!',
-        desc: 'Click Launch to start running your node',
-        details: [
-            'Click "Launch Node"',
-            'The app will connect to TPIX Chain automatically',
-            'Status will change to "Running" when connected',
-            'Check Dashboard for Block Height, Peers, and Uptime',
-            'The app runs in background — you can minimize to System Tray',
-            'Rewards accumulate based on your uptime',
-        ],
-        tip: 'Keep the app running 24/7 for maximum uptime and rewards. Use a VPS/Cloud for best results.',
-        img: 'step-run',
-    },
-    {
-        title: 'Track Rewards & Auto-Update',
-        desc: 'Monitor rewards and let the app auto-update',
-        details: [
-            'View accumulated rewards on the Dashboard',
-            'The app checks the TPIX server for updates every 30 minutes',
-            'When a new version is available, it notifies you to download + install',
-            'View reward history and claim when the contract is ready',
-            'The "Network" tab shows all validators and chain health',
-        ],
-        tip: 'The more nodes running = the more stable the network. Invite your friends to run nodes too!',
-        img: 'step-rewards',
-    },
+// เก็บแค่ key + จำนวนข้อ แล้วแปลใน computed — สลับภาษาแล้วเนื้อหาเปลี่ยนตามทันที
+const stepDefs = [
+    { key: 's1', details: 4, img: 'step-download' },
+    { key: 's2', details: 5, img: 'step-wallet' },
+    { key: 's3', details: 5, img: 'step-fund' },
+    { key: 's4', details: 5, img: 'step-tier' },
+    { key: 's5', details: 6, img: 'step-run' },
+    { key: 's6', details: 5, img: 'step-rewards' },
+];
+
+const steps = computed(() => stepDefs.map(({ key, details, img }) => {
+    const base = `${P}.steps.${key}`;
+    return {
+        title: t(`${base}.title`),
+        desc: t(`${base}.desc`),
+        details: Array.from({ length: details }, (_, i) => t(`${base}.details.d${i + 1}`)),
+        tip: t(`${base}.tip`),
+        quick: [1, 2, 3].map((n) => t(`${base}.quick.q${n}`)),
+        img,
+    };
+}));
+
+const faqs = computed(() => [1, 2, 3, 4, 5, 6].map((n) => ({
+    q: t(`${P}.faq.f${n}.q`),
+    a: t(`${P}.faq.f${n}.a`),
+})));
+
+const screenshots = computed(() => [
+    { src: '/images/guide/dashboard.webp', label: t(`${P}.screenshots.dashboard`) },
+    { src: '/images/guide/setup-tier.webp', label: t(`${P}.screenshots.setupTier`) },
+    { src: '/images/guide/wallet.webp', label: t(`${P}.screenshots.wallet`) },
+    { src: '/images/guide/network.webp', label: t(`${P}.screenshots.network`) },
+    { src: '/images/guide/links.webp', label: t(`${P}.screenshots.links`) },
+    { src: '/images/guide/settings.webp', label: t(`${P}.screenshots.settings`) },
+    { src: '/images/guide/about.webp', label: t(`${P}.screenshots.about`) },
 ]);
 
 // Step screenshots — real captures from the app
@@ -220,17 +98,17 @@ const stepScreenshots = {
 
 // Step diagram data (overlay info on screenshots)
 const stepDiagrams = {
-    'step-download': { icon: '📥', color: '#06b6d4', items: ['TPIX Download Page', 'Installer .exe', 'Portable .exe'] },
-    'step-wallet': { icon: '🔐', color: '#a855f7', items: ['Create New', 'Import Key', 'Save Backup'] },
-    'step-fund': { icon: '💰', color: '#f59e0b', items: ['Copy Address', 'Send TPIX', 'Verify Balance'] },
-    'step-tier': { icon: '⚙️', color: '#06b6d4', items: ['Choose Tier', 'Set Name', 'Review Config'] },
-    'step-run': { icon: '▶️', color: '#00c853', items: ['Launch Node', 'Sync Chain', 'Monitor Status'] },
-    'step-rewards': { icon: '🎁', color: '#f97316', items: ['Track Rewards', 'Auto Update', 'Claim TPIX'] },
+    'step-download': { icon: '📥', color: '#06b6d4' },
+    'step-wallet': { icon: '🔐', color: '#a855f7' },
+    'step-fund': { icon: '💰', color: '#f59e0b' },
+    'step-tier': { icon: '⚙️', color: '#06b6d4' },
+    'step-run': { icon: '▶️', color: '#00c853' },
+    'step-rewards': { icon: '🎁', color: '#f97316' },
 };
 </script>
 
 <template>
-    <Head :title="isTH ? 'คู่มือตั้ง Master Node' : 'Master Node Setup Guide'" />
+    <Head :title="t('page.masterNodeGuide.headTitle')" />
 
     <AppLayout>
         <div class="max-w-5xl mx-auto px-4 py-8">
@@ -241,21 +119,19 @@ const stepDiagrams = {
                     <span class="text-cyan-400 font-semibold text-sm">TPIX Master Node</span>
                 </div>
                 <h1 class="text-3xl md:text-4xl font-extrabold text-white mb-3">
-                    {{ isTH ? 'คู่มือการตั้งค่า Master Node' : 'Master Node Setup Guide' }}
+                    {{ t('page.masterNodeGuide.header.title') }}
                 </h1>
                 <p class="text-dark-400 max-w-2xl mx-auto">
-                    {{ isTH
-                        ? 'แค่มี TPIX ในกระเป๋าพอ ก็เลือกได้เลยว่าจะตั้งโหนดระดับไหน ทำตามขั้นตอนง่ายๆ แค่ 6 ขั้นตอน'
-                        : 'Just have enough TPIX in your wallet and choose your node tier. Follow these 6 simple steps.' }}
+                    {{ t('page.masterNodeGuide.header.subtitle') }}
                 </p>
 
                 <div class="flex gap-3 justify-center mt-6 flex-wrap">
                     <Link href="/masternode" class="btn-primary px-6 py-2.5 rounded-xl text-sm font-semibold">
-                        {{ isTH ? 'ตั้งค่าโหนดตอนนี้' : 'Set Up Node Now' }}
+                        {{ t('page.masterNodeGuide.header.setupNow') }}
                     </Link>
                     <a href="/api/v1/app/chain-download?type=masternode"
                         class="px-6 py-2.5 rounded-xl text-sm font-semibold border border-white/10 text-dark-300 hover:bg-white/5 transition">
-                        📥 {{ isTH ? 'ดาวน์โหลดโปรแกรม' : 'Download App' }}
+                        📥 {{ t('page.masterNodeGuide.header.downloadApp') }}
                     </a>
                 </div>
             </div>
@@ -263,7 +139,7 @@ const stepDiagrams = {
             <!-- Tier Comparison -->
             <div class="mb-12">
                 <h2 class="text-xl font-bold text-white mb-6 text-center">
-                    {{ isTH ? 'เปรียบเทียบระดับโหนด' : 'Compare Node Tiers' }}
+                    {{ t('page.masterNodeGuide.tiers.title') }}
                 </h2>
                 <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div v-for="tier in tiers" :key="tier.id"
@@ -271,16 +147,16 @@ const stepDiagrams = {
                         <div class="text-3xl mb-3">{{ tier.icon }}</div>
                         <h3 class="text-lg font-bold text-white mb-1">{{ tier.name }}</h3>
                         <div class="text-2xl font-extrabold mb-2" :class="`text-${tier.color}-400`">{{ tier.stake }}</div>
-                        <div class="text-trading-green font-semibold mb-3">{{ tier.apy }} APY</div>
+                        <div class="text-trading-green font-semibold mb-3">{{ t('page.masterNodeGuide.tiers.apy', { apy: tier.apy }) }}</div>
 
                         <div class="bg-white/5 rounded-xl p-3 mb-3 space-y-1">
-                            <div class="text-xs text-dark-500 uppercase font-semibold">{{ isTH ? 'รางวัลโดยประมาณ' : 'Est. Rewards' }}</div>
-                            <div class="text-sm text-cyan-400 font-medium">{{ tier.reward.monthly }}/{{ isTH ? 'เดือน' : 'month' }}</div>
-                            <div class="text-xs text-dark-400">{{ tier.reward.yearly }}/{{ isTH ? 'ปี' : 'year' }}</div>
+                            <div class="text-xs text-dark-500 uppercase font-semibold">{{ t('page.masterNodeGuide.tiers.estRewards') }}</div>
+                            <div class="text-sm text-cyan-400 font-medium">{{ t('page.masterNodeGuide.tiers.perMonth', { amount: tier.reward.monthly }) }}</div>
+                            <div class="text-xs text-dark-400">{{ t('page.masterNodeGuide.tiers.perYear', { amount: tier.reward.yearly }) }}</div>
                         </div>
 
                         <div class="text-xs text-dark-500 space-y-1">
-                            <div>🔒 {{ isTH ? 'ล็อค' : 'Lock' }}: {{ tier.lock }}</div>
+                            <div>🔒 {{ t('page.masterNodeGuide.tiers.lock', { period: tier.lock }) }}</div>
                             <div>💻 {{ tier.hardware }}</div>
                         </div>
                     </div>
@@ -290,7 +166,7 @@ const stepDiagrams = {
             <!-- Step by Step Guide -->
             <div class="mb-12">
                 <h2 class="text-xl font-bold text-white mb-6 text-center">
-                    {{ isTH ? 'ขั้นตอนการตั้งค่า (6 ขั้นตอน)' : 'Setup Steps (6 Steps)' }}
+                    {{ t('page.masterNodeGuide.steps.title') }}
                 </h2>
 
                 <!-- Step Navigation -->
@@ -347,14 +223,14 @@ const stepDiagrams = {
                         <div class="flex gap-2 mt-6">
                             <button v-if="activeStep > 0" @click="activeStep--"
                                 class="px-4 py-2 rounded-xl text-sm border border-white/10 text-dark-400 hover:bg-white/5">
-                                &larr; {{ isTH ? 'ก่อนหน้า' : 'Previous' }}
+                                &larr; {{ t('page.masterNodeGuide.steps.previous') }}
                             </button>
                             <button v-if="activeStep < steps.length - 1" @click="activeStep++"
                                 class="btn-primary px-4 py-2 rounded-xl text-sm font-semibold">
-                                {{ isTH ? 'ถัดไป' : 'Next' }} &rarr;
+                                {{ t('page.masterNodeGuide.steps.next') }} &rarr;
                             </button>
                             <Link v-else href="/masternode" class="btn-primary px-4 py-2 rounded-xl text-sm font-semibold">
-                                🚀 {{ isTH ? 'ตั้งค่าโหนดเลย!' : 'Set Up Node Now!' }}
+                                🚀 {{ t('page.masterNodeGuide.steps.setupNowExcl') }}
                             </Link>
                         </div>
                     </div>
@@ -369,16 +245,16 @@ const stepDiagrams = {
                                 class="w-full h-auto rounded-xl transition-transform group-hover:scale-[1.02]"
                                 loading="lazy">
                             <div class="absolute top-2 right-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-lg text-xs text-cyan-400 font-semibold">
-                                {{ stepDiagrams[steps[activeStep].img]?.icon }} {{ isTH ? 'ตัวอย่างจริง' : 'Live Preview' }}
+                                {{ stepDiagrams[steps[activeStep].img]?.icon }} {{ t('page.masterNodeGuide.steps.livePreview') }}
                             </div>
                             <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
-                                <span class="bg-black/60 text-white px-3 py-1 rounded-lg text-sm">🔍 {{ isTH ? 'คลิกเพื่อขยาย' : 'Click to enlarge' }}</span>
+                                <span class="bg-black/60 text-white px-3 py-1 rounded-lg text-sm">🔍 {{ t('page.masterNodeGuide.steps.clickToEnlarge') }}</span>
                             </div>
                         </div>
 
                         <!-- Quick steps overlay -->
                         <div class="space-y-2">
-                            <div v-for="(item, i) in stepDiagrams[steps[activeStep].img]?.items" :key="i"
+                            <div v-for="(item, i) in steps[activeStep].quick" :key="i"
                                 class="flex items-center gap-3 p-2.5 rounded-xl bg-white/5 border border-white/5">
                                 <div class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
                                     :style="{ background: stepDiagrams[steps[activeStep].img]?.color + '20', color: stepDiagrams[steps[activeStep].img]?.color }">
@@ -391,7 +267,7 @@ const stepDiagrams = {
                         <!-- Step progress -->
                         <div class="mt-4">
                             <div class="flex justify-between text-xs text-dark-500 mb-1">
-                                <span>{{ isTH ? 'ขั้นตอน' : 'Step' }} {{ activeStep + 1 }}/{{ steps.length }}</span>
+                                <span>{{ t('page.masterNodeGuide.steps.progress', { current: activeStep + 1, total: steps.length }) }}</span>
                                 <span>{{ Math.round(((activeStep + 1) / steps.length) * 100) }}%</span>
                             </div>
                             <div class="h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -407,55 +283,39 @@ const stepDiagrams = {
             <!-- Reward Economics -->
             <div class="glass-card p-6 rounded-2xl border border-white/10 mb-12">
                 <h2 class="text-xl font-bold text-white mb-4">
-                    {{ isTH ? '📊 ระบบรางวัล (พูลรางวัล 1.4 พันล้าน TPIX ปล่อยใน 3 ปี)' : '📊 Reward System (1.4 Billion TPIX over 3 years)' }}
+                    {{ t('page.masterNodeGuide.rewards.title') }}
                 </h2>
 
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="text-dark-500 text-xs uppercase border-b border-white/5">
-                                <th class="text-left py-3 px-4">{{ isTH ? 'ปี' : 'Year' }}</th>
-                                <th class="text-right py-3 px-4">{{ isTH ? 'จำนวนที่ปล่อย' : 'Emission' }}</th>
-                                <th class="text-right py-3 px-4">{{ isTH ? 'ต่อบล็อก' : 'Per Block' }}</th>
+                                <th class="text-left py-3 px-4">{{ t('page.masterNodeGuide.rewards.colYear') }}</th>
+                                <th class="text-right py-3 px-4">{{ t('page.masterNodeGuide.rewards.colEmission') }}</th>
+                                <th class="text-right py-3 px-4">{{ t('page.masterNodeGuide.rewards.colPerBlock') }}</th>
                             </tr>
                         </thead>
                         <tbody class="text-dark-300">
-                            <tr class="border-b border-white/3"><td class="py-3 px-4">{{ isTH ? 'ปีที่' : 'Year' }} 1</td><td class="text-right px-4 text-cyan-400 font-semibold">600,000,000</td><td class="text-right px-4">~38.0 TPIX</td></tr>
-                            <tr class="border-b border-white/3"><td class="py-3 px-4">{{ isTH ? 'ปีที่' : 'Year' }} 2</td><td class="text-right px-4">500,000,000</td><td class="text-right px-4">~31.7 TPIX</td></tr>
-                            <tr class="border-b border-white/5"><td class="py-3 px-4">{{ isTH ? 'ปีที่' : 'Year' }} 3</td><td class="text-right px-4">300,000,000</td><td class="text-right px-4">~19.0 TPIX</td></tr>
-                            <tr class="font-bold text-yellow-400"><td class="py-3 px-4">{{ isTH ? 'รวม' : 'Total' }}</td><td class="text-right px-4">1,400,000,000 TPIX</td><td class="text-right px-4">—</td></tr>
+                            <tr class="border-b border-white/3"><td class="py-3 px-4">{{ t('page.masterNodeGuide.rewards.yearN', { n: 1 }) }}</td><td class="text-right px-4 text-cyan-400 font-semibold">600,000,000</td><td class="text-right px-4">~38.0 TPIX</td></tr>
+                            <tr class="border-b border-white/3"><td class="py-3 px-4">{{ t('page.masterNodeGuide.rewards.yearN', { n: 2 }) }}</td><td class="text-right px-4">500,000,000</td><td class="text-right px-4">~31.7 TPIX</td></tr>
+                            <tr class="border-b border-white/5"><td class="py-3 px-4">{{ t('page.masterNodeGuide.rewards.yearN', { n: 3 }) }}</td><td class="text-right px-4">300,000,000</td><td class="text-right px-4">~19.0 TPIX</td></tr>
+                            <tr class="font-bold text-yellow-400"><td class="py-3 px-4">{{ t('page.masterNodeGuide.rewards.total') }}</td><td class="text-right px-4">1,400,000,000 TPIX</td><td class="text-right px-4">—</td></tr>
                         </tbody>
                     </table>
                 </div>
 
                 <p class="text-xs text-dark-500 mt-4 leading-relaxed">
-                    {{ isTH
-                        ? '* แต่ละชั้นได้ส่วนแบ่งของรางวัลต่อบล็อก (Validator 20%, Guardian 35%, Sentinel 30%, Light 15%) แล้วส่วนแบ่งนั้นถูก หารเท่า ๆ กันในหมู่โหนดที่ทำงานอยู่ของชั้นนั้น จากนั้นคูณด้วยคะแนน uptime ของโหนดคุณ — การวางค้ำเกินขั้นต่ำไม่ทำให้ได้รางวัลเพิ่ม และยิ่งมีโหนดในชั้นเดียวกันมาก รางวัลต่อโหนดยิ่งลดลง'
-                        : '* Each tier receives a share of the block reward (Validator 20%, Guardian 35%, Sentinel 30%, Light 15%). That share is split EQUALLY among the active nodes in the tier, then multiplied by your node uptime — staking above the minimum earns nothing extra, and the more nodes in a tier, the less each one earns.' }}
+                    {{ t('page.masterNodeGuide.rewards.note') }}
                 </p>
             </div>
 
             <!-- FAQ -->
             <div class="mb-12">
                 <h2 class="text-xl font-bold text-white mb-6 text-center">
-                    {{ isTH ? '❓ คำถามที่พบบ่อย' : '❓ Frequently Asked Questions' }}
+                    {{ t('page.masterNodeGuide.faq.title') }}
                 </h2>
                 <div class="space-y-3">
-                    <div v-for="(faq, i) in (isTH ? [
-                        { q: 'ต้องเปิดคอมทิ้งไว้ตลอดไหม?', a: 'ยิ่ง uptime สูง ยิ่งได้รางวัลมาก แนะนำเปิด 24/7 หรือใช้ VPS/Cloud Server' },
-                        { q: 'รันหลายโหนดได้ไหม?', a: 'ได้ แต่แต่ละโหนดต้องมี wallet และ stake แยกกัน' },
-                        { q: 'ถ้าเน็ตหลุดจะเป็นอย่างไร?', a: 'โหนดจะหยุดชั่วคราว เมื่อเน็ตกลับมาจะเชื่อมต่อใหม่อัตโนมัติ ไม่โดนลงโทษสำหรับ Light Node' },
-                        { q: 'Validator กับ Guardian ต่างกันอย่างไร?', a: 'Validator คือ IBFT2 block sealer ตัวจริง ต้อง stake 10M TPIX + KYC บริษัท มีสิทธิ์โหวต governance Guardian คือ premium masternode ต้อง stake 1M TPIX' },
-                        { q: 'ยิ่งมีโหนดเยอะ เชนยิ่งเสถียรจริงไหม?', a: 'ใช่! IBFT2 ต้องการ 2/3 ของ validators ออนไลน์ ยิ่งมีเยอะ ยิ่งทนทานต่อการล่ม' },
-                        { q: 'โปรแกรมอัปเดตยังไง?', a: 'อัปเดตอัตโนมัติในตัวโปรแกรม! เมื่อมีเวอร์ชันใหม่จะแจ้งเตือนในแอป คลิกเดียวอัปเดตได้เลย' },
-                    ] : [
-                        { q: 'Do I need to keep my computer running 24/7?', a: 'Higher uptime = more rewards. Recommended 24/7 or use a VPS/Cloud Server.' },
-                        { q: 'Can I run multiple nodes?', a: 'Yes, but each node needs its own wallet and separate stake.' },
-                        { q: 'What happens if my internet disconnects?', a: 'The node pauses temporarily. It reconnects automatically when internet returns. Light Nodes are not penalized.' },
-                        { q: 'What is the difference between Validator and Guardian?', a: 'Validators are real IBFT2 block sealers requiring 10M TPIX + company KYC, with governance voting power. Guardians are premium masternodes requiring 1M TPIX.' },
-                        { q: 'More nodes = more stable chain?', a: 'Yes! IBFT2 requires 2/3 of validators online. More validators = more fault tolerance.' },
-                        { q: 'How does the app update?', a: 'Auto-updates in-app! When a new version is available, you get notified in-app. One click to update.' },
-                    ])" :key="i"
+                    <div v-for="(faq, i) in faqs" :key="i"
                         class="glass-card p-5 rounded-xl border border-white/10">
                         <h3 class="font-semibold text-white text-sm mb-2">{{ faq.q }}</h3>
                         <p class="text-dark-400 text-sm leading-relaxed">{{ faq.a }}</p>
@@ -466,18 +326,10 @@ const stepDiagrams = {
             <!-- App Screenshots Gallery -->
             <div class="mb-12">
                 <h2 class="text-xl font-bold text-white mb-6 text-center">
-                    {{ isTH ? '📸 ภาพหน้าจอโปรแกรม' : '📸 App Screenshots' }}
+                    {{ t('page.masterNodeGuide.screenshots.title') }}
                 </h2>
                 <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    <div v-for="ss in [
-                        { src: '/images/guide/dashboard.webp', label: isTH ? 'แดชบอร์ด' : 'Dashboard' },
-                        { src: '/images/guide/setup-tier.webp', label: isTH ? 'เลือกระดับโหนด' : 'Choose Tier' },
-                        { src: '/images/guide/wallet.webp', label: isTH ? 'กระเป๋าเงิน' : 'Wallet' },
-                        { src: '/images/guide/network.webp', label: isTH ? 'เครือข่าย' : 'Network' },
-                        { src: '/images/guide/links.webp', label: isTH ? 'ลิงก์' : 'Links' },
-                        { src: '/images/guide/settings.webp', label: isTH ? 'ตั้งค่า' : 'Settings' },
-                        { src: '/images/guide/about.webp', label: isTH ? 'เกี่ยวกับ' : 'About' },
-                    ]" :key="ss.src"
+                    <div v-for="ss in screenshots" :key="ss.src"
                         class="group relative rounded-xl overflow-hidden border border-white/10 hover:border-cyan-500/30 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-cyan-500/5 cursor-pointer"
                         @click="lightboxImage = ss.src">
                         <img :src="ss.src" :alt="ss.label" class="w-full h-auto" loading="lazy">
@@ -492,24 +344,22 @@ const stepDiagrams = {
             <div class="text-center py-8 glass-card rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/5 via-purple-500/5 to-cyan-500/5">
                 <BrandLogo variant="mark" alt="TPIX" class="w-16 h-16 mx-auto mb-4" />
                 <h2 class="text-2xl font-bold text-white mb-2">
-                    {{ isTH ? 'พร้อมเริ่มรัน Master Node แล้ว?' : 'Ready to Run a Master Node?' }}
+                    {{ t('page.masterNodeGuide.cta.title') }}
                 </h2>
                 <p class="text-dark-400 mb-6 max-w-md mx-auto text-sm">
-                    {{ isTH
-                        ? 'ดาวน์โหลดโปรแกรม สร้างกระเป๋า เติม TPIX แล้วเริ่มรันได้เลย!'
-                        : 'Download the app, create a wallet, fund it with TPIX, and start running!' }}
+                    {{ t('page.masterNodeGuide.cta.desc') }}
                 </p>
                 <div class="flex gap-3 justify-center flex-wrap">
                     <a href="/api/v1/app/chain-download?type=masternode"
                         class="btn-primary px-8 py-3 rounded-xl font-semibold">
-                        📥 {{ isTH ? 'ดาวน์โหลดโปรแกรม' : 'Download App' }}
+                        📥 {{ t('page.masterNodeGuide.cta.download') }}
                     </a>
                     <Link href="/masternode" class="px-8 py-3 rounded-xl font-semibold border border-white/10 text-white hover:bg-white/5 transition">
-                        ⚡ {{ isTH ? 'ตั้งค่าออนไลน์' : 'Setup Online' }}
+                        ⚡ {{ t('page.masterNodeGuide.cta.setupOnline') }}
                     </Link>
                 </div>
                 <p class="text-xs text-dark-600 mt-4">
-                    Developed by Xman Studio · <a href="https://xman4289.com" target="_blank" class="text-cyan-500 hover:underline">xman4289.com</a>
+                    {{ t('page.masterNodeGuide.cta.developedBy') }} · <a href="https://xman4289.com" target="_blank" class="text-cyan-500 hover:underline">xman4289.com</a>
                 </p>
             </div>
         </div>
@@ -520,8 +370,8 @@ const stepDiagrams = {
                 class="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm cursor-pointer p-4"
                 @click="lightboxImage = null">
                 <div class="relative max-w-4xl max-h-[90vh]" @click.stop>
-                    <img :src="lightboxImage" alt="Screenshot" class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl">
-                    <button @click="lightboxImage = null"
+                    <img :src="lightboxImage" :alt="t('page.masterNodeGuide.screenshots.lightboxAlt')" class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl">
+                    <button @click="lightboxImage = null" :aria-label="t('page.masterNodeGuide.screenshots.close')"
                         class="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-lg transition">
                         &times;
                     </button>

@@ -11,6 +11,7 @@
  */
 
 import { getAddress, parseEther } from 'ethers';
+import { t } from '@/Composables/useTranslation';
 
 /** ที่อยู่ใน keystore V3 (ฟิลด์ address ไม่ได้เข้ารหัส) — ไม่ใช่ keystore = null */
 function keystoreAddress(candidate) {
@@ -31,14 +32,14 @@ function keystoreAddress(candidate) {
  *    → เลือกตัวที่ address ตรงให้เอง แอดมินไม่ต้องแยกไฟล์
  *
  * @returns {string} keystore JSON ของกระเป๋านั้น
- * @throws {Error} ข้อความภาษาไทยพร้อมแสดงผู้ใช้
+ * @throws {Error} ข้อความตามภาษาที่เลือกอยู่ พร้อมแสดงผู้ใช้
  */
 export function findKeystoreFor(fileText, address) {
     let parsed;
     try {
         parsed = JSON.parse(fileText);
     } catch {
-        throw new Error('ไฟล์นี้ไม่ใช่ JSON — เลือกไฟล์ keystore (.json)');
+        throw new Error(t('util.treasuryColdWallet.errors.notJson'));
     }
 
     const want = String(address).toLowerCase();
@@ -46,7 +47,7 @@ export function findKeystoreFor(fileText, address) {
     const single = keystoreAddress(parsed);
     if (single) {
         if (single === want) return JSON.stringify(parsed);
-        throw new Error(`ไฟล์นี้เป็น keystore ของ ${single} ไม่ใช่ของกระเป๋านี้`);
+        throw new Error(t('util.treasuryColdWallet.errors.wrongWallet', { address: single }));
     }
 
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -61,10 +62,10 @@ export function findKeystoreFor(fileText, address) {
             }
             if (keystoreAddress(entry) === want) return JSON.stringify(entry);
         }
-        throw new Error('ในไฟล์นี้ไม่มี keystore ของกระเป๋านี้');
+        throw new Error(t('util.treasuryColdWallet.errors.walletNotInFile'));
     }
 
-    throw new Error('ไม่รู้จักรูปแบบไฟล์ — ต้องเป็น keystore หรือ master-wallet.keystores.json');
+    throw new Error(t('util.treasuryColdWallet.errors.unknownFormat'));
 }
 
 /**
@@ -92,19 +93,19 @@ export function parseTpixAmount(raw) {
     return wei > 0n ? wei : null;
 }
 
-/** ข้อความ error จาก ethers/RPC → ภาษาไทยที่ผู้ใช้อ่านเข้าใจ (ห้ามโชว์ stack/raw ยาว ๆ) */
+/** ข้อความ error จาก ethers/RPC → ข้อความตามภาษาที่เลือกที่ผู้ใช้อ่านเข้าใจ (ห้ามโชว์ stack/raw ยาว ๆ) */
 export function friendlySendError(error) {
     const raw = String(error?.shortMessage || error?.message || error || '');
     const msg = raw.toLowerCase();
 
-    if (msg.includes('incorrect password') || msg.includes('invalid password')) return 'รหัสผ่าน keystore ไม่ถูกต้อง';
-    if (msg.includes('insufficient funds')) return 'ยอดในกระเป๋าไม่พอ';
+    if (msg.includes('incorrect password') || msg.includes('invalid password')) return t('util.treasuryColdWallet.errors.wrongPassword');
+    if (msg.includes('insufficient funds')) return t('util.treasuryColdWallet.errors.insufficientFunds');
     if (msg.includes('nonce too low') || msg.includes('already known')) {
-        return 'เชนแจ้งว่าธุรกรรมนี้ถูกส่งไปแล้ว — ตรวจที่ explorer ก่อน อย่ากดส่งซ้ำ';
+        return t('util.treasuryColdWallet.errors.alreadySent');
     }
     if (msg.includes('failed to fetch') || msg.includes('network') || msg.includes('timeout')) {
-        return 'ต่อเชนไม่ได้ — ตรวจอินเทอร์เน็ตแล้วลองใหม่';
+        return t('util.treasuryColdWallet.errors.network');
     }
 
-    return raw.length > 200 ? `${raw.slice(0, 200)}…` : raw || 'เกิดข้อผิดพลาดที่ไม่รู้จัก';
+    return raw.length > 200 ? `${raw.slice(0, 200)}…` : raw || t('util.treasuryColdWallet.errors.unknown');
 }

@@ -11,6 +11,9 @@ import Sparkline from '@/Components/Trading/Sparkline.vue';
 import { useSparklines } from '@/Composables/useSparklines';
 import axios from 'axios';
 import { TPIX_COIN_ICON } from '@/utils/brand';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     currentPair: { type: String, default: 'BTC/USDT' },
@@ -31,17 +34,18 @@ const favorites = ref([]);
 
 const { series, load: loadSparklines } = useSparklines();
 
+// เก็บเป็น key แล้วเรียก t() ตอน render — เปลี่ยนภาษาแล้วป้ายเปลี่ยนตาม
 const filters = [
-    { id: 'all', label: 'ทั้งหมด' },
-    { id: 'favorites', label: '★ รายการโปรด' },
-    { id: 'gainers', label: 'ขึ้น' },
-    { id: 'losers', label: 'ลง' },
+    { id: 'all', labelKey: 'ui.tradingPairSelector.filters.all' },
+    { id: 'favorites', labelKey: 'ui.tradingPairSelector.filters.favorites' },
+    { id: 'gainers', labelKey: 'ui.tradingPairSelector.filters.gainers' },
+    { id: 'losers', labelKey: 'ui.tradingPairSelector.filters.losers' },
 ];
 
 const sorts = [
-    { id: 'volume', label: 'วอลุ่ม' },
-    { id: 'change', label: '% เปลี่ยน' },
-    { id: 'name', label: 'ชื่อ' },
+    { id: 'volume', labelKey: 'ui.tradingPairSelector.sorts.volume' },
+    { id: 'change', labelKey: 'ui.tradingPairSelector.sorts.change' },
+    { id: 'name', labelKey: 'ui.tradingPairSelector.sorts.name' },
 ];
 
 // ── รายการโปรด (เก็บใน localStorage ของเครื่องผู้ใช้) ────────────────────────
@@ -82,14 +86,14 @@ async function fetchTickers() {
         }
 
         if (tickerRes.data.success) {
-            tickers.value = tickerRes.data.data.map(t => ({
-                symbol: `${t.baseAsset}/${t.quoteAsset}`,
-                pair: `${t.baseAsset}-${t.quoteAsset}`,
-                base: t.baseAsset,
-                logo: logoMap[t.baseAsset] || null,
-                price: parseFloat(t.price),
-                change: parseFloat(t.priceChangePercent),
-                volume: parseFloat(t.quoteVolume || 0),
+            tickers.value = tickerRes.data.data.map(tk => ({
+                symbol: `${tk.baseAsset}/${tk.quoteAsset}`,
+                pair: `${tk.baseAsset}-${tk.quoteAsset}`,
+                base: tk.baseAsset,
+                logo: logoMap[tk.baseAsset] || null,
+                price: parseFloat(tk.price),
+                change: parseFloat(tk.priceChangePercent),
+                volume: parseFloat(tk.quoteVolume || 0),
             }));
         }
         // เพิ่ม TPIX/USDT ที่หัว (ถ้ายังไม่มี)
@@ -231,7 +235,7 @@ onUnmounted(() => {
                     <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
-                    <input ref="searchInput" v-model="search" type="text" placeholder="ค้นหาคู่เทรด..."
+                    <input ref="searchInput" v-model="search" type="text" :placeholder="t('ui.tradingPairSelector.searchPlaceholder')"
                         class="w-full bg-dark-700/70 border border-dark-600 rounded-lg pl-9 pr-3 py-2 text-white text-sm placeholder-dark-500 focus:border-primary-500 outline-none" />
                 </div>
             </div>
@@ -242,66 +246,66 @@ onUnmounted(() => {
                     :class="['px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors',
                         activeFilter === f.id ? 'bg-primary-500/20 text-primary-300 border border-primary-500/30'
                                               : 'bg-white/5 text-dark-400 border border-transparent hover:text-white']">
-                    {{ f.label }}
+                    {{ t(f.labelKey) }}
                 </button>
             </div>
 
             <!-- จัดเรียง -->
             <div class="px-3 pb-2 flex items-center gap-2">
-                <span class="text-[10px] text-dark-500">เรียงตาม</span>
+                <span class="text-[10px] text-dark-500">{{ t('ui.tradingPairSelector.sortBy') }}</span>
                 <button v-for="s in sorts" :key="s.id" @click="sortKey = s.id"
                     :class="['text-[11px] px-1.5 py-0.5 rounded transition-colors',
                         sortKey === s.id ? 'text-primary-400 font-semibold' : 'text-dark-500 hover:text-white']">
-                    {{ s.label }}
+                    {{ t(s.labelKey) }}
                 </button>
             </div>
 
             <!-- รายการ -->
             <div class="border-t border-white/5">
-                <div v-if="isLoading" class="py-8 text-center text-dark-500 text-sm animate-pulse">กำลังโหลดคู่เทรด...</div>
+                <div v-if="isLoading" class="py-8 text-center text-dark-500 text-sm animate-pulse">{{ t('ui.tradingPairSelector.loading') }}</div>
 
                 <template v-else>
-                    <div v-for="t in paged" :key="t.pair"
+                    <div v-for="tk in paged" :key="tk.pair"
                         :class="['group w-full flex items-center gap-2 px-3 py-2.5 hover:bg-white/5 transition-colors cursor-pointer',
-                            t.symbol === currentPair && 'bg-primary-500/10']"
-                        @click="selectPair(t)">
+                            tk.symbol === currentPair && 'bg-primary-500/10']"
+                        @click="selectPair(tk)">
 
                         <!-- ดาวรายการโปรด — หยุด event ไม่ให้ทะลุไปเปลี่ยนหน้า -->
-                        <button @click.stop="toggleFavorite(t.pair)"
+                        <button @click.stop="toggleFavorite(tk.pair)"
                             :class="['shrink-0 w-5 text-sm transition-colors',
-                                favorites.includes(t.pair) ? 'text-amber-400' : 'text-dark-600 hover:text-amber-400']"
-                            :aria-label="favorites.includes(t.pair) ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'">
-                            {{ favorites.includes(t.pair) ? '★' : '☆' }}
+                                favorites.includes(tk.pair) ? 'text-amber-400' : 'text-dark-600 hover:text-amber-400']"
+                            :aria-label="favorites.includes(tk.pair) ? t('ui.tradingPairSelector.removeFavorite') : t('ui.tradingPairSelector.addFavorite')">
+                            {{ favorites.includes(tk.pair) ? '★' : '☆' }}
                         </button>
 
-                        <CoinIcon :symbol="t.base" size="sm" :src="t.logo || (t.isTpix ? TPIX_COIN_ICON : undefined)" />
+                        <CoinIcon :symbol="tk.base" size="sm" :src="tk.logo || (tk.isTpix ? TPIX_COIN_ICON : undefined)" />
 
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center gap-1.5">
-                                <span class="text-white text-sm font-medium truncate">{{ t.symbol }}</span>
+                                <span class="text-white text-sm font-medium truncate">{{ tk.symbol }}</span>
                                 <!-- คู่ TPIX เปิดเทรดเมื่อเชน TPIX พร้อม — โชว์ไว้ก่อน -->
-                                <span v-if="t.base === 'TPIX'" class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 font-medium">
-                                    Soon
+                                <span v-if="tk.base === 'TPIX'" class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 font-medium">
+                                    {{ t('ui.tradingPairSelector.soon') }}
                                 </span>
                             </div>
-                            <p class="text-[10px] text-dark-500">Vol {{ formatVolume(t.volume) }}</p>
+                            <p class="text-[10px] text-dark-500">{{ t('ui.tradingPairSelector.volume', { value: formatVolume(tk.volume) }) }}</p>
                         </div>
 
                         <!-- เส้นกราฟย่อ 24 ชม. -->
                         <!-- loading = ยังไม่เคยดึง (undefined) — ถ้าดึงแล้วไม่มีข้อมูลจะได้ [] แล้วหยุด skeleton -->
-                        <Sparkline :points="series[t.pair] || []" :is-up="t.change >= 0" :width="60" :height="24"
-                            :loading="!t.isTpix && series[t.pair] === undefined" />
+                        <Sparkline :points="series[tk.pair] || []" :is-up="tk.change >= 0" :width="60" :height="24"
+                            :loading="!tk.isTpix && series[tk.pair] === undefined" />
 
                         <div class="text-right w-[88px] shrink-0">
-                            <p class="text-white text-sm font-mono">${{ formatPrice(t.price) }}</p>
-                            <p :class="['text-xs', t.change >= 0 ? 'text-trading-green' : 'text-trading-red']">
-                                {{ t.change >= 0 ? '+' : '' }}{{ t.change.toFixed(2) }}%
+                            <p class="text-white text-sm font-mono">${{ formatPrice(tk.price) }}</p>
+                            <p :class="['text-xs', tk.change >= 0 ? 'text-trading-green' : 'text-trading-red']">
+                                {{ tk.change >= 0 ? '+' : '' }}{{ tk.change.toFixed(2) }}%
                             </p>
                         </div>
                     </div>
 
                     <p v-if="paged.length === 0" class="text-dark-500 text-sm text-center py-8">
-                        {{ activeFilter === 'favorites' ? 'ยังไม่มีคู่เทรดในรายการโปรด' : 'ไม่พบคู่เทรด' }}
+                        {{ activeFilter === 'favorites' ? t('ui.tradingPairSelector.emptyFavorites') : t('ui.tradingPairSelector.empty') }}
                     </p>
                 </template>
             </div>
@@ -309,14 +313,14 @@ onUnmounted(() => {
             <!-- แบ่งหน้า -->
             <div v-if="!isLoading && filtered.length > PAGE_SIZE"
                 class="flex items-center justify-between px-3 py-2 border-t border-white/5 bg-dark-900/40">
-                <span class="text-[11px] text-dark-500">{{ filtered.length }} คู่</span>
+                <span class="text-[11px] text-dark-500">{{ t('ui.tradingPairSelector.count', { n: filtered.length }) }}</span>
                 <div class="flex items-center gap-1">
-                    <button @click.stop="goToPage(page - 1)" :disabled="page === 1"
+                    <button @click.stop="goToPage(page - 1)" :disabled="page === 1" :aria-label="t('common.previous')"
                         class="px-2 py-1 rounded text-xs text-dark-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
                         ‹
                     </button>
                     <span class="text-[11px] text-dark-400 font-mono px-1">{{ page }} / {{ totalPages }}</span>
-                    <button @click.stop="goToPage(page + 1)" :disabled="page === totalPages"
+                    <button @click.stop="goToPage(page + 1)" :disabled="page === totalPages" :aria-label="t('common.next')"
                         class="px-2 py-1 rounded text-xs text-dark-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
                         ›
                     </button>

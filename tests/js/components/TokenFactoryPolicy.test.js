@@ -51,6 +51,7 @@ vi.mock('@/utils/web3', () => ({
 }));
 
 import TokenFactory from '@/Pages/TokenFactory.vue';
+import { t } from '@/Composables/useTranslation';
 
 const PAUSABLE_WARNING = 'เจ้าของเหรียญหยุดการโอนทั้งหมดได้ทุกเมื่อ — ระหว่างที่หยุด ไม่มีใครโอน ขาย หรือถอนสภาพคล่องเหรียญนี้ได้เลย';
 
@@ -137,7 +138,7 @@ describe('TokenFactory — policy-driven form', () => {
         await flushPromises();
 
         // หมวด NFT / พิเศษ ไม่มีชนิดไหนเปิด → กดไม่ได้
-        expect(w.text()).toContain('ยังไม่เปิด');
+        expect(w.text()).toContain(t('page.tokenFactory.notOpenYet'));
         expect(w.text()).not.toContain('TPIX Testnet');
 
         await next(w);
@@ -177,7 +178,8 @@ describe('TokenFactory — policy-driven form', () => {
         expect(box.exists()).toBe(true);
         expect(box.classes().join(' ')).toContain('bg-red-500/10');
         expect(box.classes().join(' ')).toContain('border-red-500/50');
-        expect(box.text()).toContain(PAUSABLE_WARNING);
+        // ข้อความเตือนแสดงตามภาษาที่เลือก (ไม่มีคำแปลจึงใช้ warning_th จากเซิร์ฟเวอร์)
+        expect(box.text()).toContain(t('util.tokenFactoryPolicy.options.pausable.warning'));
 
         const checkbox = w.find('[data-test="risk-ack-pausable"]');
         expect(checkbox.attributes('required')).toBeDefined();
@@ -209,9 +211,9 @@ describe('TokenFactory — policy-driven form', () => {
         await w.find('input[type="number"]').setValue('1000000');
         await next(w);
 
-        expect(w.find('[data-test="risk-summary"]').text()).toContain('หยุดการโอนได้');
+        expect(w.find('[data-test="risk-summary"]').text()).toContain(t('util.tokenFactoryPolicy.options.pausable.label'));
 
-        await buttonWithText(w, 'ชำระและสร้างเหรียญ').trigger('click');
+        await buttonWithText(w, t('page.tokenFactory.actions.payAndCreate')).trigger('click');
         await flushPromises();
 
         expect(store.requestQuote).toHaveBeenCalledTimes(1);
@@ -252,7 +254,7 @@ describe('TokenFactory — policy-driven form', () => {
         const w = mountPage();
         await flushPromises();
         await fillAndReview(w);
-        await buttonWithText(w, 'ชำระและสร้างเหรียญ').trigger('click');
+        await buttonWithText(w, t('page.tokenFactory.actions.payAndCreate')).trigger('click');
         await flushPromises();
 
         expect(sendTransaction).toHaveBeenCalledWith({
@@ -282,14 +284,14 @@ describe('TokenFactory — policy-driven form', () => {
         const w = mountPage();
         await flushPromises();
         await fillAndReview(w);
-        await buttonWithText(w, 'ชำระและสร้างเหรียญ').trigger('click');
+        await buttonWithText(w, t('page.tokenFactory.actions.payAndCreate')).trigger('click');
         await flushPromises();
 
         expect(w.text()).toContain('สัญลักษณ์ GOOD มีคนใช้แล้ว');
         expect(w.find('[data-test="pending-payment"]').exists()).toBe(true);
         expect(localStorage.getItem('tpix_factory_pending_fee_' + wallet.address)).not.toBeNull();
 
-        await buttonWithText(w, 'ส่งคำขอต่อ (ไม่ต้องจ่ายซ้ำ)').trigger('click');
+        await buttonWithText(w, t('page.tokenFactory.pending.resume')).trigger('click');
         await flushPromises();
 
         expect(sendTransaction).toHaveBeenCalledTimes(1);
@@ -326,8 +328,8 @@ describe('TokenFactory — My Tokens: ยืนยันซอร์สโค้
         const buttons = w.findAll('[data-test="source-verify-button"]');
         expect(buttons).toHaveLength(1);
         expect(buttons[0].text()).toContain('1,000 TPIX');
-        expect(w.text()).toContain('explorer กำลังตรวจซอร์สโค้ด');
-        expect(w.text()).toContain('ซอร์สโค้ดยืนยันบน explorer แล้ว');
+        expect(w.text()).toContain(t('page.tokenFactory.verify.state.submitted'));
+        expect(w.text()).toContain(t('page.tokenFactory.verify.state.verified'));
     });
 
     it('จ่ายบนเชน 4289 รอยืนยัน แล้วส่ง tx ให้เซิร์ฟเวอร์ — สำเร็จแล้วไม่เหลือรายการค้าง', async () => {
@@ -387,7 +389,7 @@ describe('TokenFactory — My Tokens: ยืนยันซอร์สโค้
         await flushPromises();
 
         expect(localStorage.getItem(pendingKey())).toContain(feeHash);
-        expect(w.find('[data-test="source-verify-button"]').text()).toContain('ไม่ต้องจ่ายซ้ำ');
+        expect(w.find('[data-test="source-verify-button"]').text()).toContain(t('page.tokenFactory.verify.resume'));
 
         await w.find('[data-test="source-verify-button"]').trigger('click');
         await flushPromises();
@@ -408,9 +410,9 @@ describe('TokenFactory — My Tokens: ยืนยันซอร์สโค้
 
         const notes = w.findAll('[data-test="refund-note"]');
         expect(notes).toHaveLength(2);
-        expect(notes[0].text()).toContain('รอคืนค่าธรรมเนียม');
+        expect(notes[0].text()).toContain(t('page.tokenFactory.refund.pending'));
         expect(notes[0].text()).toContain('50 TPIX');
-        expect(notes[1].text()).toContain('คืนค่าธรรมเนียมแล้ว');
+        expect(notes[1].text()).toContain(t('page.tokenFactory.refund.refunded'));
         expect(notes[1].find('a').attributes('href')).toContain('/tx/0x6666');
         expect(w.find('[data-test="source-verify-button"]').exists()).toBe(false);
     });

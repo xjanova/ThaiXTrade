@@ -34,11 +34,18 @@ const favoritesPairs = ref([
     { symbol: 'SOL/USDT', price: '178.90', change: '+5.67%', isUp: true },
 ]);
 
+// เวลาเก็บเป็นตัวเลข + หน่วย แล้วแปลตอนแสดงผล — สลับภาษาแล้วเปลี่ยนตามทันที
 const recentTrades = ref([
-    { type: 'buy', symbol: 'BTC', amount: '0.05', time: '2 min ago' },
-    { type: 'sell', symbol: 'ETH', amount: '1.2', time: '15 min ago' },
-    { type: 'buy', symbol: 'SOL', amount: '10', time: '1 hour ago' },
+    { id: 1, type: 'buy', symbol: 'BTC', amount: '0.05', ago: 2, unit: 'min' },
+    { id: 2, type: 'sell', symbol: 'ETH', amount: '1.2', ago: 15, unit: 'min' },
+    { id: 3, type: 'buy', symbol: 'SOL', amount: '10', ago: 1, unit: 'hour' },
 ]);
+
+function agoLabel(trade) {
+    return trade.unit === 'hour'
+        ? t('ui.navigationSidebar.hoursAgo', { n: trade.ago })
+        : t('ui.navigationSidebar.minutesAgo', { n: trade.ago });
+}
 </script>
 
 <template>
@@ -46,8 +53,8 @@ const recentTrades = ref([
         <!-- Favorites Section -->
         <div class="mb-6">
             <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-semibold text-dark-300 uppercase tracking-wider">Favorites</h3>
-                <button class="text-dark-400 hover:text-primary-400 transition-colors">
+                <h3 class="text-sm font-semibold text-dark-300 uppercase tracking-wider">{{ t('ui.navigationSidebar.favorites') }}</h3>
+                <button class="text-dark-400 hover:text-primary-400 transition-colors" :title="t('ui.navigationSidebar.addFavorite')" :aria-label="t('ui.navigationSidebar.addFavorite')">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                     </svg>
@@ -105,7 +112,7 @@ const recentTrades = ref([
             <div class="space-y-2">
                 <div
                     v-for="trade in recentTrades"
-                    :key="trade.time"
+                    :key="trade.id"
                     class="flex items-center justify-between p-2 rounded-xl bg-white/5"
                 >
                     <div class="flex items-center gap-2">
@@ -116,11 +123,11 @@ const recentTrades = ref([
                             </svg>
                         </div>
                         <div>
-                            <p class="text-sm font-medium text-white">{{ trade.type === 'buy' ? 'Bought' : 'Sold' }} {{ trade.symbol }}</p>
+                            <p class="text-sm font-medium text-white">{{ trade.type === 'buy' ? t('ui.navigationSidebar.bought', { symbol: trade.symbol }) : t('ui.navigationSidebar.sold', { symbol: trade.symbol }) }}</p>
                             <p class="text-xs text-dark-400">{{ trade.amount }} {{ trade.symbol }}</p>
                         </div>
                     </div>
-                    <span class="text-xs text-dark-400">{{ trade.time }}</span>
+                    <span class="text-xs text-dark-400">{{ agoLabel(trade) }}</span>
                 </div>
             </div>
         </div>
@@ -139,7 +146,7 @@ const recentTrades = ref([
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                     </svg>
-                    <span>Fair Launch</span>
+                    <span>{{ t('footer.fairLaunch') }}</span>
                 </Link>
                 <Link href="/token-factory" class="nav-link">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -187,13 +194,13 @@ const recentTrades = ref([
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                     </svg>
-                    <span>Validators</span>
+                    <span>{{ t('footer.validators') }}</span>
                 </Link>
                 <Link href="/download" class="nav-link text-primary-400">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                     </svg>
-                    <span>Download App</span>
+                    <span>{{ t('footer.downloadApp') }}</span>
                 </Link>
             </div>
         </div>
@@ -208,12 +215,12 @@ const recentTrades = ref([
                         </svg>
                     </div>
                     <div>
-                        <p class="font-semibold text-white">AI Trading</p>
-                        <p class="text-xs text-dark-400">Smart analysis</p>
+                        <p class="font-semibold text-white">{{ t('ui.navigationSidebar.aiTrading') }}</p>
+                        <p class="text-xs text-dark-400">{{ t('ui.navigationSidebar.smartAnalysis') }}</p>
                     </div>
                 </div>
                 <Link href="/ai-trade" class="w-full btn-primary text-sm justify-center">
-                    Get AI Insights
+                    {{ t('ui.navigationSidebar.getAiInsights') }}
                 </Link>
             </div>
         </div>

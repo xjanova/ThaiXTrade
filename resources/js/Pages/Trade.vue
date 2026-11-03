@@ -1646,7 +1646,7 @@ async function executeDexMarketOrder(order) {
                 method: 'tpix_credit',
             });
             if (!ticket) {
-                throw friendly(tradingFee.error.value || 'ขอใบอนุญาตวางไม้ไม่สำเร็จ');
+                throw friendly(tradingFee.error.value || t('trade.status.ticketFailed'));
             }
         }
 
@@ -1986,7 +1986,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <Head :title="`Trade ${currentPair}`" />
+    <Head :title="`${t('nav.trade')} ${currentPair}`" />
 
     <AppLayout :hide-sidebar="true" :hide-ticker="true">
         <!-- ไม่มีเพดานความกว้างแล้ว — จอ 2560px เดิมใช้ได้จริงแค่ 1920px

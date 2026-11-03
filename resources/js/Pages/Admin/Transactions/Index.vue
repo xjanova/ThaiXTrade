@@ -5,11 +5,14 @@
  * Developed by Xman Studio
  */
 
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import DataTable from '@/Components/Admin/DataTable.vue';
 import StatusBadge from '@/Components/Admin/StatusBadge.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     transactions: {
@@ -30,17 +33,26 @@ const props = defineProps({
     },
 });
 
-const columns = [
-    { key: 'uuid', label: 'UUID' },
-    { key: 'type', label: 'Type', sortable: true },
-    { key: 'wallet', label: 'Wallet' },
-    { key: 'from_to', label: 'From / To' },
-    { key: 'amount', label: 'Amount', sortable: true, align: 'right' },
-    { key: 'fee', label: 'Fee', align: 'right' },
-    { key: 'status', label: 'Status' },
-    { key: 'tx_hash', label: 'TX Hash' },
-    { key: 'created_at', label: 'Date', sortable: true },
-];
+// computed — หัวตารางต้องเปลี่ยนภาษาตามทันทีเมื่อสลับ TH/EN
+const columns = computed(() => [
+    { key: 'uuid', label: t('admin.transactions.cols.uuid') },
+    { key: 'type', label: t('admin.transactions.cols.type'), sortable: true },
+    { key: 'wallet', label: t('admin.transactions.cols.wallet') },
+    { key: 'from_to', label: t('admin.transactions.cols.fromTo') },
+    { key: 'amount', label: t('admin.transactions.cols.amount'), sortable: true, align: 'right' },
+    { key: 'fee', label: t('admin.transactions.cols.fee'), align: 'right' },
+    { key: 'status', label: t('admin.transactions.cols.status') },
+    { key: 'tx_hash', label: t('admin.transactions.cols.txHash') },
+    { key: 'created_at', label: t('admin.transactions.cols.date'), sortable: true },
+]);
+
+// ประเภท/สถานะเป็นค่าจากเซิร์ฟเวอร์ — แปลเฉพาะตอนแสดง ไม่มีคีย์ก็โชว์ค่าดิบ (ตัวแรกพิมพ์ใหญ่)
+function valueLabel(group, v) {
+    if (!v) return v;
+    const key = `admin.transactions.${group}.${v}`;
+    const text = t(key);
+    return text === key ? v.charAt(0).toUpperCase() + v.slice(1) : text;
+}
 
 const filterType = ref(props.filters.type || '');
 const filterStatus = ref(props.filters.status || '');
@@ -83,23 +95,31 @@ function decodeLabel(html) {
     txt.innerHTML = html;
     return txt.value;
 }
+
+// ป้ายปุ่มก่อนหน้า/ถัดไปของ paginator มาจาก Laravel เป็นภาษาอังกฤษตายตัว — แปลตอนแสดง
+function pageLabel(html) {
+    const text = decodeLabel(html);
+    if (text === '« Previous') return `« ${t('common.previous')}`;
+    if (text === 'Next »') return `${t('common.next')} »`;
+    return text;
+}
 </script>
 
 <template>
-    <Head title="Transactions" />
+    <Head :title="t('admin.transactions.title')" />
 
-    <AdminLayout title="Transactions">
+    <AdminLayout :title="t('admin.transactions.title')">
         <!-- Header -->
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div>
-                <h2 class="text-xl font-semibold text-white">Transactions</h2>
-                <p class="text-sm text-dark-400 mt-1">View and filter all platform transactions</p>
+                <h2 class="text-xl font-semibold text-white">{{ t('admin.transactions.title') }}</h2>
+                <p class="text-sm text-dark-400 mt-1">{{ t('admin.transactions.subtitle') }}</p>
             </div>
-            <button class="btn-secondary px-4 py-2.5 text-sm opacity-50 cursor-not-allowed" disabled title="Coming soon">
+            <button class="btn-secondary px-4 py-2.5 text-sm opacity-50 cursor-not-allowed" disabled :title="t('admin.transactions.comingSoon')">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                Export CSV
+                {{ t('admin.transactions.exportCsv') }}
             </button>
         </div>
 
@@ -107,34 +127,34 @@ function decodeLabel(html) {
         <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 mb-6">
             <div class="flex flex-wrap items-end gap-3">
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Type</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.transactions.filters.type') }}</label>
                     <select v-model="filterType" :class="selectClass">
-                        <option value="">All Types</option>
-                        <option v-for="t in transactionTypes" :key="t" :value="t">{{ t.charAt(0).toUpperCase() + t.slice(1) }}</option>
+                        <option value="">{{ t('admin.transactions.filters.allTypes') }}</option>
+                        <option v-for="tp in transactionTypes" :key="tp" :value="tp">{{ valueLabel('types', tp) }}</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Status</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.transactions.filters.status') }}</label>
                     <select v-model="filterStatus" :class="selectClass">
-                        <option value="">All Statuses</option>
-                        <option v-for="s in statuses" :key="s" :value="s">{{ s.charAt(0).toUpperCase() + s.slice(1) }}</option>
+                        <option value="">{{ t('admin.transactions.filters.allStatuses') }}</option>
+                        <option v-for="s in statuses" :key="s" :value="s">{{ valueLabel('statuses', s) }}</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">Wallet</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.transactions.filters.wallet') }}</label>
                     <input v-model="filterWallet" type="text" :class="inputClass" placeholder="0x..." class="w-48" />
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">From</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.transactions.filters.from') }}</label>
                     <input v-model="filterDateFrom" type="date" :class="inputClass" />
                 </div>
                 <div>
-                    <label class="block text-xs text-dark-400 mb-1.5">To</label>
+                    <label class="block text-xs text-dark-400 mb-1.5">{{ t('admin.transactions.filters.to') }}</label>
                     <input v-model="filterDateTo" type="date" :class="inputClass" />
                 </div>
                 <div class="flex items-center gap-2">
-                    <button @click="applyFilters" class="btn-primary px-4 py-2.5 text-sm">Filter</button>
-                    <button @click="resetFilters" class="px-4 py-2.5 text-sm text-dark-400 hover:text-white transition-colors">Reset</button>
+                    <button @click="applyFilters" class="btn-primary px-4 py-2.5 text-sm">{{ t('admin.transactions.filters.apply') }}</button>
+                    <button @click="resetFilters" class="px-4 py-2.5 text-sm text-dark-400 hover:text-white transition-colors">{{ t('admin.transactions.filters.reset') }}</button>
                 </div>
             </div>
         </div>
@@ -145,7 +165,7 @@ function decodeLabel(html) {
                 <span class="font-mono text-xs text-dark-300">{{ value?.substring(0, 8) }}...</span>
             </template>
             <template #cell-type="{ value }">
-                <span class="capitalize">{{ value }}</span>
+                <span>{{ valueLabel('types', value) }}</span>
             </template>
             <template #cell-wallet="{ row }">
                 <span class="font-mono text-xs text-dark-300">{{ row.wallet_address?.substring(0, 6) }}...{{ row.wallet_address?.slice(-4) }}</span>
@@ -185,10 +205,10 @@ function decodeLabel(html) {
                     :href="link.url"
                     class="px-3 py-2 rounded-lg text-sm transition-colors"
                     :class="link.active ? 'bg-primary-500/10 text-primary-400' : 'text-dark-400 hover:text-white hover:bg-white/5'"
-                    v-text="decodeLabel(link.label)"
+                    v-text="pageLabel(link.label)"
                     preserve-scroll
                 />
-                <span v-else class="px-3 py-2 text-sm text-dark-600" v-text="decodeLabel(link.label)" />
+                <span v-else class="px-3 py-2 text-sm text-dark-600" v-text="pageLabel(link.label)" />
             </template>
         </div>
     </AdminLayout>

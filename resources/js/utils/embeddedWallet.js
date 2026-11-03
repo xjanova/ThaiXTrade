@@ -7,6 +7,7 @@
 
 import { ethers } from 'ethers';
 import { TPIX_CHAIN_CONFIG } from './web3';
+import { t } from '@/Composables/useTranslation';
 
 // localStorage keys — เก็บ encrypted wallet data
 const STORAGE_KEY_ENCRYPTED = 'tpix_wallet_encrypted';
@@ -33,7 +34,7 @@ export function generateWallet() {
 export function importFromMnemonic(mnemonic) {
     const trimmed = mnemonic.trim().toLowerCase();
     if (!ethers.Mnemonic.isValidMnemonic(trimmed)) {
-        throw new Error('Mnemonic ไม่ถูกต้อง — ตรวจสอบคำให้ครบ 12 คำ');
+        throw new Error(t('util.embeddedWallet.invalidMnemonic'));
     }
     return ethers.Wallet.fromPhrase(trimmed);
 }
@@ -60,7 +61,7 @@ export function importFromPrivateKey(privateKey) {
  */
 export async function encryptAndStore(wallet, password) {
     if (password.length < 8) {
-        throw new Error('Password ต้องมีอย่างน้อย 8 ตัวอักษร');
+        throw new Error(t('util.embeddedWallet.passwordTooShort', { n: 8 }));
     }
 
     // เข้ารหัส private key ด้วย password (ใช้เวลาประมาณ 1-3 วินาที)
@@ -81,14 +82,14 @@ export async function encryptAndStore(wallet, password) {
 export async function unlockWallet(password) {
     const encrypted = localStorage.getItem(STORAGE_KEY_ENCRYPTED);
     if (!encrypted) {
-        throw new Error('ไม่พบ wallet ที่เก็บไว้ — กรุณาสร้างหรือ import ใหม่');
+        throw new Error(t('util.embeddedWallet.noStoredWallet'));
     }
 
     try {
         const wallet = await ethers.Wallet.fromEncryptedJson(encrypted, password);
         return wallet;
     } catch {
-        throw new Error('Password ไม่ถูกต้อง');
+        throw new Error(t('util.embeddedWallet.wrongPassword'));
     }
 }
 
@@ -134,7 +135,7 @@ export async function getTPIXBalance(address) {
  */
 export async function sendTPIX(connectedWallet, toAddress, amount) {
     if (!ethers.isAddress(toAddress)) {
-        throw new Error('Address ปลายทางไม่ถูกต้อง');
+        throw new Error(t('util.embeddedWallet.invalidToAddress'));
     }
 
     const value = ethers.parseEther(amount);

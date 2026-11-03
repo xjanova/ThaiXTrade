@@ -22,6 +22,7 @@ vi.mock('@inertiajs/vue3', () => ({
 vi.mock('@/Layouts/AdminLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }));
 
 import Settings from '@/Pages/Admin/Settings/Index.vue';
+import { t } from '@/Composables/useTranslation';
 
 function mountSettings(props = {}) {
     return mount(Settings, { props, global: { mocks: { $page: { props: {} } } } });
@@ -35,18 +36,18 @@ describe('หน้าตั้งค่า — แท็บ AI และแผ�
     it('super_admin เห็นฟอร์มคีย์และแท็บแผนที่', () => {
         const wrapper = mountSettings({ canManageMoney: true, canManageSecurity: true });
 
-        expect(wrapper.findAll('button').map((button) => button.text())).toContain('แผนที่');
+        expect(wrapper.findAll('button').map((button) => button.text())).toContain(t('admin.settings.tabs.map'));
         expect(wrapper.text()).toContain('Cloudflare Worker URL');
-        expect(wrapper.text()).toContain('ที่ปรึกษา AI ของบอทเทรด');
+        expect(wrapper.text()).toContain(t('admin.settings.advisor.title'));
     });
 
     it('แอดมินระดับล่างไม่เห็นฟอร์มคีย์ แต่ยังตั้งเวลา Auto Content ได้', () => {
         const wrapper = mountSettings({ canManageMoney: false, canManageSecurity: false });
 
-        expect(wrapper.findAll('button').map((button) => button.text())).not.toContain('แผนที่');
+        expect(wrapper.findAll('button').map((button) => button.text())).not.toContain(t('admin.settings.tabs.map'));
         expect(wrapper.text()).not.toContain('Cloudflare Worker URL');
-        expect(wrapper.text()).not.toContain('ที่ปรึกษา AI ของบอทเทรด');
-        expect(wrapper.text()).toContain('Save Content Schedule');
+        expect(wrapper.text()).not.toContain(t('admin.settings.advisor.title'));
+        expect(wrapper.text()).toContain(t('admin.settings.content.save'));
     });
 
     it('ไม่ส่ง prop มาต้องถือว่าไม่มีสิทธิ์', () => {
@@ -56,21 +57,21 @@ describe('หน้าตั้งค่า — แท็บ AI และแผ�
 
 describe('หน้าตั้งค่า — แท็บ Security', () => {
     it('super_admin เห็นแท็บ Security', () => {
-        expect(tabLabels({ canManageMoney: true, canManageSecurity: true })).toContain('Security');
+        expect(tabLabels({ canManageMoney: true, canManageSecurity: true })).toContain(t('admin.settings.tabs.security'));
     });
 
     it('แอดมินระดับล่างไม่เห็นแท็บ Security แต่ยังเห็นแท็บงานประจำ', () => {
         const labels = tabLabels({ canManageMoney: false, canManageSecurity: false });
 
-        expect(labels).not.toContain('Security');
-        ['General', 'SEO', 'AI', 'Social'].forEach((tab) => expect(labels).toContain(tab));
+        expect(labels).not.toContain(t('admin.settings.tabs.security'));
+        ['general', 'seo', 'ai', 'social'].forEach((tab) => expect(labels).toContain(t(`admin.settings.tabs.${tab}`)));
     });
 
     it('ไม่ส่ง prop มาต้องถือว่าไม่มีสิทธิ์', () => {
-        expect(tabLabels()).not.toContain('Security');
+        expect(tabLabels()).not.toContain(t('admin.settings.tabs.security'));
     });
 
     it('สิทธิ์เงินอย่างเดียวไม่เปิดแท็บ Security', () => {
-        expect(tabLabels({ canManageMoney: true, canManageSecurity: false })).not.toContain('Security');
+        expect(tabLabels({ canManageMoney: true, canManageSecurity: false })).not.toContain(t('admin.settings.tabs.security'));
     });
 });

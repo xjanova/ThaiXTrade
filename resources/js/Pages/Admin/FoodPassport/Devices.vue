@@ -5,9 +5,12 @@
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
+import { computed } from 'vue';
 import { router, Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     devices: Object,
@@ -16,12 +19,18 @@ const props = defineProps({
     currentType: String,
 });
 
-const statusFilters = [
-    { value: null, label: 'All' },
-    { value: 'active', label: 'Active' },
-    { value: 'inactive', label: 'Inactive' },
-    { value: 'maintenance', label: 'Maintenance' },
-];
+const statusFilters = computed(() => [
+    { value: null, label: t('admin.foodPassportDevices.filter.all') },
+    { value: 'active', label: t('admin.foodPassportDevices.status.active') },
+    { value: 'inactive', label: t('admin.foodPassportDevices.status.inactive') },
+    { value: 'maintenance', label: t('admin.foodPassportDevices.status.maintenance') },
+]);
+
+// ป้ายสถานะ — ค่าจากเซิร์ฟเวอร์ที่ไม่รู้จักแสดงตามเดิม
+const KNOWN_STATUSES = ['active', 'inactive', 'maintenance'];
+function statusLabel(status) {
+    return KNOWN_STATUSES.includes(status) ? t('admin.foodPassportDevices.status.' + status) : status;
+}
 
 function filterByStatus(status) {
     const params = {};
@@ -42,12 +51,12 @@ function updateDeviceStatus(id, status) {
 }
 
 function regenerateKey(id) {
-    if (!confirm('Generate a new API key? The old key will stop working immediately.')) return;
+    if (!confirm(t('admin.foodPassportDevices.confirm.regenerateKey'))) return;
     router.post(`/admin/food-passport/devices/${id}/regenerate-key`);
 }
 
 function deleteDevice(id) {
-    if (!confirm('Delete this device? This action cannot be undone.')) return;
+    if (!confirm(t('admin.foodPassportDevices.confirm.delete'))) return;
     router.delete(`/admin/food-passport/devices/${id}`);
 }
 
@@ -61,8 +70,8 @@ function getStatusBadge(status) {
 }
 
 function formatDate(d) {
-    if (!d) return 'Never';
-    return new Date(d).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (!d) return t('admin.foodPassportDevices.never');
+    return new Date(d).toLocaleString(locale.value === 'th' ? 'th-TH' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function isOffline(device) {
@@ -72,7 +81,7 @@ function isOffline(device) {
 </script>
 
 <template>
-    <AdminLayout title="IoT Devices">
+    <AdminLayout :title="t('admin.foodPassportDevices.pageTitle')">
         <!-- Header -->
         <div class="flex items-center justify-between mb-6">
             <div>
@@ -80,7 +89,7 @@ function isOffline(device) {
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
                     FoodPassport
                 </Link>
-                <h1 class="text-2xl font-bold text-white">IoT Device Management</h1>
+                <h1 class="text-2xl font-bold text-white">{{ t('admin.foodPassportDevices.header.title') }}</h1>
             </div>
         </div>
 
@@ -88,25 +97,25 @@ function isOffline(device) {
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
             <div class="glass-dark p-4 rounded-xl border border-white/10">
                 <p class="text-2xl font-bold text-white">{{ deviceStats?.total || 0 }}</p>
-                <p class="text-xs text-gray-400">Total Devices</p>
+                <p class="text-xs text-gray-400">{{ t('admin.foodPassportDevices.stats.total') }}</p>
             </div>
             <div class="glass-dark p-4 rounded-xl border border-green-500/20">
                 <p class="text-2xl font-bold text-green-400">{{ deviceStats?.active || 0 }}</p>
-                <p class="text-xs text-gray-400">Active</p>
+                <p class="text-xs text-gray-400">{{ t('admin.foodPassportDevices.status.active') }}</p>
             </div>
             <div class="glass-dark p-4 rounded-xl border border-gray-500/20">
                 <p class="text-2xl font-bold text-gray-400">{{ deviceStats?.inactive || 0 }}</p>
-                <p class="text-xs text-gray-400">Inactive</p>
+                <p class="text-xs text-gray-400">{{ t('admin.foodPassportDevices.status.inactive') }}</p>
             </div>
             <div class="glass-dark p-4 rounded-xl border border-yellow-500/20">
                 <p class="text-2xl font-bold text-yellow-400">{{ deviceStats?.maintenance || 0 }}</p>
-                <p class="text-xs text-gray-400">Maintenance</p>
+                <p class="text-xs text-gray-400">{{ t('admin.foodPassportDevices.status.maintenance') }}</p>
             </div>
         </div>
 
         <!-- Device Types -->
         <div v-if="deviceStats?.types && Object.keys(deviceStats.types).length" class="flex flex-wrap gap-2 mb-4">
-            <span class="text-xs text-gray-500 leading-7">Types:</span>
+            <span class="text-xs text-gray-500 leading-7">{{ t('admin.foodPassportDevices.typesLabel') }}</span>
             <button
                 v-for="(count, type) in deviceStats.types"
                 :key="type"
@@ -137,13 +146,13 @@ function isOffline(device) {
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="border-b border-white/5">
-                            <th class="text-left p-4 text-gray-400 font-medium">Device</th>
-                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">Type</th>
-                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Owner</th>
-                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">Traces</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Status</th>
-                            <th class="text-left p-4 text-gray-400 font-medium hidden lg:table-cell">Last Ping</th>
-                            <th class="text-right p-4 text-gray-400 font-medium">Actions</th>
+                            <th class="text-left p-4 text-gray-400 font-medium">{{ t('admin.foodPassportDevices.table.device') }}</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">{{ t('admin.foodPassportDevices.table.type') }}</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">{{ t('admin.foodPassportDevices.table.owner') }}</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">{{ t('admin.foodPassportDevices.table.traces') }}</th>
+                            <th class="text-left p-4 text-gray-400 font-medium">{{ t('admin.foodPassportDevices.table.status') }}</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden lg:table-cell">{{ t('admin.foodPassportDevices.table.lastPing') }}</th>
+                            <th class="text-right p-4 text-gray-400 font-medium">{{ t('admin.foodPassportDevices.table.actions') }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -168,7 +177,7 @@ function isOffline(device) {
                                         <p class="font-medium text-white font-mono text-xs">{{ device.device_id }}</p>
                                         <p class="text-xs text-gray-400">{{ device.name || '—' }}</p>
                                         <!-- ส่งข้อมูลไม่ได้จนกว่าจะออกกุญแจ (ปุ่ม Key) -->
-                                        <p v-if="!device.has_api_key" class="text-[10px] text-yellow-400">No API key</p>
+                                        <p v-if="!device.has_api_key" class="text-[10px] text-yellow-400">{{ t('admin.foodPassportDevices.noApiKey') }}</p>
                                     </div>
                                 </div>
                             </td>
@@ -179,7 +188,7 @@ function isOffline(device) {
                             <td class="p-4 text-white font-medium hidden sm:table-cell">{{ device.traces_count || 0 }}</td>
                             <td class="p-4">
                                 <span :class="['text-xs px-2.5 py-1 rounded-full font-medium', getStatusBadge(device.status)]">
-                                    {{ device.status }}
+                                    {{ statusLabel(device.status) }}
                                 </span>
                             </td>
                             <td class="p-4 hidden lg:table-cell">
@@ -195,28 +204,28 @@ function isOffline(device) {
                                         @change="updateDeviceStatus(device.id, $event.target.value)"
                                         class="bg-dark-800 border border-white/10 rounded-lg text-xs text-gray-300 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary-500"
                                     >
-                                        <option value="active">Active</option>
-                                        <option value="inactive">Inactive</option>
-                                        <option value="maintenance">Maintenance</option>
+                                        <option value="active">{{ t('admin.foodPassportDevices.status.active') }}</option>
+                                        <option value="inactive">{{ t('admin.foodPassportDevices.status.inactive') }}</option>
+                                        <option value="maintenance">{{ t('admin.foodPassportDevices.status.maintenance') }}</option>
                                     </select>
                                     <button
                                         @click="regenerateKey(device.id)"
                                         class="px-3 py-1.5 rounded-lg bg-yellow-500/10 text-yellow-400 text-xs font-medium hover:bg-yellow-500/20 transition-colors"
-                                        title="Regenerate API Key"
+                                        :title="t('admin.foodPassportDevices.actions.regenerateKeyTitle')"
                                     >
-                                        Key
+                                        {{ t('admin.foodPassportDevices.actions.key') }}
                                     </button>
                                     <button
                                         @click="deleteDevice(device.id)"
                                         class="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20 transition-colors"
                                     >
-                                        Delete
+                                        {{ t('admin.foodPassportDevices.actions.delete') }}
                                     </button>
                                 </div>
                             </td>
                         </tr>
                         <tr v-if="!devices?.data?.length">
-                            <td colspan="7" class="p-8 text-center text-gray-400">No devices found.</td>
+                            <td colspan="7" class="p-8 text-center text-gray-400">{{ t('admin.foodPassportDevices.empty') }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -225,7 +234,7 @@ function isOffline(device) {
             <!-- Pagination -->
             <div v-if="devices?.last_page > 1" class="flex items-center justify-between p-4 border-t border-white/5">
                 <p class="text-xs text-gray-400">
-                    Showing {{ devices.from }}–{{ devices.to }} of {{ devices.total }}
+                    {{ t('admin.foodPassportDevices.pagination.showing', { from: devices.from, to: devices.to, total: devices.total }) }}
                 </p>
                 <div class="flex gap-1">
                     <Link

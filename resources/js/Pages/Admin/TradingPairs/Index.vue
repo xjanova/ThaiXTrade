@@ -12,6 +12,9 @@ import DataTable from '@/Components/Admin/DataTable.vue';
 import Modal from '@/Components/Admin/Modal.vue';
 import ConfirmDialog from '@/Components/Admin/ConfirmDialog.vue';
 import StatusBadge from '@/Components/Admin/StatusBadge.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     pairs: {
@@ -28,17 +31,17 @@ const props = defineProps({
     },
 });
 
-const columns = [
-    { key: 'symbol', label: 'Pair', sortable: true },
-    { key: 'base_token', label: 'Base Token' },
-    { key: 'quote_token', label: 'Quote Token' },
-    { key: 'chain', label: 'Chain' },
-    { key: 'min_amount', label: 'Min Amount', align: 'right' },
-    { key: 'max_amount', label: 'Max Amount', align: 'right' },
-    { key: 'maker_fee', label: 'Fee %', align: 'right' },
-    { key: 'is_active', label: 'Active', align: 'center' },
-    { key: 'actions', label: 'Actions', align: 'right' },
-];
+const columns = computed(() => [
+    { key: 'symbol', label: t('admin.tradingPairs.columns.pair'), sortable: true },
+    { key: 'base_token', label: t('admin.tradingPairs.columns.baseToken') },
+    { key: 'quote_token', label: t('admin.tradingPairs.columns.quoteToken') },
+    { key: 'chain', label: t('admin.tradingPairs.columns.chain') },
+    { key: 'min_amount', label: t('admin.tradingPairs.columns.minAmount'), align: 'right' },
+    { key: 'max_amount', label: t('admin.tradingPairs.columns.maxAmount'), align: 'right' },
+    { key: 'maker_fee', label: t('admin.tradingPairs.columns.fee'), align: 'right' },
+    { key: 'is_active', label: t('admin.tradingPairs.columns.active'), align: 'center' },
+    { key: 'actions', label: t('admin.tradingPairs.columns.actions'), align: 'right' },
+]);
 
 const showModal = ref(false);
 const showDeleteConfirm = ref(false);
@@ -62,7 +65,7 @@ const selectedChainId = ref('');
 
 const filteredTokens = computed(() => {
     if (!selectedChainId.value) return [];
-    return props.tokens.filter(t => String(t.chain_id) === String(selectedChainId.value));
+    return props.tokens.filter(tok => String(tok.chain_id) === String(selectedChainId.value));
 });
 
 watch(selectedChainId, (val) => {
@@ -130,20 +133,20 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
 </script>
 
 <template>
-    <Head title="Trading Pairs" />
+    <Head :title="t('admin.tradingPairs.title')" />
 
-    <AdminLayout title="Trading Pairs">
+    <AdminLayout :title="t('admin.tradingPairs.title')">
         <!-- Header -->
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div>
-                <h2 class="text-xl font-semibold text-white">Trading Pairs</h2>
-                <p class="text-sm text-dark-400 mt-1">Manage trading pair configurations</p>
+                <h2 class="text-xl font-semibold text-white">{{ t('admin.tradingPairs.title') }}</h2>
+                <p class="text-sm text-dark-400 mt-1">{{ t('admin.tradingPairs.subtitle') }}</p>
             </div>
             <button @click="openCreateModal" class="btn-primary px-4 py-2.5 text-sm">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                 </svg>
-                Add Pair
+                {{ t('admin.tradingPairs.addPair') }}
             </button>
         </div>
 
@@ -167,13 +170,13 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                 <span
                     v-if="row.execution_mode === 'index'"
                     class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/5 text-dark-400 ring-1 ring-white/10"
-                    title="ดูราคาอย่างเดียว — ยังไม่มีสภาพคล่องบนเชนให้ swap"
-                >ดูราคา</span>
+                    :title="t('admin.tradingPairs.mode.indexTitle')"
+                >{{ t('admin.tradingPairs.mode.index') }}</span>
                 <span
                     v-else
                     class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-trading-green/10 text-trading-green ring-1 ring-trading-green/20"
-                    title="swap ได้จริงบนเชนนี้"
-                >swap ได้</span>
+                    :title="t('admin.tradingPairs.mode.swapTitle')"
+                >{{ t('admin.tradingPairs.mode.swap') }}</span>
             </template>
             <template #cell-min_amount="{ value }">
                 <span class="font-mono text-dark-300">{{ value || '-' }}</span>
@@ -192,12 +195,12 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
             </template>
             <template #cell-actions="{ row }">
                 <div class="flex items-center justify-end gap-2" @click.stop>
-                    <button @click="openEditModal(row)" class="p-1.5 rounded-lg text-dark-400 hover:text-white hover:bg-white/5 transition-colors">
+                    <button @click="openEditModal(row)" :title="t('common.edit')" :aria-label="t('common.edit')" class="p-1.5 rounded-lg text-dark-400 hover:text-white hover:bg-white/5 transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                     </button>
-                    <button @click="confirmDelete(row)" class="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                    <button @click="confirmDelete(row)" :title="t('common.delete')" :aria-label="t('common.delete')" class="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
@@ -207,12 +210,12 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
         </DataTable>
 
         <!-- Create/Edit Modal -->
-        <Modal :show="showModal" :title="editingPair ? 'Edit Trading Pair' : 'Create Trading Pair'" max-width="xl" @close="showModal = false">
+        <Modal :show="showModal" :title="editingPair ? t('admin.tradingPairs.modal.editTitle') : t('admin.tradingPairs.modal.createTitle')" max-width="xl" @close="showModal = false">
             <form @submit.prevent="savePair" class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-2">Chain</label>
+                    <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tradingPairs.form.chain') }}</label>
                     <select v-model="selectedChainId" :class="inputClass">
-                        <option value="">Select Chain</option>
+                        <option value="">{{ t('admin.tradingPairs.form.selectChain') }}</option>
                         <option v-for="chain in chains" :key="chain.id" :value="chain.id">{{ chain.name }}</option>
                     </select>
                     <p v-if="form.errors.chain_id" class="mt-1 text-sm text-red-400">{{ form.errors.chain_id }}</p>
@@ -220,17 +223,17 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Base Token</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tradingPairs.form.baseToken') }}</label>
                         <select v-model="form.base_token_id" :class="inputClass" :disabled="!selectedChainId">
-                            <option value="">Select Base Token</option>
+                            <option value="">{{ t('admin.tradingPairs.form.selectBaseToken') }}</option>
                             <option v-for="token in filteredTokens" :key="token.id" :value="token.id">{{ token.symbol }} - {{ token.name }}</option>
                         </select>
                         <p v-if="form.errors.base_token_id" class="mt-1 text-sm text-red-400">{{ form.errors.base_token_id }}</p>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Quote Token</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tradingPairs.form.quoteToken') }}</label>
                         <select v-model="form.quote_token_id" :class="inputClass" :disabled="!selectedChainId">
-                            <option value="">Select Quote Token</option>
+                            <option value="">{{ t('admin.tradingPairs.form.selectQuoteToken') }}</option>
                             <option v-for="token in filteredTokens" :key="token.id" :value="token.id">{{ token.symbol }} - {{ token.name }}</option>
                         </select>
                         <p v-if="form.errors.quote_token_id" class="mt-1 text-sm text-red-400">{{ form.errors.quote_token_id }}</p>
@@ -239,39 +242,39 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Price Precision</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tradingPairs.form.pricePrecision') }}</label>
                         <input v-model.number="form.price_precision" type="number" min="0" max="18" :class="inputClass" />
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Amount Precision</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tradingPairs.form.amountPrecision') }}</label>
                         <input v-model.number="form.amount_precision" type="number" min="0" max="18" :class="inputClass" />
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Min Amount</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tradingPairs.form.minAmount') }}</label>
                         <input v-model.number="form.min_amount" type="number" step="0.00000001" :class="inputClass" />
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Max Amount</label>
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tradingPairs.form.maxAmount') }}</label>
                         <input v-model.number="form.max_amount" type="number" step="0.00000001" :class="inputClass" />
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Maker Fee Override %</label>
-                        <input v-model="form.maker_fee_override" type="number" step="0.001" :class="inputClass" placeholder="Leave empty for default" />
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tradingPairs.form.makerFeeOverride') }}</label>
+                        <input v-model="form.maker_fee_override" type="number" step="0.001" :class="inputClass" :placeholder="t('admin.tradingPairs.form.feePlaceholder')" />
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-dark-300 mb-2">Taker Fee Override %</label>
-                        <input v-model="form.taker_fee_override" type="number" step="0.001" :class="inputClass" placeholder="Leave empty for default" />
+                        <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.tradingPairs.form.takerFeeOverride') }}</label>
+                        <input v-model="form.taker_fee_override" type="number" step="0.001" :class="inputClass" :placeholder="t('admin.tradingPairs.form.feePlaceholder')" />
                     </div>
                 </div>
 
                 <div class="flex items-center justify-between">
-                    <label class="text-sm font-medium text-dark-300">Active</label>
+                    <label class="text-sm font-medium text-dark-300">{{ t('admin.tradingPairs.form.active') }}</label>
                     <button type="button" @click="form.is_active = !form.is_active" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors" :class="form.is_active ? 'bg-primary-500' : 'bg-dark-600'">
                         <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform" :class="form.is_active ? 'translate-x-6' : 'translate-x-1'"></span>
                     </button>
@@ -280,9 +283,9 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
 
             <template #footer>
                 <div class="flex items-center justify-end gap-3">
-                    <button @click="showModal = false" class="px-4 py-2 rounded-xl text-sm text-dark-300 hover:text-white transition-colors">Cancel</button>
+                    <button @click="showModal = false" class="px-4 py-2 rounded-xl text-sm text-dark-300 hover:text-white transition-colors">{{ t('common.cancel') }}</button>
                     <button @click="savePair" :disabled="form.processing" class="btn-primary px-6 py-2.5 text-sm">
-                        {{ form.processing ? 'Saving...' : (editingPair ? 'Update' : 'Create') }}
+                        {{ form.processing ? t('admin.tradingPairs.modal.saving') : (editingPair ? t('admin.tradingPairs.modal.update') : t('admin.tradingPairs.modal.create')) }}
                     </button>
                 </div>
             </template>
@@ -291,9 +294,9 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
         <!-- Delete Confirmation -->
         <ConfirmDialog
             :show="showDeleteConfirm"
-            title="Delete Trading Pair"
-            :message="`Are you sure you want to delete '${deletingPair?.symbol}'?`"
-            confirm-text="Delete"
+            :title="t('admin.tradingPairs.delete.title')"
+            :message="t('admin.tradingPairs.delete.message', { symbol: deletingPair?.symbol ?? '' })"
+            :confirm-text="t('common.delete')"
             :danger="true"
             @confirm="deletePair"
             @cancel="showDeleteConfirm = false"

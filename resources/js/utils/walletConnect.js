@@ -20,6 +20,7 @@
 
 import { TPIX_RPC_URL } from '@/utils/web3';
 import { TPIX_COIN_PNG } from '@/utils/brand';
+import { t } from '@/Composables/useTranslation';
 
 /** เชนที่ขอจากกระเป๋า — ทั้งหมดเป็น "ไม่บังคับ" (เหตุผลดู buildWalletConnectOptions) */
 export const WC_OPTIONAL_CHAINS = [4289, 56, 137, 1];
@@ -93,7 +94,7 @@ let _providerPromise = null;
  */
 export function getWalletConnectProvider(projectId, loader = () => import('@walletconnect/ethereum-provider')) {
     if (!projectId) {
-        return Promise.reject(new Error('WalletConnect Project ID not configured. Please set it in Admin Settings → Trading.'));
+        return Promise.reject(new Error(t('util.walletConnect.projectIdMissing')));
     }
     if (!_providerPromise) {
         const origin = typeof window !== 'undefined' ? window.location.origin : 'https://tpix.online';

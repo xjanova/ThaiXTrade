@@ -256,7 +256,7 @@ export function useTradingFee() {
 
             return null;
         } catch (err) {
-            error.value = readError(err, 'ยืนยันการเติมเครดิตไม่สำเร็จ');
+            error.value = readError(err, t('fn.useTradingFee.topupConfirmFailed'));
             return null;
         } finally {
             isWorking.value = false;

@@ -43,6 +43,7 @@ vi.mock('@/utils/mobileWallet', () => ({ isMobile: () => mobile }));
 
 import QRCode from 'qrcode';
 import KycIndex from '@/Pages/Kyc/Index.vue';
+import { t } from '@/Composables/useTranslation';
 
 const base = {
     submission: null,
@@ -84,8 +85,8 @@ describe('Kyc page — verification happens in the app', () => {
         const w = mountPage();
 
         expect(w.find('[data-test="kyc-app-card"]').exists()).toBe(true);
-        expect(w.text()).toContain('ยืนยันตัวตนในแอป TPIX TRADE');
-        expect(w.text()).toContain('ยืนยันด้วย Thaiprompt');
+        expect(w.text()).toContain(t('page.kyc.app.title'));
+        expect(w.text()).toContain(t('page.kyc.app.step3Button'));
         // ไม่มีทางยื่นบนเว็บเหลืออยู่เลย
         expect(w.find('form').exists()).toBe(false);
         expect(w.find('input[type="file"]').exists()).toBe(false);
@@ -99,7 +100,7 @@ describe('Kyc page — verification happens in the app', () => {
 
         const open = w.find('[data-test="kyc-open-app"]');
         expect(open.attributes('href')).toBe('tpixtrade://kyc');
-        expect(w.text()).toContain('ยังไม่มีแอป? ดาวน์โหลด');
+        expect(w.text()).toContain(t('page.kyc.app.noApp'));
         expect(QRCode.toDataURL).not.toHaveBeenCalled();
     });
 
@@ -120,7 +121,7 @@ describe('Kyc page — verification happens in the app', () => {
         });
 
         expect(w.find('[data-test="kyc-app-card"]').exists()).toBe(false);
-        expect(w.text()).toContain('ยืนยันผ่านบัญชี Thaiprompt');
+        expect(w.text()).toContain(t('page.kyc.status.viaThaiprompt', { date: '' }).trim());
         expect(w.find('.feature-check--on').exists()).toBe(true);
     });
 
@@ -131,7 +132,7 @@ describe('Kyc page — verification happens in the app', () => {
         });
 
         expect(w.text()).toContain('รูปไม่ชัด');
-        expect(w.text()).toContain('ยืนยันตัวตนใหม่ได้ในแอป TPIX TRADE');
+        expect(w.text()).toContain(t('page.kyc.reject.hint'));
         expect(w.find('[data-test="kyc-app-card"]').exists()).toBe(true);
     });
 });
@@ -196,7 +197,7 @@ describe('Kyc page — knowing who is looking', () => {
         expect(routerReload).toHaveBeenCalledTimes(1);
         routerReload.mock.calls[0][0].onFinish();
         await nextTick();
-        expect(button(w, 'ตรวจสอบสถานะ').attributes('disabled')).toBeUndefined();
+        expect(button(w, t('page.kyc.app.recheck')).attributes('disabled')).toBeUndefined();
     });
 
     it('still shows an error that came back from an older redirect', () => {

@@ -10,6 +10,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useWalletStore } from '@/Stores/walletStore';
+import { useTranslation } from '@/Composables/useTranslation';
 import FoodPassportHero from '@/Components/FoodPassport/FoodPassportHero.vue';
 import HowItWorks from '@/Components/FoodPassport/HowItWorks.vue';
 import ProductRegistration from '@/Components/FoodPassport/ProductRegistration.vue';
@@ -29,6 +30,7 @@ const props = defineProps({
 });
 
 const walletStore = useWalletStore();
+const { t } = useTranslation();
 const activeTab = ref(props.verifyMode ? 'verify' : 'overview');
 const selectedProduct = ref(null);
 const showRegisterModal = ref(false);
@@ -36,34 +38,45 @@ const showMintModal = ref(false);
 const showIoTModal = ref(false);
 
 const tabs = [
-    { id: 'overview', label: 'Overview', icon: 'grid' },
-    { id: 'how-it-works', label: 'วิธีใช้งาน', icon: 'book' },
-    { id: 'register', label: 'ลงทะเบียน', icon: 'plus' },
-    { id: 'my-products', label: 'สินค้าของฉัน', icon: 'box' },
-    { id: 'iot', label: 'IoT Devices', icon: 'cpu' },
-    { id: 'fdp-token', label: 'FDP Token', icon: 'coin' },
-    { id: 'token-guide', label: 'สร้างเหรียญ', icon: 'factory' },
-    { id: 'explore', label: 'สำรวจ', icon: 'search' },
+    { id: 'overview', labelKey: 'overview', icon: 'grid' },
+    { id: 'how-it-works', labelKey: 'howItWorks', icon: 'book' },
+    { id: 'register', labelKey: 'register', icon: 'plus' },
+    { id: 'my-products', labelKey: 'myProducts', icon: 'box' },
+    { id: 'iot', labelKey: 'iot', icon: 'cpu' },
+    { id: 'fdp-token', labelKey: 'fdpToken', icon: 'coin' },
+    { id: 'token-guide', labelKey: 'tokenGuide', icon: 'factory' },
+    { id: 'explore', labelKey: 'explore', icon: 'search' },
 ];
 
-const categories = {
-    fruit: { label: 'ผลไม้', emoji: '🍎', color: '#EF4444' },
-    vegetable: { label: 'ผัก', emoji: '🥬', color: '#22C55E' },
-    meat: { label: 'เนื้อสัตว์', emoji: '🥩', color: '#DC2626' },
-    dairy: { label: 'นม / ผลิตภัณฑ์นม', emoji: '🥛', color: '#F5F5DC' },
-    seafood: { label: 'อาหารทะเล', emoji: '🦐', color: '#06B6D4' },
-    grain: { label: 'ธัญพืช / ข้าว', emoji: '🌾', color: '#F59E0B' },
-    processed: { label: 'อาหารแปรรูป', emoji: '🏭', color: '#8B5CF6' },
-    beverage: { label: 'เครื่องดื่ม', emoji: '🧃', color: '#3B82F6' },
-};
+const categories = computed(() => ({
+    fruit: { label: t('page.foodPassport.categories.fruit'), emoji: '🍎', color: '#EF4444' },
+    vegetable: { label: t('page.foodPassport.categories.vegetable'), emoji: '🥬', color: '#22C55E' },
+    meat: { label: t('page.foodPassport.categories.meat'), emoji: '🥩', color: '#DC2626' },
+    dairy: { label: t('page.foodPassport.categories.dairy'), emoji: '🥛', color: '#F5F5DC' },
+    seafood: { label: t('page.foodPassport.categories.seafood'), emoji: '🦐', color: '#06B6D4' },
+    grain: { label: t('page.foodPassport.categories.grain'), emoji: '🌾', color: '#F59E0B' },
+    processed: { label: t('page.foodPassport.categories.processed'), emoji: '🏭', color: '#8B5CF6' },
+    beverage: { label: t('page.foodPassport.categories.beverage'), emoji: '🧃', color: '#3B82F6' },
+}));
 
-const stageConfig = {
-    farm: { label: 'ฟาร์ม', icon: '🌱', color: '#22C55E' },
-    processing: { label: 'แปรรูป', icon: '🏭', color: '#F59E0B' },
-    storage: { label: 'คลังสินค้า', icon: '📦', color: '#6366F1' },
-    transport: { label: 'ขนส่ง', icon: '🚛', color: '#3B82F6' },
-    retail: { label: 'ร้านค้า', icon: '🏪', color: '#EC4899' },
-};
+const stageConfig = computed(() => ({
+    farm: { label: t('page.foodPassport.stages.farm'), icon: '🌱', color: '#22C55E' },
+    processing: { label: t('page.foodPassport.stages.processing'), icon: '🏭', color: '#F59E0B' },
+    storage: { label: t('page.foodPassport.stages.storage'), icon: '📦', color: '#6366F1' },
+    transport: { label: t('page.foodPassport.stages.transport'), icon: '🚛', color: '#3B82F6' },
+    retail: { label: t('page.foodPassport.stages.retail'), icon: '🏪', color: '#EC4899' },
+}));
+
+const briefSteps = computed(() => [
+    { num: '1', key: 's1', icon: '📝', color: 'from-green-500/20 to-green-600/20' },
+    { num: '2', key: 's2', icon: '📡', color: 'from-blue-500/20 to-blue-600/20' },
+    { num: '3', key: 's3', icon: '🏆', color: 'from-purple-500/20 to-purple-600/20' },
+    { num: '4', key: 's4', icon: '📱', color: 'from-pink-500/20 to-pink-600/20' },
+].map((step) => ({
+    ...step,
+    title: t(`page.foodPassport.howBrief.${step.key}.title`),
+    desc: t(`page.foodPassport.howBrief.${step.key}.desc`),
+})));
 
 // API calls
 const loading = ref(false);
@@ -175,7 +188,7 @@ watch(() => walletStore.verifiedAt, (at) => {
 </script>
 
 <template>
-    <Head title="FoodPassport — ตรวจสอบที่มาอาหาร" />
+    <Head :title="t('page.foodPassport.headTitle')" />
     <AppLayout>
         <div class="min-h-screen">
             <!-- Hero Section -->
@@ -195,7 +208,7 @@ watch(() => walletStore.verifiedAt, (at) => {
                                 : 'text-dark-400 hover:text-white hover:bg-white/5'
                         ]"
                     >
-                        <span>{{ tab.label }}</span>
+                        <span>{{ t(`page.foodPassport.tabs.${tab.labelKey}`) }}</span>
                     </button>
                 </div>
             </div>
@@ -209,32 +222,27 @@ watch(() => walletStore.verifiedAt, (at) => {
                     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                         <div class="glass-card rounded-2xl p-5 text-center">
                             <p class="text-3xl font-bold text-white">{{ stats.total_products || 0 }}</p>
-                            <p class="text-dark-400 text-sm mt-1">สินค้าลงทะเบียน</p>
+                            <p class="text-dark-400 text-sm mt-1">{{ t('page.foodPassport.stats.products') }}</p>
                         </div>
                         <div class="glass-card rounded-2xl p-5 text-center">
                             <p class="text-3xl font-bold text-trading-green">{{ stats.certified_products || 0 }}</p>
-                            <p class="text-dark-400 text-sm mt-1">ผ่านการรับรอง</p>
+                            <p class="text-dark-400 text-sm mt-1">{{ t('page.foodPassport.stats.certified') }}</p>
                         </div>
                         <div class="glass-card rounded-2xl p-5 text-center">
                             <p class="text-3xl font-bold text-primary-400">{{ stats.total_traces || 0 }}</p>
-                            <p class="text-dark-400 text-sm mt-1">จุดตรวจ IoT</p>
+                            <p class="text-dark-400 text-sm mt-1">{{ t('page.foodPassport.stats.traces') }}</p>
                         </div>
                         <div class="glass-card rounded-2xl p-5 text-center">
                             <p class="text-3xl font-bold text-accent-400">{{ stats.total_certificates || 0 }}</p>
-                            <p class="text-dark-400 text-sm mt-1">NFT ใบรับรอง</p>
+                            <p class="text-dark-400 text-sm mt-1">{{ t('page.foodPassport.stats.certificates') }}</p>
                         </div>
                     </div>
 
                     <!-- How it works (brief) -->
                     <div class="glass-card rounded-2xl p-6 mb-8">
-                        <h3 class="text-lg font-bold text-white mb-4">ง่ายเหมือนกดตู้น้ำ — 4 ขั้นตอน</h3>
+                        <h3 class="text-lg font-bold text-white mb-4">{{ t('page.foodPassport.howBrief.title') }}</h3>
                         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div v-for="(step, i) in [
-                                { num: '1', title: 'ลงทะเบียนสินค้า', desc: 'เกษตรกรกดปุ่ม ลงทะเบียนสินค้า → ได้ Product ID', icon: '📝', color: 'from-green-500/20 to-green-600/20' },
-                                { num: '2', title: 'IoT บันทึกอัตโนมัติ', desc: 'Sensor วัดอุณหภูมิ ความชื้น GPS ส่งขึ้น Chain ทุกจุด', icon: '📡', color: 'from-blue-500/20 to-blue-600/20' },
-                                { num: '3', title: 'Mint NFT ใบรับรอง', desc: 'ผ่านทุกจุด → กดปุ่ม Mint → ได้ NFT ใบรับรองบน TPIX Chain', icon: '🏆', color: 'from-purple-500/20 to-purple-600/20' },
-                                { num: '4', title: 'ผู้บริโภคสแกน QR', desc: 'สแกน QR Code → เห็นเส้นทางอาหารทั้งหมดแบบ real-time', icon: '📱', color: 'from-pink-500/20 to-pink-600/20' },
-                            ]" :key="i" class="relative">
+                            <div v-for="(step, i) in briefSteps" :key="i" class="relative">
                                 <div :class="['rounded-2xl p-5 bg-gradient-to-br border border-white/5', step.color]">
                                     <div class="flex items-center gap-3 mb-2">
                                         <span class="text-2xl">{{ step.icon }}</span>
@@ -250,8 +258,8 @@ watch(() => walletStore.verifiedAt, (at) => {
                     <!-- Recent Products -->
                     <div class="glass-card rounded-2xl p-6">
                         <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-lg font-bold text-white">สินค้าล่าสุด</h3>
-                            <button @click="activeTab = 'explore'" class="text-primary-400 text-sm hover:text-primary-300">ดูทั้งหมด →</button>
+                            <h3 class="text-lg font-bold text-white">{{ t('page.foodPassport.recent.title') }}</h3>
+                            <button @click="activeTab = 'explore'" class="text-primary-400 text-sm hover:text-primary-300">{{ t('page.foodPassport.recent.viewAll') }}</button>
                         </div>
                         <div v-if="products.length" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             <div v-for="product in products.slice(0, 6)" :key="product.id"
@@ -267,20 +275,20 @@ watch(() => walletStore.verifiedAt, (at) => {
                                         'text-[10px] px-2 py-0.5 rounded-full',
                                         product.status === 'certified' ? 'bg-trading-green/10 text-trading-green' : 'bg-primary-500/10 text-primary-400'
                                     ]">
-                                        {{ product.status === 'certified' ? 'Certified' : product.status }}
+                                        {{ product.status === 'certified' ? t('page.foodPassport.recent.certified') : product.status }}
                                     </span>
                                 </div>
                                 <div class="flex items-center gap-2 text-xs text-dark-500">
-                                    <span>Batch: {{ product.batch_number }}</span>
-                                    <span v-if="product.traces_count">{{ product.traces_count }} checkpoints</span>
+                                    <span>{{ t('page.foodPassport.recent.batch', { batch: product.batch_number }) }}</span>
+                                    <span v-if="product.traces_count">{{ t('page.foodPassport.recent.checkpoints', { n: product.traces_count }) }}</span>
                                 </div>
                             </div>
                         </div>
                         <div v-else class="text-center py-12 text-dark-500">
                             <p class="text-4xl mb-3">🌾</p>
-                            <p>ยังไม่มีสินค้าลงทะเบียน</p>
+                            <p>{{ t('page.foodPassport.recent.empty') }}</p>
                             <button @click="activeTab = 'register'" class="mt-3 text-primary-400 text-sm hover:text-primary-300">
-                                ลงทะเบียนสินค้าแรก →
+                                {{ t('page.foodPassport.recent.registerFirst') }}
                             </button>
                         </div>
                     </div>
@@ -304,11 +312,11 @@ watch(() => walletStore.verifiedAt, (at) => {
                 <!-- ยังไม่ได้เซ็นยืนยันกระเป๋า (เซิร์ฟเวอร์ตอบ 403) — ต้องไม่ดูเหมือน "ยังไม่มีสินค้า/อุปกรณ์" -->
                 <div v-if="showVerifyCard" class="glass-card rounded-2xl p-12 text-center" data-test="food-passport-verify">
                     <p class="text-4xl mb-3">✍️</p>
-                    <p class="text-white font-medium">ยืนยันว่าเป็นเจ้าของกระเป๋าก่อน</p>
-                    <p class="text-dark-400 text-sm mt-1">เซ็นข้อความในกระเป๋า (ไม่เสียค่าแก๊ส) เพื่อดูสินค้าและอุปกรณ์ของคุณ</p>
+                    <p class="text-white font-medium">{{ t('page.foodPassport.verify.title') }}</p>
+                    <p class="text-dark-400 text-sm mt-1">{{ t('page.foodPassport.verify.desc') }}</p>
                     <button @click="verifyWallet" :disabled="isVerifying"
                         class="btn-primary text-sm px-5 py-2.5 rounded-xl mt-4 disabled:opacity-50">
-                        {{ isVerifying ? 'กำลังรอลายเซ็น...' : 'ยืนยันกระเป๋า' }}
+                        {{ isVerifying ? t('page.foodPassport.verify.waiting') : t('page.foodPassport.verify.button') }}
                     </button>
                 </div>
 
@@ -316,13 +324,13 @@ watch(() => walletStore.verifiedAt, (at) => {
                 <template v-if="activeTab === 'my-products' && !showVerifyCard">
                     <div v-if="!walletStore.isConnected" class="glass-card rounded-2xl p-12 text-center">
                         <p class="text-4xl mb-3">🔒</p>
-                        <p class="text-white font-medium">กรุณาเชื่อมต่อ Wallet</p>
-                        <p class="text-dark-400 text-sm mt-1">เชื่อมต่อ wallet เพื่อดูสินค้าของคุณ</p>
+                        <p class="text-white font-medium">{{ t('page.foodPassport.mine.connectTitle') }}</p>
+                        <p class="text-dark-400 text-sm mt-1">{{ t('page.foodPassport.mine.connectDesc') }}</p>
                     </div>
                     <div v-else>
                         <div class="flex items-center justify-between mb-6">
-                            <h2 class="text-xl font-bold text-white">สินค้าของฉัน</h2>
-                            <button @click="activeTab = 'register'" class="btn-primary text-sm px-4 py-2 rounded-xl">+ ลงทะเบียนสินค้า</button>
+                            <h2 class="text-xl font-bold text-white">{{ t('page.foodPassport.mine.title') }}</h2>
+                            <button @click="activeTab = 'register'" class="btn-primary text-sm px-4 py-2 rounded-xl">{{ t('page.foodPassport.mine.registerBtn') }}</button>
                         </div>
                         <div v-if="myProducts.length" class="space-y-4">
                             <div v-for="product in myProducts" :key="product.id"
@@ -331,23 +339,23 @@ watch(() => walletStore.verifiedAt, (at) => {
                                     <span class="text-3xl">{{ categories[product.category]?.emoji || '📦' }}</span>
                                     <div class="flex-1">
                                         <p class="text-white font-semibold">{{ product.name }}</p>
-                                        <p class="text-dark-400 text-sm">{{ product.origin }} | Batch: {{ product.batch_number }}</p>
+                                        <p class="text-dark-400 text-sm">{{ t('page.foodPassport.mine.originBatch', { origin: product.origin, batch: product.batch_number }) }}</p>
                                     </div>
                                     <div class="flex gap-2">
-                                        <button @click="selectProduct(product)" class="px-3 py-1.5 rounded-lg bg-primary-500/10 text-primary-400 text-sm hover:bg-primary-500/20">ดูรายละเอียด</button>
+                                        <button @click="selectProduct(product)" class="px-3 py-1.5 rounded-lg bg-primary-500/10 text-primary-400 text-sm hover:bg-primary-500/20">{{ t('page.foodPassport.mine.viewDetails') }}</button>
                                         <button v-if="product.status !== 'certified'" @click="selectedProduct = product; showMintModal = true"
                                             class="px-3 py-1.5 rounded-lg bg-accent-500/10 text-accent-400 text-sm hover:bg-accent-500/20">
-                                            Mint NFT
+                                            {{ t('page.foodPassport.mine.mint') }}
                                         </button>
-                                        <span v-else class="px-3 py-1.5 rounded-lg bg-trading-green/10 text-trading-green text-sm">Certified</span>
+                                        <span v-else class="px-3 py-1.5 rounded-lg bg-trading-green/10 text-trading-green text-sm">{{ t('page.foodPassport.mine.certified') }}</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
                         <div v-else class="glass-card rounded-2xl p-12 text-center">
                             <p class="text-4xl mb-3">📦</p>
-                            <p class="text-dark-400">ยังไม่มีสินค้า</p>
-                            <button @click="activeTab = 'register'" class="mt-3 text-primary-400 text-sm">ลงทะเบียนเลย →</button>
+                            <p class="text-dark-400">{{ t('page.foodPassport.mine.empty') }}</p>
+                            <button @click="activeTab = 'register'" class="mt-3 text-primary-400 text-sm">{{ t('page.foodPassport.mine.registerNow') }}</button>
                         </div>
                     </div>
                 </template>

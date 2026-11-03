@@ -12,6 +12,13 @@ import ColdSendModal from '@/Components/Admin/Treasury/ColdSendModal.vue';
 import ReceiveModal from '@/Components/Admin/Treasury/ReceiveModal.vue';
 import { useAdminPolling } from '@/Composables/useAdminPolling';
 import axios from 'axios';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
+const dateLocale = computed(() => (locale.value === 'th' ? 'th-TH' : 'en-US'));
+/* ชื่อบทบาทกระเป๋ามาจากเซิร์ฟเวอร์ทั้งสองภาษา (role_th / role) — เลือกตามภาษาที่ใช้อยู่ */
+const roleMain = (p) => (locale.value === 'th' ? p.role_th : (p.role || p.role_th));
+const roleSub = (p) => (locale.value === 'th' ? p.role : p.role_th);
 
 const props = defineProps({
     pools: { type: Array, default: () => [] },
@@ -85,7 +92,7 @@ const sendWallet = computed(() => pools.value.find((p) => p.key === sendKey.valu
 const receiveWallet = computed(() => {
     if (!receiveAddress.value) return null;
     if (hotWallet.value?.address === receiveAddress.value) {
-        return { address: hotWallet.value.address, role_th: 'กระเป๋าร้อน' };
+        return { address: hotWallet.value.address, role_th: t('admin.treasury.hot.title') };
     }
     return pools.value.find((p) => p.address === receiveAddress.value) ?? null;
 });
@@ -114,30 +121,30 @@ useAdminPolling(refresh, 30000);
 </script>
 
 <template>
-    <Head title="ชั้นคลัง TPIX" />
+    <Head :title="t('admin.treasury.title')" />
     <AdminLayout>
         <div class="space-y-6">
             <!-- Header -->
             <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <h1 class="text-2xl font-bold text-white">ชั้นคลัง TPIX</h1>
+                    <h1 class="text-2xl font-bold text-white">{{ t('admin.treasury.title') }}</h1>
                     <p class="text-sm text-gray-400 mt-1">
-                        ยอดกระเป๋าคลังอ่านสดจากเชนโดยตรง ไม่ผ่าน explorer
+                        {{ t('admin.treasury.subtitle') }}
                     </p>
                 </div>
                 <div class="flex items-center gap-3">
                     <Link href="/admin/treasury/payouts"
                           class="px-4 py-2 text-sm font-medium rounded-xl bg-primary-500/20 text-primary-400 border border-primary-500/30 hover:bg-primary-500/30 transition-all">
-                        คิวจ่ายเงิน
+                        {{ t('admin.treasury.payoutQueue') }}
                         <span v-if="pendingCount" class="ml-1.5 px-1.5 py-0.5 text-xs rounded-md bg-primary-500/30">{{ pendingCount }}</span>
                     </Link>
                     <Link href="/admin/treasury/ledger"
                           class="px-4 py-2 text-sm font-medium rounded-xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all">
-                        สมุดบัญชี
+                        {{ t('admin.treasury.ledger') }}
                     </Link>
                     <button @click="refresh" :disabled="isRefreshing"
                             class="px-4 py-2 text-sm font-medium rounded-xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all disabled:opacity-50">
-                        {{ isRefreshing ? 'กำลังรีเฟรช…' : 'รีเฟรช' }}
+                        {{ isRefreshing ? t('admin.treasury.refreshing') : t('admin.treasury.refresh') }}
                     </button>
                 </div>
             </div>
@@ -147,13 +154,12 @@ useAdminPolling(refresh, 30000);
                           blockNumber ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-red-500/5 border-red-500/20']">
                 <div :class="['w-3 h-3 rounded-full', blockNumber ? 'bg-emerald-500 animate-pulse' : 'bg-red-500']" />
                 <span :class="blockNumber ? 'text-emerald-400' : 'text-red-400'" class="font-bold text-sm">
-                    {{ blockNumber ? 'ต่อเชนได้' : 'ต่อเชนไม่ได้' }}
+                    {{ blockNumber ? t('admin.treasury.chainOk') : t('admin.treasury.chainDown') }}
                 </span>
-                <span v-if="blockNumber" class="text-xs text-gray-500">บล็อก #{{ blockNumber.toLocaleString() }}</span>
+                <span v-if="blockNumber" class="text-xs text-gray-500">{{ t('admin.treasury.block', { n: blockNumber.toLocaleString(dateLocale) }) }}</span>
                 <span class="text-xs text-gray-600 font-mono">{{ rpcUrl }}</span>
                 <span class="ml-auto text-xs text-gray-600">
-                    อ่านได้ {{ readableCount }}/{{ pools.length }} ใบ · อัปเดต
-                    {{ lastRefresh.toLocaleTimeString('th-TH') }}
+                    {{ t('admin.treasury.readable', { n: readableCount, total: pools.length, time: lastRefresh.toLocaleTimeString(dateLocale) }) }}
                 </span>
             </div>
 
@@ -163,11 +169,11 @@ useAdminPolling(refresh, 30000);
                 <div class="flex items-start gap-3">
                     <div class="text-2xl leading-none">&#9888;</div>
                     <div class="flex-1">
-                        <h3 class="text-amber-300 font-bold">ระบบจ่ายเงินยังไม่เปิดใช้งาน</h3>
+                        <h3 class="text-amber-300 font-bold">{{ t('admin.treasury.notReady.title') }}</h3>
                         <p class="text-sm text-gray-400 mt-1">
-                            หน้าดูยอด คิวอนุมัติ whitelist และสมุดบัญชีใช้งานได้ตามปกติ
-                            แต่จะยัง <span class="text-amber-300">ไม่เซ็นและไม่ส่งธุรกรรมขึ้นเชน</span>
-                            จนกว่าเงื่อนไขข้างล่างจะครบทุกข้อ
+                            {{ t('admin.treasury.notReady.body1') }}
+                            <span class="text-amber-300">{{ t('admin.treasury.notReady.bodyHighlight') }}</span>
+                            {{ t('admin.treasury.notReady.body2') }}
                         </p>
                         <ul class="mt-4 space-y-2">
                             <li v-for="c in readiness.checks" :key="c.key"
@@ -187,7 +193,7 @@ useAdminPolling(refresh, 30000);
             </div>
             <div v-else class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 flex items-center gap-3">
                 <span class="text-emerald-400 text-lg">&#10003;</span>
-                <span class="text-emerald-300 text-sm font-bold">ระบบจ่ายเงินพร้อมใช้งาน</span>
+                <span class="text-emerald-300 text-sm font-bold">{{ t('admin.treasury.ready') }}</span>
             </div>
 
             <!-- กระเป๋าร้อน -->
@@ -195,27 +201,27 @@ useAdminPolling(refresh, 30000);
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <div class="flex items-center gap-2">
-                            <h3 class="text-sm font-bold text-white uppercase tracking-wide">กระเป๋าร้อน</h3>
+                            <h3 class="text-sm font-bold text-white uppercase tracking-wide">{{ t('admin.treasury.hot.title') }}</h3>
                             <span v-if="hotWallet.is_empty"
                                   class="px-2 py-0.5 text-xs rounded-md bg-gray-600/30 text-gray-400 border border-gray-500/30">
-                                ยังไม่ได้เติมเงิน
+                                {{ t('admin.treasury.hot.notFunded') }}
                             </span>
                             <span v-else-if="hotWallet.is_low"
                                   class="px-2 py-0.5 text-xs rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                                ยอดต่ำ
+                                {{ t('admin.treasury.hot.low') }}
                             </span>
                         </div>
                         <button @click="copyAddr(hotWallet.address)"
                                 class="mt-2 font-mono text-xs text-gray-400 hover:text-primary-400 transition-colors">
                             {{ hotWallet.address }}
-                            <span v-if="copied === hotWallet.address" class="ml-1 text-emerald-400">คัดลอกแล้ว</span>
+                            <span v-if="copied === hotWallet.address" class="ml-1 text-emerald-400">{{ t('admin.treasury.copied') }}</span>
                         </button>
                         <p class="text-xs text-gray-600 mt-2">
-                            คีย์สุ่มอิสระ ไม่ derive จาก mnemonic ของคลัง · จ่ายออกผ่านคิวจ่ายเงินเท่านั้น
+                            {{ t('admin.treasury.hot.note') }}
                         </p>
                         <button v-if="hotWallet.address" @click="receiveAddress = hotWallet.address"
                                 class="mt-3 px-3 py-1.5 text-xs font-medium rounded-lg bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all">
-                            รับเข้า (QR)
+                            {{ t('admin.treasury.hot.receiveQr') }}
                         </button>
                     </div>
                     <div class="text-right">
@@ -223,9 +229,9 @@ useAdminPolling(refresh, 30000);
                             {{ fmtTpix(hotWallet.balance_tpix) }}
                             <span class="text-sm text-gray-500 font-normal">TPIX</span>
                         </div>
-                        <div v-else class="text-xl font-bold text-red-400">อ่านยอดไม่ได้</div>
+                        <div v-else class="text-xl font-bold text-red-400">{{ t('admin.treasury.hot.unreadable') }}</div>
                         <div v-if="hotWallet.low_warning_tpix !== '0'" class="text-xs text-gray-600 mt-1">
-                            เตือนเมื่อต่ำกว่า {{ fmtTpix(hotWallet.low_warning_tpix) }} TPIX
+                            {{ t('admin.treasury.hot.lowWarn', { amount: fmtTpix(hotWallet.low_warning_tpix) }) }}
                         </div>
                     </div>
                 </div>
@@ -233,18 +239,18 @@ useAdminPolling(refresh, 30000);
 
             <!-- เตือนเมื่ออ่านยอดบางใบไม่ได้ -->
             <div v-if="anyUnreadable" class="rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-sm">
-                <span class="text-red-400 font-bold">อ่านยอดบางใบไม่ได้</span>
+                <span class="text-red-400 font-bold">{{ t('admin.treasury.partial.title') }}</span>
                 <span class="text-gray-400 ml-2">
-                    ช่องที่ขึ้น "—" คือ RPC ไม่ตอบ ไม่ใช่ยอดเป็นศูนย์ — อย่าเพิ่งสรุปว่าคลังว่าง
+                    {{ t('admin.treasury.partial.body') }}
                 </span>
             </div>
 
             <!-- กระเป๋าคลัง 6 ใบ -->
             <div>
                 <div class="flex items-baseline justify-between mb-3">
-                    <h3 class="text-sm font-bold text-white uppercase tracking-wide">กระเป๋าคลัง {{ pools.length }} ใบ</h3>
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wide">{{ t('admin.treasury.pools.title', { n: pools.length }) }}</h3>
                     <span class="text-xs text-gray-500">
-                        รวม {{ totalSharePct }}% ของ {{ fmtTpix(totalSupply) }} TPIX
+                        {{ t('admin.treasury.pools.total', { pct: totalSharePct, supply: fmtTpix(totalSupply) }) }}
                     </span>
                 </div>
 
@@ -253,8 +259,8 @@ useAdminPolling(refresh, 30000);
                          :class="['rounded-xl border p-5 transition-all hover:scale-[1.01]', colorOf(pool.color).ring]">
                         <div class="flex items-start justify-between gap-2">
                             <div class="min-w-0">
-                                <div :class="['font-bold text-sm', colorOf(pool.color).text]">{{ pool.role_th }}</div>
-                                <div class="text-xs text-gray-500 truncate">{{ pool.role }}</div>
+                                <div :class="['font-bold text-sm', colorOf(pool.color).text]">{{ roleMain(pool) }}</div>
+                                <div class="text-xs text-gray-500 truncate">{{ roleSub(pool) }}</div>
                             </div>
                             <span class="text-xs text-gray-600 font-mono shrink-0">
                                 {{ pool.share_pct !== null ? pool.share_pct + '%' : '—' }}
@@ -277,16 +283,16 @@ useAdminPolling(refresh, 30000);
 
                         <div class="mt-4 space-y-1.5 text-xs">
                             <div class="flex justify-between">
-                                <span class="text-gray-500">ตอน genesis</span>
+                                <span class="text-gray-500">{{ t('admin.treasury.pools.genesis') }}</span>
                                 <span class="text-gray-300 font-mono">{{ fmtTpix(pool.genesis_tpix) }}</span>
                             </div>
                             <div v-if="pool.readable" class="flex justify-between">
                                 <span class="text-gray-500">
-                                    {{ pool.spent_wei.startsWith('-') ? 'รับเข้าเพิ่ม' : 'จ่ายออกไปแล้ว' }}
+                                    {{ pool.spent_wei.startsWith('-') ? t('admin.treasury.pools.receivedMore') : t('admin.treasury.pools.spent') }}
                                 </span>
                                 <span :class="pool.spent_wei === '0' ? 'text-gray-600 font-mono' : 'text-amber-400 font-mono'">
                                     {{ pool.spent_wei === '0'
-                                        ? 'ยังไม่เคยเคลื่อนไหว'
+                                        ? t('admin.treasury.pools.noMovement')
                                         : fmtTpix(pool.spent_tpix.replace('-', '')) }}
                                 </span>
                             </div>
@@ -294,7 +300,7 @@ useAdminPolling(refresh, 30000);
                                 <button @click="copyAddr(pool.address)"
                                         class="font-mono text-gray-500 hover:text-primary-400 transition-colors">
                                     {{ shortAddr(pool.address) }}
-                                    <span v-if="copied === pool.address" class="ml-1 text-emerald-400">คัดลอกแล้ว</span>
+                                    <span v-if="copied === pool.address" class="ml-1 text-emerald-400">{{ t('admin.treasury.copied') }}</span>
                                 </button>
                                 <a :href="`${explorerUrl}/address/${pool.address}`" target="_blank" rel="noopener"
                                    class="text-gray-600 hover:text-primary-400 transition-colors">explorer &#8599;</a>
@@ -305,11 +311,11 @@ useAdminPolling(refresh, 30000);
                         <div class="mt-4 grid grid-cols-2 gap-2">
                             <button @click="receiveAddress = pool.address"
                                     class="px-3 py-1.5 text-xs font-medium rounded-lg bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all">
-                                รับเข้า
+                                {{ t('admin.treasury.pools.receive') }}
                             </button>
                             <button @click="sendKey = pool.key" :disabled="!pool.readable"
                                     class="px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                                โอนออก
+                                {{ t('admin.treasury.pools.send') }}
                             </button>
                         </div>
                     </div>
@@ -318,12 +324,9 @@ useAdminPolling(refresh, 30000);
 
             <!-- หมายเหตุความปลอดภัย -->
             <div class="rounded-xl border border-white/10 bg-white/[0.02] p-5 text-sm">
-                <h3 class="text-white font-bold mb-2">โอนออกจากคลังทำงานอย่างไร</h3>
+                <h3 class="text-white font-bold mb-2">{{ t('admin.treasury.security.title') }}</h3>
                 <p class="text-gray-400 leading-relaxed">
-                    เซิร์ฟเวอร์ไม่มีคีย์ของกระเป๋าคลัง และจะไม่มี — เก็บไว้แค่ที่อยู่สำหรับอ่านยอดกับกระทบยอด
-                    ปุ่ม "โอนออก" ให้คุณเลือกไฟล์ keystore จากเครื่องตัวเองแล้วใส่รหัสผ่าน หน้านี้ถอดรหัสและเซ็น
-                    ในเบราว์เซอร์ แล้วส่งตรงไปที่เชน ไฟล์และรหัสผ่านไม่ผ่านเซิร์ฟเวอร์ของเรา
-                    การจ่ายเงินอัตโนมัติยังทำผ่านกระเป๋าร้อนเท่านั้น ซึ่งถือเงินเท่าที่จำเป็นและมีวงเงินจำกัดกำกับอยู่
+                    {{ t('admin.treasury.security.body') }}
                 </p>
             </div>
         </div>

@@ -6,6 +6,7 @@
  *
  * Developed by Xman Studio
  */
+import { t } from '@/Composables/useTranslation';
 
 export const KYC_WRITE_ABI = [
     'function submitKYC(address _applicant, bytes32 _kycHash)',
@@ -13,14 +14,19 @@ export const KYC_WRITE_ABI = [
     'function rejectKYC(address _applicant, string _reason)',
 ];
 
-/** สถานะบนสัญญา (enum KYCStatus) → ข้อความที่แอดมินอ่านเข้าใจ */
+/**
+ * สถานะบนสัญญา (enum KYCStatus) → ข้อความที่แอดมินอ่านเข้าใจ
+ * label เป็น getter — แปลตอน render ทุกครั้ง สลับภาษาแล้วป้ายเปลี่ยนตาม
+ */
+const statusEntry = (key, tone) => ({ get label() { return t(`util.validatorKyc.status.${key}`); }, tone });
+
 export const KYC_STATUS = {
-    None: { label: 'ยังไม่ยินยอม', tone: 'gray' },
-    ConsentGiven: { label: 'ยินยอมแล้ว — รอทีมบันทึกเอกสาร', tone: 'yellow' },
-    Submitted: { label: 'บันทึกเอกสารแล้ว — รออนุมัติ', tone: 'cyan' },
-    Approved: { label: 'อนุมัติแล้ว — stake ชั้น Validator ได้', tone: 'green' },
-    Rejected: { label: 'ไม่ผ่าน', tone: 'red' },
-    Revoked: { label: 'ผู้สมัครถอนความยินยอม', tone: 'gray' },
+    None: statusEntry('none', 'gray'),
+    ConsentGiven: statusEntry('consentGiven', 'yellow'),
+    Submitted: statusEntry('submitted', 'cyan'),
+    Approved: statusEntry('approved', 'green'),
+    Rejected: statusEntry('rejected', 'red'),
+    Revoked: statusEntry('revoked', 'gray'),
 };
 
 export function sameAddress(a, b) {
@@ -54,10 +60,10 @@ export function resolveSubmitHash(row, manualHash = '', note = '') {
         return { hash: site.doc_hash.toLowerCase(), uuid: site.uuid, manual: false, error: null };
     }
     if (!isBytes32(manualHash)) {
-        return { hash: null, uuid: null, manual: true, error: 'ใส่ hash 0x + 64 ตัวอักษร (keccak256 ของชุดเอกสาร)' };
+        return { hash: null, uuid: null, manual: true, error: t('util.validatorKyc.error.hashFormat') };
     }
     if (!String(note).trim()) {
-        return { hash: null, uuid: null, manual: true, error: 'hash ที่ไม่ได้มาจากใบ KYC ของเว็บต้องพิมพ์เหตุผลกำกับ' };
+        return { hash: null, uuid: null, manual: true, error: t('util.validatorKyc.error.manualNoteRequired') };
     }
     return { hash: manualHash.toLowerCase(), uuid: null, manual: true, error: null };
 }
@@ -90,14 +96,14 @@ export function humanWalletError(e) {
     const code = e?.code ?? e?.info?.error?.code ?? e?.error?.code;
     const blob = [e?.shortMessage, e?.reason, e?.message].filter(Boolean).join(' | ');
     if (code === 4001 || code === 'ACTION_REJECTED' || /user rejected|user denied/i.test(blob)) {
-        return 'ยกเลิกการเซ็นในกระเป๋า — ไม่มีอะไรถูกส่งขึ้นเชน';
+        return t('util.validatorKyc.wallet.rejected');
     }
-    if (e?.message === 'NO_INJECTED_WALLET') return 'ไม่พบกระเป๋าในเบราว์เซอร์ (MetaMask / Rabby) — ติดตั้งแล้วนำเข้ากุญแจ owner ก่อน';
-    if (e?.message === 'WALLET_SWITCHED') return 'กระเป๋าถูกสลับระหว่างทำรายการ — ยกเลิกแล้ว ไม่มีอะไรถูกส่ง';
-    if (e?.message === 'NOT_OWNER') return 'กระเป๋าที่ต่ออยู่ไม่ใช่ owner ของสัญญา ValidatorKYC';
-    if (e?.message === 'WRONG_CHAIN') return 'กระเป๋ายังไม่ได้อยู่บน TPIX Chain (4289)';
-    if (e?.message === 'KYC_HASH_REQUIRED') return 'ยังไม่มี hash ของเอกสาร';
-    if (e?.message === 'REJECT_REASON_REQUIRED') return 'ต้องใส่เหตุผลที่ไม่ผ่าน';
-    if (/network|timeout|failed to fetch/i.test(blob)) return 'ต่อกับเชนไม่ได้ — ลองใหม่อีกครั้ง';
-    return e?.reason ? `สัญญาปฏิเสธ: ${e.reason}` : 'ทำรายการไม่สำเร็จ — ลองใหม่อีกครั้ง';
+    if (e?.message === 'NO_INJECTED_WALLET') return t('util.validatorKyc.wallet.noInjected');
+    if (e?.message === 'WALLET_SWITCHED') return t('util.validatorKyc.wallet.switched');
+    if (e?.message === 'NOT_OWNER') return t('util.validatorKyc.wallet.notOwner');
+    if (e?.message === 'WRONG_CHAIN') return t('util.validatorKyc.wallet.wrongChain');
+    if (e?.message === 'KYC_HASH_REQUIRED') return t('util.validatorKyc.wallet.hashRequired');
+    if (e?.message === 'REJECT_REASON_REQUIRED') return t('util.validatorKyc.wallet.reasonRequired');
+    if (/network|timeout|failed to fetch/i.test(blob)) return t('util.validatorKyc.wallet.network');
+    return e?.reason ? t('util.validatorKyc.wallet.contractRejected', { reason: e.reason }) : t('util.validatorKyc.wallet.failed');
 }

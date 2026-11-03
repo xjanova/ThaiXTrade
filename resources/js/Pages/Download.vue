@@ -99,10 +99,10 @@ function formatDate(iso) {
                 <!-- Header -->
                 <div class="text-center mb-10">
                     <h1 class="text-3xl font-bold text-white mb-2">{{ t('download.title') }}</h1>
-                    <p class="text-dark-400">{{ locale === 'th' ? 'ดาวน์โหลดแอปจากระบบของเราโดยตรง — ปลอดภัย เร็ว' : 'Download apps directly from our server — safe and fast' }}</p>
+                    <p class="text-dark-400">{{ t('page.download.subtitle') }}</p>
                     <a v-if="lesson('install-android')" href="#install-guide"
                         class="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-full bg-primary-500/15 border border-primary-500/30 text-primary-300 text-sm hover:bg-primary-500/25 transition-colors">
-                        ▶ {{ lang === 'th' ? `ติดตั้งครั้งแรก? ดูวิดีโอสอนทีละขั้น (${mmss(lesson('install-android').duration)})` : `First time? Watch the install video (${mmss(lesson('install-android').duration)})` }}
+                        ▶ {{ t('page.download.firstTimeVideo', { duration: mmss(lesson('install-android').duration) }) }}
                     </a>
                 </div>
 
@@ -123,10 +123,10 @@ function formatDate(iso) {
                                 <div>
                                     <h2 class="text-lg font-bold text-white">TPIX TRADE</h2>
                                     <p class="text-dark-400 text-xs" v-if="release">{{ release.version }} &middot; {{ formatDate(release.publishedAt) }}</p>
-                                    <p class="text-dark-500 text-xs" v-else>{{ locale === 'th' ? 'ยังไม่มี release' : 'No release yet' }}</p>
+                                    <p class="text-dark-500 text-xs" v-else>{{ t('page.download.noReleaseYet') }}</p>
                                 </div>
                             </div>
-                            <p class="text-dark-400 text-sm mb-4">{{ locale === 'th' ? 'แอปเทรดคริปโต DEX — เทรดจากกระเป๋าของคุณโดยตรง' : 'DEX crypto trading app — trade directly from your wallet' }}</p>
+                            <p class="text-dark-400 text-sm mb-4">{{ t('page.download.trade.desc') }}</p>
                             <div class="flex flex-wrap gap-2 mb-4">
                                 <span class="px-2 py-0.5 rounded-full text-xs bg-green-500/20 text-green-400">Android</span>
                             </div>
@@ -137,9 +137,9 @@ function formatDate(iso) {
                                 <span v-if="release?.apkSize" class="text-sm opacity-80">({{ release.apkSize }} MB)</span>
                             </a>
                             <div v-else class="w-full text-center py-3 bg-white/5 rounded-xl text-dark-500 text-sm">
-                                {{ locale === 'th' ? 'ยังไม่พร้อมดาวน์โหลด' : 'Not available yet' }}
+                                {{ t('page.download.notAvailable') }}
                             </div>
-                            <p v-if="dlStats.trade_apk" class="text-center text-dark-500 text-xs mt-2">{{ dlStats.trade_apk.toLocaleString() }} {{ locale === 'th' ? 'ดาวน์โหลด' : 'downloads' }}</p>
+                            <p v-if="dlStats.trade_apk" class="text-center text-dark-500 text-xs mt-2">{{ dlStats.trade_apk.toLocaleString() }} {{ t('page.download.downloadsUnit') }}</p>
                             <div class="grid grid-cols-2 gap-2 mt-4">
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>⚡</span> {{ t('download.zeroGas') }}</div>
                                 <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>📊</span> {{ t('download.charts') }}</div>
@@ -148,7 +148,7 @@ function formatDate(iso) {
                             </div>
                             <a v-if="lesson('trade-basics')" :href="lesson('trade-basics').url[lang]"
                                 class="mt-3 flex items-center justify-center gap-2 py-2 rounded-xl border border-primary-500/20 text-primary-300 text-sm hover:bg-primary-500/10 transition-colors">
-                                ▶ {{ lang === 'th' ? 'วิดีโอสอนใช้ TPIX TRADE' : 'Watch: TPIX TRADE basics' }}
+                                ▶ {{ t('page.download.trade.video') }}
                                 <span class="text-xs text-dark-500">{{ mmss(lesson('trade-basics').duration) }}</span>
                             </a>
                         </div>
@@ -161,10 +161,10 @@ function formatDate(iso) {
                                 <div>
                                     <h2 class="text-lg font-bold text-white">TPIX Wallet</h2>
                                     <p class="text-dark-400 text-xs" v-if="chainData?.wallet">v{{ chainData.wallet.version }} &middot; {{ formatDate(chainData.wallet.published_at) }}</p>
-                                    <p class="text-dark-500 text-xs" v-else>{{ locale === 'th' ? 'กำลังโหลด...' : 'Loading...' }}</p>
+                                    <p class="text-dark-500 text-xs" v-else>{{ t('page.download.loading') }}</p>
                                 </div>
                             </div>
-                            <p class="text-dark-400 text-sm mb-4">{{ locale === 'th' ? 'กระเป๋าเงิน TPIX Chain ปลอดภัย — PIN, สแกนลายนิ้วมือ, QR Code' : 'Secure TPIX Chain wallet — PIN, biometric, QR Code' }}</p>
+                            <p class="text-dark-400 text-sm mb-4">{{ t('page.download.wallet.desc') }}</p>
                             <div class="flex flex-wrap gap-2 mb-4">
                                 <span class="px-2 py-0.5 rounded-full text-xs bg-purple-500/20 text-purple-400">Android</span>
                                 <span class="px-2 py-0.5 rounded-full text-xs bg-white/10 text-dark-400">3D UI</span>
@@ -172,22 +172,22 @@ function formatDate(iso) {
                             <a v-if="chainData?.wallet" href="/api/v1/app/chain-download?type=wallet"
                                 class="w-full flex items-center justify-center gap-2 py-3 bg-purple-500/90 hover:bg-purple-500 text-white rounded-xl font-semibold transition-all">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                                {{ locale === 'th' ? 'ดาวน์โหลด TPIX Wallet' : 'Download TPIX Wallet' }}
+                                {{ t('page.download.wallet.download') }}
                                 <span v-if="walletSize" class="text-sm opacity-80">({{ walletSize }} MB)</span>
                             </a>
                             <div v-else class="w-full text-center py-3 bg-white/5 rounded-xl text-dark-500 text-sm">
-                                {{ locale === 'th' ? 'ยังไม่พร้อมดาวน์โหลด' : 'Not available yet' }}
+                                {{ t('page.download.notAvailable') }}
                             </div>
-                            <p v-if="dlStats.wallet_apk" class="text-center text-dark-500 text-xs mt-2">{{ dlStats.wallet_apk.toLocaleString() }} {{ locale === 'th' ? 'ดาวน์โหลด' : 'downloads' }}</p>
+                            <p v-if="dlStats.wallet_apk" class="text-center text-dark-500 text-xs mt-2">{{ dlStats.wallet_apk.toLocaleString() }} {{ t('page.download.downloadsUnit') }}</p>
                             <div class="grid grid-cols-2 gap-2 mt-4">
-                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🔒</span> {{ locale === 'th' ? 'PIN เข้ารหัส' : 'PIN encrypted' }}</div>
-                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>⚡</span> {{ locale === 'th' ? 'ไม่มีค่าแก๊ส' : 'Zero gas fee' }}</div>
-                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>📱</span> {{ locale === 'th' ? 'QR รับเงิน' : 'QR receive' }}</div>
-                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🎨</span> {{ locale === 'th' ? '3D อนิเมชัน' : '3D animation' }}</div>
+                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🔒</span> {{ t('page.download.wallet.featPin') }}</div>
+                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>⚡</span> {{ t('page.download.wallet.featZeroGas') }}</div>
+                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>📱</span> {{ t('page.download.wallet.featQr') }}</div>
+                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🎨</span> {{ t('page.download.wallet.feat3d') }}</div>
                             </div>
                             <a v-if="lesson('wallet-basics')" :href="lesson('wallet-basics').url[lang]"
                                 class="mt-3 flex items-center justify-center gap-2 py-2 rounded-xl border border-purple-500/20 text-purple-300 text-sm hover:bg-purple-500/10 transition-colors">
-                                ▶ {{ lang === 'th' ? 'วิดีโอสอนใช้ TPIX Wallet' : 'Watch: TPIX Wallet basics' }}
+                                ▶ {{ t('page.download.wallet.video') }}
                                 <span class="text-xs text-dark-500">{{ mmss(lesson('wallet-basics').duration) }}</span>
                             </a>
                         </div>
@@ -201,35 +201,35 @@ function formatDate(iso) {
                                 <div>
                                     <h2 class="text-lg font-bold text-white">TPIX Master Node</h2>
                                     <p class="text-dark-400 text-xs" v-if="chainData?.masternode">v{{ chainData.masternode.version }} &middot; Windows 10/11</p>
-                                    <p class="text-dark-500 text-xs" v-else>{{ locale === 'th' ? 'กำลังโหลด...' : 'Loading...' }}</p>
+                                    <p class="text-dark-500 text-xs" v-else>{{ t('page.download.loading') }}</p>
                                 </div>
                             </div>
-                            <p class="text-dark-400 text-sm mb-4">{{ locale === 'th' ? 'ตั้ง Validator Node บน Windows — รับรางวัลสูงสุด 15% APY' : 'Run a Validator Node on Windows — earn up to 15% APY rewards' }}</p>
+                            <p class="text-dark-400 text-sm mb-4">{{ t('page.download.masternode.desc') }}</p>
                             <div class="flex flex-wrap gap-2 mb-4">
                                 <span class="px-2 py-0.5 rounded-full text-xs bg-cyan-500/20 text-cyan-400">Windows</span>
-                                <span class="px-2 py-0.5 rounded-full text-xs bg-amber-500/20 text-amber-400">Portable</span>
+                                <span class="px-2 py-0.5 rounded-full text-xs bg-amber-500/20 text-amber-400">{{ t('page.download.masternode.portable') }}</span>
                             </div>
                             <a v-if="chainData?.masternode" href="/api/v1/app/chain-download?type=masternode"
                                 class="w-full flex items-center justify-center gap-2 py-3 bg-cyan-500/90 hover:bg-cyan-500 text-white rounded-xl font-semibold transition-all">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                                {{ locale === 'th' ? 'ดาวน์โหลด Master Node' : 'Download Master Node' }}
+                                {{ t('page.download.masternode.download') }}
                                 <span v-if="masternodeSize" class="text-sm opacity-80">({{ masternodeSize }} MB)</span>
                             </a>
                             <div v-else class="w-full text-center py-3 bg-white/5 rounded-xl text-dark-500 text-sm">
-                                {{ locale === 'th' ? 'ยังไม่พร้อมดาวน์โหลด' : 'Not available yet' }}
+                                {{ t('page.download.notAvailable') }}
                             </div>
-                            <p v-if="dlStats.masternode_exe" class="text-center text-dark-500 text-xs mt-2">{{ dlStats.masternode_exe.toLocaleString() }} {{ locale === 'th' ? 'ดาวน์โหลด' : 'downloads' }}</p>
+                            <p v-if="dlStats.masternode_exe" class="text-center text-dark-500 text-xs mt-2">{{ dlStats.masternode_exe.toLocaleString() }} {{ t('page.download.downloadsUnit') }}</p>
                             <div class="grid grid-cols-2 gap-2 mt-4">
-                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🖥️</span> {{ locale === 'th' ? 'ตั้งค่า 1 คลิก' : 'One-click setup' }}</div>
-                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>📊</span> {{ locale === 'th' ? 'แดชบอร์ดเรียลไทม์' : 'Realtime dashboard' }}</div>
-                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🔄</span> {{ locale === 'th' ? 'อัปเดตอัตโนมัติ' : 'Auto-update' }}</div>
-                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🌐</span> {{ locale === 'th' ? 'ไทย/อังกฤษ' : 'Thai/English' }}</div>
+                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🖥️</span> {{ t('page.download.masternode.featOneClick') }}</div>
+                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>📊</span> {{ t('page.download.masternode.featDashboard') }}</div>
+                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🔄</span> {{ t('page.download.masternode.featAutoUpdate') }}</div>
+                                <div class="flex items-center gap-2 p-2 rounded-lg bg-white/5 text-xs text-dark-300"><span>🌐</span> {{ t('page.download.masternode.featLanguages') }}</div>
                             </div>
                         </div>
 
                         <!-- Node Tiers -->
                         <div class="glass-card p-6">
-                            <h3 class="text-white font-semibold mb-4">{{ locale === 'th' ? 'ระดับโหนด & รางวัล' : 'Node Tiers & Rewards' }}</h3>
+                            <h3 class="text-white font-semibold mb-4">{{ t('page.download.tiers.title') }}</h3>
                             <div class="space-y-3">
                                 <div v-for="tier in [
                                     { name: 'Light Node', stake: '10,000 TPIX', apy: '4-6%', icon: '💎', color: 'text-cyan-400' },
@@ -248,13 +248,13 @@ function formatDate(iso) {
                                 </div>
                             </div>
                             <p class="text-dark-500 text-xs mt-3 text-center">
-                                {{ locale === 'th' ? 'รวมรางวัล: 1.4 พันล้าน TPIX ระยะ 3 ปี (สิ้นสุด 2028)' : 'Total reward pool: 1.4 Billion TPIX over 3 years (ending 2028)' }}
+                                {{ t('page.download.tiers.rewardPool') }}
                             </p>
                         </div>
 
                         <!-- Setup Guide Link -->
                         <a href="/masternode/guide" class="block glass-card p-4 border border-cyan-500/10 hover:border-cyan-500/30 transition-all text-center">
-                            <span class="text-cyan-400 font-semibold text-sm">📖 {{ locale === 'th' ? 'อ่านคู่มือการตั้งค่า Master Node' : 'Read Master Node Setup Guide' }}</span>
+                            <span class="text-cyan-400 font-semibold text-sm">📖 {{ t('page.download.masternode.guide') }}</span>
                         </a>
                     </div>
                 </div>
@@ -281,10 +281,10 @@ function formatDate(iso) {
                             </ol>
                             <div v-if="lesson('install-android')" class="mt-5 space-y-2">
                                 <a :href="lesson('install-android').url[lang]" class="block text-sm text-primary-400 hover:text-primary-300">
-                                    📖 {{ lang === 'th' ? 'อ่านขั้นตอนเต็ม + วิธีแก้ปัญหาที่เจอบ่อย' : 'Full steps + fixes for common problems' }}
+                                    📖 {{ t('page.download.install.fullSteps') }}
                                 </a>
                                 <a href="/blog?category=learn" class="block text-sm text-primary-400 hover:text-primary-300">
-                                    🎓 {{ lang === 'th' ? 'ดูวิดีโอสอนใช้งานทั้งหมด' : 'All tutorial videos' }}
+                                    🎓 {{ t('page.download.install.allVideos') }}
                                 </a>
                             </div>
                         </div>
@@ -294,14 +294,14 @@ function formatDate(iso) {
                 <!-- Download Stats -->
                 <div v-if="dlStats.total > 0" class="mt-8 text-center">
                     <p class="text-dark-500 text-xs">
-                        {{ locale === 'th' ? 'ดาวน์โหลดทั้งหมด' : 'Total downloads' }}:
+                        {{ t('page.download.totalDownloads') }}:
                         <span class="text-white font-semibold">{{ dlStats.total.toLocaleString() }}</span>
                     </p>
                 </div>
 
                 <!-- Footer -->
                 <div class="text-center mt-4">
-                    <p class="text-dark-500 text-sm">by Xman Studio</p>
+                    <p class="text-dark-500 text-sm">{{ t('page.download.footerBy') }}</p>
                 </div>
 
             </div>

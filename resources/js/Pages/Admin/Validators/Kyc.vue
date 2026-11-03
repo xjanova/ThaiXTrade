@@ -15,6 +15,10 @@ import { useInjectedOwnerWallet, loadEthers } from '@/Composables/useInjectedOwn
 import {
     KYC_STATUS, availableActions, resolveSubmitHash, encodeKycCall, humanWalletError, sameAddress,
 } from '@/utils/validatorKyc';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
+const dateLocale = computed(() => (locale.value === 'th' ? 'th-TH' : 'en-US'));
 
 const props = defineProps({
     contract: { type: String, default: null },
@@ -44,13 +48,19 @@ function rowUi(addr) {
 // สร้างสถานะของทุกแถวก่อน render — ไม่สร้างกลางเทมเพลต (เขียน state ระหว่าง render = render ซ้ำ)
 watch(rows, (list) => { for (const r of list) rowUi(r.applicant); }, { immediate: true });
 
+// เก็บเป็นคีย์ — แปลตอน render เพื่อให้สลับภาษาแล้วเปลี่ยนตาม
 const LOAD_ERRORS = {
-    KYC_NOT_CONFIGURED: 'ยังไม่ได้ตั้งที่อยู่สัญญา ValidatorKYC ในทะเบียนสัญญา (ContractRegistry: validator_kyc)',
-    CHAIN_UNREACHABLE: 'อ่านสัญญาจากเชนไม่ได้ตอนนี้ — รายชื่อด้านล่างอาจไม่ครบ ลองรีเฟรช',
+    KYC_NOT_CONFIGURED: 'admin.validatorsKyc.loadErrors.KYC_NOT_CONFIGURED',
+    CHAIN_UNREACHABLE: 'admin.validatorsKyc.loadErrors.CHAIN_UNREACHABLE',
 };
 
 const short = (a) => (a ? `${a.slice(0, 8)}…${a.slice(-6)}` : '—');
-const when = (ts) => (ts ? new Date(ts * 1000).toLocaleString('th-TH') : '—');
+const when = (ts) => (ts ? new Date(ts * 1000).toLocaleString(dateLocale.value) : '—');
+const whenIso = (iso) => (iso ? new Date(iso).toLocaleString(dateLocale.value) : '—');
+/** ป้ายสถานะบนเชน — แปลจากชื่อสถานะของสัญญา ไม่รู้จักก็โชว์ค่าดิบ */
+const chainStatusLabel = (status) => (KYC_STATUS[status] ? t(`admin.validatorsKyc.chainStatus.${status}`) : status);
+const ACTION_KEYS = ['submit', 'approve', 'reject'];
+const actionLabel = (act) => (ACTION_KEYS.includes(act) ? t(`admin.validatorsKyc.actions.${act}`) : act);
 const toneClass = {
     gray: 'bg-white/5 text-gray-400 border-white/10',
     yellow: 'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
@@ -58,13 +68,8 @@ const toneClass = {
     green: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
     red: 'bg-red-500/15 text-red-300 border-red-500/30',
 };
-const SITE_KYC = {
-    approved: 'ผ่าน KYC เว็บแล้ว',
-    pending: 'ส่งใบ KYC เว็บแล้ว รอตรวจ',
-    rejected: 'KYC เว็บไม่ผ่าน',
-    none: 'ยังไม่ส่ง KYC เว็บ',
-    no_account: 'กระเป๋านี้ยังไม่ผูกบัญชีเว็บ',
-};
+const SITE_KYC_KEYS = ['approved', 'pending', 'rejected', 'none', 'no_account'];
+const siteKycLabel = (status) => (SITE_KYC_KEYS.includes(status) ? t(`admin.validatorsKyc.siteKyc.${status}`) : status);
 
 async function refresh() {
     refreshing.value = true;
@@ -74,7 +79,7 @@ async function refresh() {
         owner.value = data.data.owner;
         loadError.value = data.data.loadError;
     } catch {
-        notice.value = 'รีเฟรชไม่สำเร็จ — ลองใหม่อีกครั้ง';
+        notice.value = t('admin.validatorsKyc.notice.refreshFailed');
     } finally {
         refreshing.value = false;
     }
@@ -104,11 +109,11 @@ async function run(row, action) {
         confirmExtra = r.manual ? { note: st.note.trim() } : { kyc_submission_uuid: r.uuid };
     }
     if (action === 'reject') {
-        if (!st.reason.trim()) { st.error = 'ต้องใส่เหตุผลที่ไม่ผ่าน (ผู้สมัครเห็นข้อความนี้บนเชน)'; return; }
-        if (!window.confirm(`ยืนยันไม่ผ่าน KYC ของ ${short(row.applicant)}?\nผู้สมัครต้องถอนความยินยอมแล้วสมัครใหม่`)) return;
+        if (!st.reason.trim()) { st.error = t('admin.validatorsKyc.errors.reasonRequired'); return; }
+        if (!window.confirm(t('admin.validatorsKyc.confirm.reject', { addr: short(row.applicant) }))) return;
         args = { reason: st.reason.trim() };
     }
-    if (action === 'approve' && !window.confirm(`ยืนยันอนุมัติ KYC ของ ${short(row.applicant)}?\nหลังอนุมัติ ถอนการอนุมัติบนสัญญานี้ไม่ได้`)) return;
+    if (action === 'approve' && !window.confirm(t('admin.validatorsKyc.confirm.approve', { addr: short(row.applicant) }))) return;
 
     st.busy = true;
     try {
@@ -120,12 +125,12 @@ async function run(row, action) {
             const receipt = await wallet.waitReceipt(tx.hash);
             if (receipt && Number(receipt.status) !== 1) {
                 st.pending = null;
-                st.error = 'ธุรกรรมไม่สำเร็จบนเชน (revert) — สถานะไม่เปลี่ยน';
+                st.error = t('admin.validatorsKyc.errors.txReverted');
                 return;
             }
         } catch {
             // ต่อ RPC ไม่ได้ระหว่างรอ — tx อาจผ่านแล้ว ห้ามบอกว่าล้ม ให้กดตรวจซ้ำ
-            st.error = 'ส่งแล้วแต่ยังยืนยันผลไม่ได้ — กด "ตรวจอีกครั้ง"';
+            st.error = t('admin.validatorsKyc.errors.unconfirmed');
             return;
         }
         await confirmOnServer(row, st);
@@ -147,10 +152,10 @@ async function confirmOnServer(row, st) {
         st.pending = null;
         st.open = '';
         st.error = '';
-        notice.value = `บันทึกแล้ว — ${short(row.applicant)}`;
+        notice.value = t('admin.validatorsKyc.notice.saved', { addr: short(row.applicant) });
         await refresh();
     } catch (e) {
-        st.error = e.response?.data?.error?.message || 'เซิร์ฟเวอร์ยังยืนยันรายการนี้ไม่ได้ — กด "ตรวจอีกครั้ง"';
+        st.error = e.response?.data?.error?.message || t('admin.validatorsKyc.errors.serverUnconfirmed');
     }
 }
 
@@ -163,85 +168,83 @@ async function recheck(row) {
 </script>
 
 <template>
-    <Head title="ตรวจ KYC ผู้สมัคร Validator" />
+    <Head :title="t('admin.validatorsKyc.title')" />
     <AdminLayout>
         <div class="space-y-6">
             <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <Link href="/admin/validators" class="text-xs text-gray-500 hover:text-gray-300">← Validator Management</Link>
-                    <h1 class="text-2xl font-bold text-white mt-1">ตรวจ KYC ผู้สมัคร Validator</h1>
-                    <p class="text-sm text-gray-400 mt-1">
-                        บันทึกเอกสาร / อนุมัติ / ไม่ผ่าน บนสัญญา ValidatorKYC — เซ็นด้วยกระเป๋า owner ในเบราว์เซอร์นี้
-                    </p>
+                    <Link href="/admin/validators" class="text-xs text-gray-500 hover:text-gray-300">← {{ t('admin.validatorsKyc.back') }}</Link>
+                    <h1 class="text-2xl font-bold text-white mt-1">{{ t('admin.validatorsKyc.title') }}</h1>
+                    <p class="text-sm text-gray-400 mt-1">{{ t('admin.validatorsKyc.subtitle') }}</p>
                 </div>
                 <div class="flex items-center gap-2">
                     <button @click="refresh" :disabled="refreshing"
                         class="px-4 py-2 text-sm rounded-xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 disabled:opacity-50">
-                        {{ refreshing ? 'กำลังโหลด…' : 'รีเฟรช' }}
+                        {{ refreshing ? t('admin.validatorsKyc.loading') : t('admin.validatorsKyc.refresh') }}
                     </button>
                     <button v-if="!wallet.address.value" @click="connectWallet" :disabled="wallet.connecting.value"
                         class="px-4 py-2 text-sm font-bold rounded-xl bg-primary-500/20 text-primary-300 border border-primary-500/30 hover:bg-primary-500/30 disabled:opacity-50">
-                        เชื่อมกระเป๋า owner
+                        {{ t('admin.validatorsKyc.connectOwner') }}
                     </button>
                     <span v-else :class="['px-3 py-2 text-xs rounded-xl border font-mono',
                         isOwner ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' : 'bg-red-500/10 text-red-300 border-red-500/30']">
-                        {{ short(wallet.address.value) }} · {{ isOwner ? 'owner ✓' : 'ไม่ใช่ owner' }}
+                        {{ short(wallet.address.value) }} · {{ isOwner ? t('admin.validatorsKyc.ownerOk') : t('admin.validatorsKyc.notOwner') }}
                     </span>
                 </div>
             </div>
 
             <div class="glass-card rounded-xl p-4 grid gap-2 text-xs text-gray-400 sm:grid-cols-2">
-                <div>สัญญา: <a v-if="contract" :href="`${explorerUrl}/address/${contract}`" target="_blank" rel="noopener" class="font-mono text-cyan-400">{{ contract }}</a><span v-else class="text-red-300">ยังไม่ได้ตั้ง</span></div>
-                <div>owner: <span class="font-mono text-gray-200">{{ owner || '—' }}</span></div>
+                <div>{{ t('admin.validatorsKyc.contractLabel') }} <a v-if="contract" :href="`${explorerUrl}/address/${contract}`" target="_blank" rel="noopener" class="font-mono text-cyan-400">{{ contract }}</a><span v-else class="text-red-300">{{ t('admin.validatorsKyc.notSet') }}</span></div>
+                <div>{{ t('admin.validatorsKyc.ownerLabel') }} <span class="font-mono text-gray-200">{{ owner || '—' }}</span></div>
             </div>
 
             <div v-if="loadError" class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-300">
-                {{ LOAD_ERRORS[loadError] || loadError }}
+                {{ LOAD_ERRORS[loadError] ? t(LOAD_ERRORS[loadError]) : loadError }}
             </div>
             <div v-if="notice" class="p-3 rounded-xl bg-white/5 border border-white/10 text-sm text-gray-200">{{ notice }}</div>
             <div v-if="wallet.address.value && !isOwner" class="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-sm text-yellow-200">
-                ปุ่มบันทึก/อนุมัติจะกดไม่ได้จนกว่าจะสลับกระเป๋าเป็น {{ owner }}
+                {{ t('admin.validatorsKyc.switchWallet', { owner }) }}
             </div>
 
             <div v-if="!rows.length && !loadError" class="glass-card rounded-xl p-10 text-center text-gray-500">
-                ยังไม่มีผู้สมัครกดให้ความยินยอม PDPA บนสัญญา
+                {{ t('admin.validatorsKyc.empty') }}
             </div>
 
             <div v-for="row in rows" :key="row.applicant" class="glass-card rounded-xl p-5 space-y-4">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <a :href="`${explorerUrl}/address/${row.applicant}`" target="_blank" rel="noopener" class="font-mono text-sm text-cyan-400 break-all">{{ row.applicant }}</a>
                     <span :class="['text-xs font-bold px-3 py-1 rounded-lg border', toneClass[KYC_STATUS[row.status]?.tone || 'gray']]">
-                        {{ KYC_STATUS[row.status]?.label || row.status }}
+                        {{ chainStatusLabel(row.status) }}
                     </span>
                 </div>
 
                 <div class="grid gap-3 text-xs sm:grid-cols-3">
                     <div class="space-y-1">
-                        <div class="text-gray-500">KYC ของเว็บ</div>
-                        <div class="text-gray-200">{{ SITE_KYC[row.site_kyc?.status] || row.site_kyc?.status }}<span v-if="row.site_kyc?.level"> ({{ row.site_kyc.level }})</span></div>
-                        <Link v-if="row.site_kyc?.uuid" :href="`/admin/kyc/${row.site_kyc.uuid}`" class="text-primary-300 hover:underline">เปิดใบ KYC</Link>
+                        <div class="text-gray-500">{{ t('admin.validatorsKyc.siteKycLabel') }}</div>
+                        <div class="text-gray-200">{{ siteKycLabel(row.site_kyc?.status) }}<span v-if="row.site_kyc?.level"> ({{ row.site_kyc.level }})</span></div>
+                        <Link v-if="row.site_kyc?.uuid" :href="`/admin/kyc/${row.site_kyc.uuid}`" class="text-primary-300 hover:underline">{{ t('admin.validatorsKyc.openSiteKyc') }}</Link>
                     </div>
                     <div class="space-y-1">
-                        <div class="text-gray-500">hash บนเชน</div>
+                        <div class="text-gray-500">{{ t('admin.validatorsKyc.chainHash') }}</div>
                         <div class="font-mono text-gray-300 break-all">{{ row.kyc_hash || '—' }}</div>
-                        <div v-if="row.hash_matches_site === true" class="text-emerald-300">ตรงกับใบ KYC ของเว็บ</div>
-                        <div v-else-if="row.hash_matches_site === false" class="text-yellow-300">ไม่ตรงกับใบ KYC ปัจจุบันของเว็บ</div>
+                        <div v-if="row.hash_matches_site === true" class="text-emerald-300">{{ t('admin.validatorsKyc.hashMatch') }}</div>
+                        <div v-else-if="row.hash_matches_site === false" class="text-yellow-300">{{ t('admin.validatorsKyc.hashMismatch') }}</div>
                     </div>
                     <div class="space-y-1">
-                        <div class="text-gray-500">stake / กุญแจ</div>
-                        <div class="text-gray-200">{{ row.node ? `${row.node.tier} · ${row.node.status}` : 'ยังไม่ได้ stake' }}</div>
-                        <div class="text-gray-400">{{ row.binding ? `ผูกกุญแจแล้ว ${short(row.binding.validator_address)}` : 'ยังไม่ผูกกุญแจ validator' }}</div>
+                        <div class="text-gray-500">{{ t('admin.validatorsKyc.stakeKey') }}</div>
+                        <div class="text-gray-200">{{ row.node ? `${row.node.tier} · ${row.node.status}` : t('admin.validatorsKyc.notStaked') }}</div>
+                        <div class="text-gray-400">{{ row.binding ? t('admin.validatorsKyc.keyBound', { addr: short(row.binding.validator_address) }) : t('admin.validatorsKyc.keyNotBound') }}</div>
                     </div>
                 </div>
 
                 <div class="text-[11px] text-gray-500 flex flex-wrap gap-x-4">
-                    <span>ยินยอม {{ when(row.consent_at) }}</span>
-                    <span>บันทึก {{ when(row.submitted_at) }}</span>
-                    <span>ตรวจ {{ when(row.reviewed_at) }}</span>
-                    <span v-if="row.reject_reason" class="text-red-300">เหตุผล: {{ row.reject_reason }}</span>
+                    <span>{{ t('admin.validatorsKyc.consentAt', { date: when(row.consent_at) }) }}</span>
+                    <span>{{ t('admin.validatorsKyc.submittedAt', { date: when(row.submitted_at) }) }}</span>
+                    <span>{{ t('admin.validatorsKyc.reviewedAt', { date: when(row.reviewed_at) }) }}</span>
+                    <span v-if="row.reject_reason" class="text-red-300">{{ t('admin.validatorsKyc.reasonLabel') }} {{ row.reject_reason }}</span>
                 </div>
                 <div v-if="row.status === 'Rejected'" class="text-[11px] text-gray-500">
-                    ผู้สมัครต้องถอนความยินยอม (revokeConsent) แล้วกดยินยอมใหม่ ถึงจะยื่นรอบใหม่ได้
+                    {{ t('admin.validatorsKyc.rejectedHint') }}
                 </div>
 
                 <!-- ปุ่ม -->
@@ -251,52 +254,52 @@ async function recheck(row) {
                         :disabled="!isOwner || !contract || rowUi(row.applicant).busy"
                         :class="['px-4 py-2 text-xs font-bold rounded-xl border disabled:opacity-40',
                             act === 'reject' ? 'bg-red-500/15 text-red-300 border-red-500/30' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30']">
-                        {{ { submit: 'บันทึกเอกสารขึ้นเชน', approve: 'อนุมัติ', reject: 'ไม่ผ่าน' }[act] }}
+                        {{ actionLabel(act) }}
                     </button>
                 </div>
 
                 <div v-if="rowUi(row.applicant).open === 'submit'" class="space-y-2 rounded-xl bg-dark-800/60 p-4 text-xs">
                     <template v-if="row.site_kyc?.status === 'approved'">
-                        <div class="text-gray-400">hash จากใบ KYC ที่อนุมัติแล้วของเว็บ (ไม่มีข้อมูลส่วนตัว)</div>
+                        <div class="text-gray-400">{{ t('admin.validatorsKyc.submit.siteHash') }}</div>
                         <div class="font-mono text-gray-200 break-all">{{ row.site_kyc.doc_hash }}</div>
                     </template>
                     <template v-else>
-                        <div class="text-yellow-200">กระเป๋านี้ไม่มีใบ KYC ที่อนุมัติบนเว็บ — ใส่ hash ของเอกสารที่ตรวจนอกระบบเอง</div>
-                        <input v-model="rowUi(row.applicant).manualHash" placeholder="0x… (keccak256 ของชุดเอกสาร)"
+                        <div class="text-yellow-200">{{ t('admin.validatorsKyc.submit.noSiteKyc') }}</div>
+                        <input v-model="rowUi(row.applicant).manualHash" :placeholder="t('admin.validatorsKyc.submit.hashPlaceholder')"
                             class="w-full bg-dark-900 border border-white/10 rounded-lg px-3 py-2 font-mono text-gray-200" />
-                        <input v-model="rowUi(row.applicant).note" placeholder="เหตุผล / ตรวจเอกสารที่ไหน (บันทึกในประวัติ)"
+                        <input v-model="rowUi(row.applicant).note" :placeholder="t('admin.validatorsKyc.submit.notePlaceholder')"
                             class="w-full bg-dark-900 border border-white/10 rounded-lg px-3 py-2 text-gray-200" />
                     </template>
                     <button @click="run(row, 'submit')" :disabled="rowUi(row.applicant).busy"
                         class="px-4 py-2 font-bold rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 disabled:opacity-40">
-                        {{ rowUi(row.applicant).busy ? 'รอกระเป๋า/เชน…' : 'เซ็นและส่ง' }}
+                        {{ rowUi(row.applicant).busy ? t('admin.validatorsKyc.waiting') : t('admin.validatorsKyc.submit.sign') }}
                     </button>
                 </div>
                 <div v-if="rowUi(row.applicant).open === 'approve'" class="rounded-xl bg-dark-800/60 p-4 text-xs space-y-2">
-                    <div class="text-gray-400">อนุมัติแล้วผู้สมัคร stake ชั้น Validator ได้ทันที และถอนการอนุมัติบนสัญญานี้ไม่ได้</div>
+                    <div class="text-gray-400">{{ t('admin.validatorsKyc.approve.note') }}</div>
                     <button @click="run(row, 'approve')" :disabled="rowUi(row.applicant).busy"
                         class="px-4 py-2 font-bold rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 disabled:opacity-40">
-                        {{ rowUi(row.applicant).busy ? 'รอกระเป๋า/เชน…' : 'เซ็นอนุมัติ' }}
+                        {{ rowUi(row.applicant).busy ? t('admin.validatorsKyc.waiting') : t('admin.validatorsKyc.approve.sign') }}
                     </button>
                 </div>
                 <div v-if="rowUi(row.applicant).open === 'reject'" class="rounded-xl bg-dark-800/60 p-4 text-xs space-y-2">
-                    <input v-model="rowUi(row.applicant).reason" maxlength="200" placeholder="เหตุผล (ขึ้นเชน ผู้สมัครเห็น — ห้ามใส่ข้อมูลส่วนตัว)"
+                    <input v-model="rowUi(row.applicant).reason" maxlength="200" :placeholder="t('admin.validatorsKyc.reject.reasonPlaceholder')"
                         class="w-full bg-dark-900 border border-white/10 rounded-lg px-3 py-2 text-gray-200" />
                     <button @click="run(row, 'reject')" :disabled="rowUi(row.applicant).busy"
                         class="px-4 py-2 font-bold rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 disabled:opacity-40">
-                        {{ rowUi(row.applicant).busy ? 'รอกระเป๋า/เชน…' : 'เซ็นไม่ผ่าน' }}
+                        {{ rowUi(row.applicant).busy ? t('admin.validatorsKyc.waiting') : t('admin.validatorsKyc.reject.sign') }}
                     </button>
                 </div>
 
                 <div v-if="rowUi(row.applicant).error" class="text-xs text-red-300">{{ rowUi(row.applicant).error }}</div>
                 <div v-if="rowUi(row.applicant).pending" class="flex flex-wrap items-center gap-3 text-xs text-gray-400">
                     <span>tx: <a :href="`${explorerUrl}/tx/${rowUi(row.applicant).pending.hash}`" target="_blank" rel="noopener" class="font-mono text-cyan-400">{{ short(rowUi(row.applicant).pending.hash) }}</a></span>
-                    <button @click="recheck(row)" :disabled="rowUi(row.applicant).busy" class="px-3 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-40">ตรวจอีกครั้ง</button>
+                    <button @click="recheck(row)" :disabled="rowUi(row.applicant).busy" class="px-3 py-1 rounded-lg bg-white/5 border border-white/10 disabled:opacity-40">{{ t('admin.validatorsKyc.recheck') }}</button>
                 </div>
 
                 <div v-if="row.actions?.length" class="border-t border-white/5 pt-3 space-y-1 text-[11px] text-gray-500">
                     <div v-for="a in row.actions" :key="a.tx_hash">
-                        {{ new Date(a.at).toLocaleString('th-TH') }} · {{ a.action }} → {{ a.chain_status }}
+                        {{ whenIso(a.at) }} · {{ actionLabel(a.action) }} → {{ chainStatusLabel(a.chain_status) }}
                         · <a :href="`${explorerUrl}/tx/${a.tx_hash}`" target="_blank" rel="noopener" class="font-mono text-cyan-500">{{ short(a.tx_hash) }}</a>
                         <span v-if="a.note"> · {{ a.note }}</span>
                     </div>

@@ -49,7 +49,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:botMode']);
-const { t } = useTranslation();
+const { t, locale } = useTranslation();
 
 const BINANCE_REST = 'https://api.binance.com/api/v3';
 const BINANCE_WS = 'wss://stream.binance.com:9443/ws';
@@ -635,6 +635,8 @@ function applyPriceLines() {
 watch(() => props.markers, refreshMarkers, { deep: true });
 watch(() => props.priceLines, applyPriceLines, { deep: true });
 watch(() => props.botMode, () => { refreshMarkers(); applyPriceLines(); });
+// ป้ายซื้อ/ขายของบอทบนกราฟแปลตอนวาด — สลับภาษาแล้วต้องวาดป้ายใหม่ ไม่งั้นค้างภาษาเดิม
+watch(locale, refreshMarkers);
 
 watch(chartType, (newType) => {
     if (candleSeriesRef) candleSeriesRef.applyOptions({ visible: newType === 'candle' });
@@ -765,8 +767,8 @@ onUnmounted(() => {
                 <div class="flex items-center gap-0.5 p-0.5 rounded-lg bg-dark-800">
                     <button
                         type="button"
-                        title="Candlestick"
-                        aria-label="กราฟแท่งเทียน"
+                        :title="t('ui.tradingTradingChart.candlestick')"
+                        :aria-label="t('ui.tradingTradingChart.candlestick')"
                         :class="['p-1 rounded-md transition-all', chartType === 'candle' ? 'bg-primary-500/20 text-primary-400' : 'text-dark-400 hover:text-white']"
                         @click="chartType = 'candle'"
                     >
@@ -778,8 +780,8 @@ onUnmounted(() => {
                     </button>
                     <button
                         type="button"
-                        title="Line"
-                        aria-label="กราฟเส้น"
+                        :title="t('ui.tradingTradingChart.line')"
+                        :aria-label="t('ui.tradingTradingChart.line')"
                         :class="['p-1 rounded-md transition-all', chartType === 'line' ? 'bg-primary-500/20 text-primary-400' : 'text-dark-400 hover:text-white']"
                         @click="chartType = 'line'"
                     >

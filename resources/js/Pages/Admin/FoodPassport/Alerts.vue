@@ -5,9 +5,12 @@
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { router, Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     violations: Object,
@@ -29,7 +32,7 @@ function applyFilters() {
 
 function formatDate(d) {
     if (!d) return '—';
-    return new Date(d).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return new Date(d).toLocaleString(locale.value === 'th' ? 'th-TH' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function getTempSeverity(temp, min, max) {
@@ -38,26 +41,37 @@ function getTempSeverity(temp, min, max) {
     return 'text-green-400';
 }
 
-const hoursOptions = [
-    { value: 1, label: '1 hour' },
-    { value: 6, label: '6 hours' },
-    { value: 12, label: '12 hours' },
-    { value: 24, label: '24 hours' },
-    { value: 48, label: '48 hours' },
-    { value: 168, label: '7 days' },
-];
+// ป้าย « Previous / Next » ของ Laravel มาเป็นภาษาอังกฤษเสมอ — ถอด entity แล้วแปลตามภาษาที่เลือก
+function pageLabel(html) {
+    const txt = document.createElement('textarea');
+    txt.innerHTML = html ?? '';
+    const s = txt.value;
+    if (/previous/i.test(s) || s.includes('«')) return '« ' + t('common.previous');
+    if (/next/i.test(s) || s.includes('»')) return t('common.next') + ' »';
+    return s;
+}
+
+// computed — ป้ายเปลี่ยนภาษาทันทีเมื่อสลับ TH/EN
+const hoursOptions = computed(() => [
+    { value: 1, label: t('admin.foodPassportAlerts.hoursOption.one') },
+    { value: 6, label: t('admin.foodPassportAlerts.hoursOption.many', { n: 6 }) },
+    { value: 12, label: t('admin.foodPassportAlerts.hoursOption.many', { n: 12 }) },
+    { value: 24, label: t('admin.foodPassportAlerts.hoursOption.many', { n: 24 }) },
+    { value: 48, label: t('admin.foodPassportAlerts.hoursOption.many', { n: 48 }) },
+    { value: 168, label: t('admin.foodPassportAlerts.hoursOption.days', { n: 7 }) },
+]);
 </script>
 
 <template>
-    <AdminLayout title="Temperature Alerts">
+    <AdminLayout :title="t('admin.foodPassportAlerts.title')">
         <!-- Header -->
         <div class="mb-6">
             <Link href="/admin/food-passport" class="text-sm text-gray-400 hover:text-white transition-colors mb-2 inline-flex items-center gap-1">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
                 FoodPassport
             </Link>
-            <h1 class="text-2xl font-bold text-white">Temperature Alerts</h1>
-            <p class="text-sm text-gray-400 mt-1">Monitor temperature violations across the supply chain</p>
+            <h1 class="text-2xl font-bold text-white">{{ t('admin.foodPassportAlerts.title') }}</h1>
+            <p class="text-sm text-gray-400 mt-1">{{ t('admin.foodPassportAlerts.subtitle') }}</p>
         </div>
 
         <!-- Alert Summary -->
@@ -69,8 +83,8 @@ const hoursOptions = [
                 <div>
                     <p class="text-3xl font-bold text-white">{{ violations?.total || 0 }}</p>
                     <p class="text-sm text-gray-400">
-                        Temperature violations in the last {{ hours }} hour{{ hours > 1 ? 's' : '' }}
-                        <span class="text-gray-500">({{ threshold?.min }}°C – {{ threshold?.max }}°C range)</span>
+                        {{ hours > 1 ? t('admin.foodPassportAlerts.summary.many', { n: hours }) : t('admin.foodPassportAlerts.summary.one', { n: hours }) }}
+                        <span class="text-gray-500">{{ t('admin.foodPassportAlerts.summary.range', { min: threshold?.min, max: threshold?.max }) }}</span>
                     </p>
                 </div>
             </div>
@@ -80,7 +94,7 @@ const hoursOptions = [
         <div class="glass-dark rounded-xl border border-white/10 p-4 mb-6">
             <div class="flex flex-wrap items-end gap-4">
                 <div>
-                    <label class="block text-xs text-gray-400 mb-1">Min Temperature (°C)</label>
+                    <label class="block text-xs text-gray-400 mb-1">{{ t('admin.foodPassportAlerts.filters.minTemp') }}</label>
                     <input
                         v-model.number="minTemp"
                         type="number"
@@ -89,7 +103,7 @@ const hoursOptions = [
                     />
                 </div>
                 <div>
-                    <label class="block text-xs text-gray-400 mb-1">Max Temperature (°C)</label>
+                    <label class="block text-xs text-gray-400 mb-1">{{ t('admin.foodPassportAlerts.filters.maxTemp') }}</label>
                     <input
                         v-model.number="maxTemp"
                         type="number"
@@ -98,7 +112,7 @@ const hoursOptions = [
                     />
                 </div>
                 <div>
-                    <label class="block text-xs text-gray-400 mb-1">Time Range</label>
+                    <label class="block text-xs text-gray-400 mb-1">{{ t('admin.foodPassportAlerts.filters.timeRange') }}</label>
                     <select
                         v-model.number="hoursFilter"
                         class="bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -110,7 +124,7 @@ const hoursOptions = [
                     @click="applyFilters"
                     class="px-4 py-2 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-600 transition-colors"
                 >
-                    Apply
+                    {{ t('admin.foodPassportAlerts.filters.apply') }}
                 </button>
             </div>
         </div>
@@ -121,13 +135,13 @@ const hoursOptions = [
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="border-b border-white/5">
-                            <th class="text-left p-4 text-gray-400 font-medium">Time</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Product</th>
-                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">Stage</th>
-                            <th class="text-left p-4 text-gray-400 font-medium hidden lg:table-cell">Location</th>
-                            <th class="text-left p-4 text-gray-400 font-medium">Temperature</th>
-                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Humidity</th>
-                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">Deviation</th>
+                            <th class="text-left p-4 text-gray-400 font-medium">{{ t('admin.foodPassportAlerts.table.time') }}</th>
+                            <th class="text-left p-4 text-gray-400 font-medium">{{ t('admin.foodPassportAlerts.table.product') }}</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden sm:table-cell">{{ t('admin.foodPassportAlerts.table.stage') }}</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden lg:table-cell">{{ t('admin.foodPassportAlerts.table.location') }}</th>
+                            <th class="text-left p-4 text-gray-400 font-medium">{{ t('admin.foodPassportAlerts.table.temperature') }}</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">{{ t('admin.foodPassportAlerts.table.humidity') }}</th>
+                            <th class="text-left p-4 text-gray-400 font-medium hidden md:table-cell">{{ t('admin.foodPassportAlerts.table.deviation') }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -145,7 +159,7 @@ const hoursOptions = [
                                 >
                                     {{ v.product.name }}
                                 </Link>
-                                <span v-else class="text-gray-500">Unknown</span>
+                                <span v-else class="text-gray-500">{{ t('admin.foodPassportAlerts.unknownProduct') }}</span>
                             </td>
                             <td class="p-4 text-gray-300 capitalize hidden sm:table-cell">{{ v.stage?.replace(/_/g, ' ') || '—' }}</td>
                             <td class="p-4 text-gray-300 hidden lg:table-cell">{{ v.location || '—' }}</td>
@@ -157,17 +171,17 @@ const hoursOptions = [
                             <td class="p-4 text-gray-300 hidden md:table-cell">{{ v.humidity != null ? `${v.humidity}%` : '—' }}</td>
                             <td class="p-4 hidden md:table-cell">
                                 <span v-if="v.temperature < threshold.min" class="text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-400">
-                                    {{ (threshold.min - v.temperature).toFixed(1) }}°C below
+                                    {{ t('admin.foodPassportAlerts.below', { n: (threshold.min - v.temperature).toFixed(1) }) }}
                                 </span>
                                 <span v-else-if="v.temperature > threshold.max" class="text-xs px-2 py-1 rounded-full bg-red-500/20 text-red-400">
-                                    {{ (v.temperature - threshold.max).toFixed(1) }}°C above
+                                    {{ t('admin.foodPassportAlerts.above', { n: (v.temperature - threshold.max).toFixed(1) }) }}
                                 </span>
                             </td>
                         </tr>
                         <tr v-if="!violations?.data?.length">
                             <td colspan="7" class="p-8 text-center text-gray-400">
                                 <div class="text-4xl mb-2">✅</div>
-                                No temperature violations found in this time range.
+                                {{ t('admin.foodPassportAlerts.empty') }}
                             </td>
                         </tr>
                     </tbody>
@@ -177,7 +191,7 @@ const hoursOptions = [
             <!-- Pagination -->
             <div v-if="violations?.last_page > 1" class="flex items-center justify-between p-4 border-t border-white/5">
                 <p class="text-xs text-gray-400">
-                    Showing {{ violations.from }}–{{ violations.to }} of {{ violations.total }}
+                    {{ t('admin.foodPassportAlerts.pagination', { from: violations.from, to: violations.to, total: violations.total }) }}
                 </p>
                 <div class="flex gap-1">
                     <Link
@@ -186,7 +200,7 @@ const hoursOptions = [
                         :href="link.url || '#'"
                         class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                         :class="link.active ? 'bg-primary-500/20 text-primary-400' : 'text-gray-400 hover:bg-white/5'"
-                        v-html="link.label"
+                        v-text="pageLabel(link.label)"
                     />
                 </div>
             </div>

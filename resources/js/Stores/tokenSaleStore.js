@@ -9,6 +9,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import axios from 'axios';
 import { isPhaseOpen, isPhaseStale } from '@/utils/salePhase';
+import { t } from '@/Composables/useTranslation';
 
 export const useTokenSaleStore = defineStore('tokenSale', () => {
     // === State ===
@@ -99,7 +100,7 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
                 sale.value = data.data;
             }
         } catch (err) {
-            error.value = 'ไม่สามารถโหลดข้อมูลรอบขายได้';
+            error.value = t('store.tokenSaleStore.loadSaleFailed');
             console.error('[TokenSale] fetchSale error:', err);
         } finally {
             isLoadingSale.value = false;
@@ -193,7 +194,7 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
             const apiError = err?.response?.data?.error;
 
             if (apiError?.code === 'PHASE_CLOSED') {
-                const closed = new Error(apiError.message || 'รอบขายนี้ปิดแล้ว');
+                const closed = new Error(apiError.message || t('store.tokenSaleStore.phaseClosed'));
                 closed.code = 'PHASE_CLOSED';
                 closed.userMessage = apiError.message;
                 throw closed;
@@ -219,7 +220,7 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
 
             return data.success
                 ? { ok: true, data: data.data }
-                : { ok: false, message: data.error?.message || 'ตรวจสอบไม่ผ่าน' };
+                : { ok: false, message: data.error?.message || t('store.tokenSaleStore.precheckRejected') };
         } catch (err) {
             const apiError = err?.response?.data?.error;
 
@@ -231,13 +232,13 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
             if (err?.response?.status === 403) {
                 return {
                     ok: false,
-                    message: apiError?.message || 'เซสชันกระเป๋าหมดอายุ กรุณาเชื่อมต่อกระเป๋าใหม่อีกครั้งก่อนซื้อ',
+                    message: apiError?.message || t('store.tokenSaleStore.sessionExpiredBeforeBuy'),
                 };
             }
 
             return {
                 ok: false,
-                message: apiError?.message || 'ตรวจสอบก่อนซื้อไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+                message: apiError?.message || t('store.tokenSaleStore.precheckFailed'),
             };
         }
     }
@@ -255,7 +256,7 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
 
             return data.success
                 ? { ok: true, data: data.data }
-                : { ok: false, message: data.error?.message || 'สร้างคำสั่งซื้อไม่สำเร็จ' };
+                : { ok: false, message: data.error?.message || t('store.tokenSaleStore.orderFailed') };
         } catch (err) {
             const apiError = err?.response?.data?.error;
 
@@ -263,11 +264,11 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
                 return {
                     ok: false,
                     code: apiError?.code || 'FORBIDDEN',
-                    message: apiError?.message || 'เซสชันกระเป๋าหมดอายุ กรุณาเชื่อมต่อกระเป๋าใหม่อีกครั้ง',
+                    message: apiError?.message || t('store.tokenSaleStore.sessionExpired'),
                 };
             }
 
-            return { ok: false, code: apiError?.code, message: apiError?.message || 'สร้างคำสั่งซื้อไม่สำเร็จ กรุณาลองใหม่' };
+            return { ok: false, code: apiError?.code, message: apiError?.message || t('store.tokenSaleStore.orderFailedRetry') };
         }
     }
 
@@ -282,7 +283,7 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
 
             return data.success && data.data?.url
                 ? { ok: true, url: data.data.url }
-                : { ok: false, message: data.error?.message || 'เริ่มการชำระเงินไม่สำเร็จ' };
+                : { ok: false, message: data.error?.message || t('store.tokenSaleStore.checkoutFailed') };
         } catch (err) {
             const apiError = err?.response?.data?.error;
 
@@ -290,11 +291,11 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
                 return {
                     ok: false,
                     code: apiError?.code || 'FORBIDDEN',
-                    message: apiError?.message || 'เซสชันกระเป๋าหมดอายุ กรุณาเชื่อมต่อกระเป๋าใหม่อีกครั้ง',
+                    message: apiError?.message || t('store.tokenSaleStore.sessionExpired'),
                 };
             }
 
-            return { ok: false, code: apiError?.code, message: apiError?.message || 'เริ่มการชำระเงินไม่สำเร็จ กรุณาลองใหม่' };
+            return { ok: false, code: apiError?.code, message: apiError?.message || t('store.tokenSaleStore.checkoutFailedRetry') };
         }
     }
 
@@ -312,7 +313,7 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
 
             return data.success
                 ? { ok: true, data: data.data }
-                : { ok: false, message: data.error?.message || 'สร้างคำสั่งซื้อไม่สำเร็จ' };
+                : { ok: false, message: data.error?.message || t('store.tokenSaleStore.orderFailed') };
         } catch (err) {
             const apiError = err?.response?.data?.error;
 
@@ -320,11 +321,11 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
                 return {
                     ok: false,
                     code: apiError?.code || 'FORBIDDEN',
-                    message: apiError?.message || 'เซสชันกระเป๋าหมดอายุ กรุณาเชื่อมต่อกระเป๋าใหม่อีกครั้ง',
+                    message: apiError?.message || t('store.tokenSaleStore.sessionExpired'),
                 };
             }
 
-            return { ok: false, code: apiError?.code, message: apiError?.message || 'สร้างคำสั่งซื้อไม่สำเร็จ กรุณาลองใหม่' };
+            return { ok: false, code: apiError?.code, message: apiError?.message || t('store.tokenSaleStore.orderFailedRetry') };
         }
     }
 
@@ -364,9 +365,9 @@ export const useTokenSaleStore = defineStore('tokenSale', () => {
                 ]);
                 return data.data;
             }
-            throw new Error('Purchase failed');
+            throw new Error(t('store.tokenSaleStore.purchaseFailed'));
         } catch (err) {
-            const msg = err.response?.data?.error?.message || err.message || 'การซื้อล้มเหลว';
+            const msg = err.response?.data?.error?.message || err.message || t('store.tokenSaleStore.purchaseFailed');
             error.value = msg;
             throw new Error(msg);
         } finally {

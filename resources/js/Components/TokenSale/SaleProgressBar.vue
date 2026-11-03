@@ -5,6 +5,10 @@
  * Developed by Xman Studio
  */
 import { computed } from 'vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
+const numLocale = () => (locale.value === 'th' ? 'th-TH' : 'en-US');
 
 const props = defineProps({
     /** จำนวนที่ขายไปแล้ว */
@@ -28,11 +32,11 @@ function formatNumber(n) {
     if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
     if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
     if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
-    return n.toLocaleString();
+    return n.toLocaleString(numLocale());
 }
 
 function formatUsd(n) {
-    return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return '$' + n.toLocaleString(numLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 </script>
 
@@ -41,11 +45,11 @@ function formatUsd(n) {
         <!-- ข้อมูลสรุปด้านบน -->
         <div class="flex items-center justify-between mb-3">
             <div>
-                <span class="text-sm text-gray-400">Total Sold</span>
+                <span class="text-sm text-gray-400">{{ t('ui.tokenSaleSaleProgressBar.totalSold') }}</span>
                 <p class="text-lg font-bold text-white">{{ formatNumber(sold) }} TPIX</p>
             </div>
             <div class="text-right">
-                <span class="text-sm text-gray-400">Total Supply</span>
+                <span class="text-sm text-gray-400">{{ t('ui.tokenSaleSaleProgressBar.totalSupply') }}</span>
                 <p class="text-lg font-bold text-white">{{ formatNumber(total) }} TPIX</p>
             </div>
         </div>
@@ -65,22 +69,22 @@ function formatUsd(n) {
 
         <!-- % ถ้าน้อยเกินไปจะแสดงข้างนอก -->
         <div v-if="percent < 10" class="text-sm text-primary-400 mt-1">
-            {{ percent.toFixed(1) }}% sold
+            {{ t('ui.tokenSaleSaleProgressBar.percentSold', { percent: percent.toFixed(1) }) }}
         </div>
 
         <!-- สถิติด้านล่าง -->
         <div class="grid grid-cols-3 gap-4 mt-4">
             <div class="stat-item">
                 <span class="stat-value text-trading-green">{{ formatUsd(raisedUsd) }}</span>
-                <span class="stat-label">Raised</span>
+                <span class="stat-label">{{ t('ui.tokenSaleSaleProgressBar.raised') }}</span>
             </div>
             <div class="stat-item">
                 <span class="stat-value text-primary-400">{{ formatNumber(total - sold) }}</span>
-                <span class="stat-label">Remaining</span>
+                <span class="stat-label">{{ t('ui.tokenSaleSaleProgressBar.remaining') }}</span>
             </div>
             <div class="stat-item">
                 <span class="stat-value text-accent-400">{{ formatNumber(buyers) }}</span>
-                <span class="stat-label">Buyers</span>
+                <span class="stat-label">{{ t('ui.tokenSaleSaleProgressBar.buyers') }}</span>
             </div>
         </div>
     </div>

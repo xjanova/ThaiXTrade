@@ -17,6 +17,9 @@
  * Developed by Xman Studio
  */
 import { computed } from 'vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     /** ผลจาก /api/v1/ai-bot/market-view */
@@ -31,18 +34,18 @@ const view = computed(() => props.data?.view ?? null);
 const shadow = computed(() => props.data?.shadow === true);
 
 const regimeTone = {
-    risk_on: { label: 'ตลาดเปิดรับความเสี่ยง', cls: 'text-trading-green bg-trading-green/15 border-trading-green/30' },
-    neutral: { label: 'ตลาดเป็นกลาง', cls: 'text-dark-200 bg-white/5 border-white/10' },
-    risk_off: { label: 'ตลาดหลบความเสี่ยง', cls: 'text-trading-red bg-trading-red/15 border-trading-red/30' },
+    risk_on: { label: 'ui.tradingAiMarketViewPanel.regime.riskOn', cls: 'text-trading-green bg-trading-green/15 border-trading-green/30' },
+    neutral: { label: 'ui.tradingAiMarketViewPanel.regime.neutral', cls: 'text-dark-200 bg-white/5 border-white/10' },
+    risk_off: { label: 'ui.tradingAiMarketViewPanel.regime.riskOff', cls: 'text-trading-red bg-trading-red/15 border-trading-red/30' },
 };
 
 const regime = computed(() => regimeTone[view.value?.regime] ?? regimeTone.neutral);
 
 const stanceTone = {
-    buy: { label: 'น่าซื้อ', cls: 'text-trading-green bg-trading-green/15' },
-    hold: { label: 'ถือ', cls: 'text-dark-300 bg-white/5' },
-    avoid: { label: 'เลี่ยง', cls: 'text-amber-300 bg-amber-400/15' },
-    exit: { label: 'ควรออก', cls: 'text-trading-red bg-trading-red/15' },
+    buy: { label: 'ui.tradingAiMarketViewPanel.stance.buy', cls: 'text-trading-green bg-trading-green/15' },
+    hold: { label: 'ui.tradingAiMarketViewPanel.stance.hold', cls: 'text-dark-300 bg-white/5' },
+    avoid: { label: 'ui.tradingAiMarketViewPanel.stance.avoid', cls: 'text-amber-300 bg-amber-400/15' },
+    exit: { label: 'ui.tradingAiMarketViewPanel.stance.exit', cls: 'text-trading-red bg-trading-red/15' },
 };
 
 /** เหรียญที่ AI มีความเห็น เรียงจากคะแนนดีไปแย่ */
@@ -66,9 +69,9 @@ const ageMinutes = computed(() => {
 const ageText = computed(() => {
     const m = ageMinutes.value;
     if (m === null) return '—';
-    if (m < 1) return 'เมื่อครู่';
-    if (m < 60) return `${m} นาทีที่แล้ว`;
-    return `${Math.floor(m / 60)} ชั่วโมง ${m % 60} นาทีที่แล้ว`;
+    if (m < 1) return t('ui.tradingAiMarketViewPanel.age.justNow');
+    if (m < 60) return t('ui.tradingAiMarketViewPanel.age.minutes', { m });
+    return t('ui.tradingAiMarketViewPanel.age.hoursMinutes', { h: Math.floor(m / 60), m: m % 60 });
 });
 
 /** มุมมองใกล้หมดอายุ = รอบถัดไปอาจไม่มา ต้องเตือนก่อนที่มันจะหายไปเงียบๆ */
@@ -84,9 +87,9 @@ const confidencePct = computed(() => Math.round((Number(view.value?.confidence) 
     <div v-if="enabled" class="glass-card p-4">
         <div class="flex items-start justify-between gap-3 mb-3">
             <div>
-                <h3 class="text-sm font-semibold text-white">มุมมองตลาดของ AI</h3>
+                <h3 class="text-sm font-semibold text-white">{{ t('ui.tradingAiMarketViewPanel.title') }}</h3>
                 <p class="text-[11px] text-dark-400 mt-0.5">
-                    สิ่งที่บอทใช้ประกอบการตัดสินใจจริง ไม่ใช่แค่คำแนะนำ
+                    {{ t('ui.tradingAiMarketViewPanel.subtitle') }}
                 </p>
             </div>
 
@@ -96,17 +99,17 @@ const confidencePct = computed(() => Math.round((Number(view.value?.confidence) 
                 :disabled="loading"
                 @click="emit('refresh')"
             >
-                {{ loading ? 'กำลังโหลด…' : 'รีเฟรช' }}
+                {{ loading ? t('ui.tradingAiMarketViewPanel.loading') : t('ui.tradingAiMarketViewPanel.refresh') }}
             </button>
         </div>
 
         <!-- ยังไม่มีมุมมอง — บอกตรงๆ ว่าใช้กฎล้วนอยู่ ไม่ใช่ซ่อนแผงทิ้ง -->
         <div v-if="!view" class="rounded-xl border border-white/10 bg-black/25 p-3.5">
             <p class="text-[12px] text-dark-300 leading-relaxed">
-                {{ data?.reason || 'ยังไม่มีมุมมองล่าสุด' }}
+                {{ data?.reason || t('ui.tradingAiMarketViewPanel.noView') }}
             </p>
             <p class="text-[11px] text-dark-500 mt-1.5">
-                บอทยังทำงานปกติ — ตัดสินใจจากกฎที่ตรวจย้อนหลังได้ทั้งหมด
+                {{ t('ui.tradingAiMarketViewPanel.rulesOnly') }}
             </p>
         </div>
 
@@ -114,22 +117,22 @@ const confidencePct = computed(() => Math.round((Number(view.value?.confidence) 
             <!-- โหมดเงา: AI คิดแต่ยังไม่มีสิทธิ์แตะเงิน ต้องบอกให้ชัด -->
             <div v-if="shadow" class="mb-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2">
                 <p class="text-[11px] text-amber-200 leading-relaxed">
-                    กำลังอยู่ในช่วงเก็บสถิติ — AI วิเคราะห์และบันทึกไว้ แต่<strong>ยังไม่มีผลต่อการเทรด</strong>
+                    {{ t('ui.tradingAiMarketViewPanel.shadowPre') }}<strong>{{ t('ui.tradingAiMarketViewPanel.shadowStrong') }}</strong>
                 </p>
             </div>
 
             <!-- ท่าทีรวม -->
             <div class="grid grid-cols-3 gap-2 mb-3">
                 <div :class="['rounded-lg border px-2.5 py-2', regime.cls]">
-                    <span class="block text-[10px] opacity-70">ท่าทีตลาด</span>
-                    <span class="block text-[12px] font-semibold mt-0.5">{{ regime.label }}</span>
+                    <span class="block text-[10px] opacity-70">{{ t('ui.tradingAiMarketViewPanel.regimeLabel') }}</span>
+                    <span class="block text-[12px] font-semibold mt-0.5">{{ t(regime.label) }}</span>
                 </div>
                 <div class="rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
-                    <span class="block text-[10px] text-dark-400">ความมั่นใจ</span>
+                    <span class="block text-[10px] text-dark-400">{{ t('ui.tradingAiMarketViewPanel.confidence') }}</span>
                     <span class="block text-[12px] font-semibold text-white mt-0.5 font-mono">{{ confidencePct }}%</span>
                 </div>
                 <div class="rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
-                    <span class="block text-[10px] text-dark-400">ตัวคูณขนาดไม้</span>
+                    <span class="block text-[10px] text-dark-400">{{ t('ui.tradingAiMarketViewPanel.sizeMultiplier') }}</span>
                     <span class="block text-[12px] font-semibold text-white mt-0.5 font-mono">
                         {{ Number(view.size_multiplier).toFixed(2) }}×
                     </span>
@@ -142,7 +145,7 @@ const confidencePct = computed(() => Math.round((Number(view.value?.confidence) 
 
             <!-- เหรียญที่คัดไว้ -->
             <div v-if="shortlist.length" class="mb-3">
-                <span class="block text-[11px] text-dark-400 mb-1.5">เหรียญที่ AI คัดไว้รอบนี้</span>
+                <span class="block text-[11px] text-dark-400 mb-1.5">{{ t('ui.tradingAiMarketViewPanel.shortlist') }}</span>
                 <div class="flex flex-wrap gap-1.5">
                     <span
                         v-for="pair in shortlist"
@@ -161,7 +164,7 @@ const confidencePct = computed(() => Math.round((Number(view.value?.confidence) 
                 >
                     <span class="text-[11px] font-mono font-semibold text-white w-12 shrink-0">{{ coin.symbol }}</span>
                     <span :class="['text-[10px] px-1.5 py-0.5 rounded shrink-0', (stanceTone[coin.stance] || stanceTone.hold).cls]">
-                        {{ (stanceTone[coin.stance] || stanceTone.hold).label }}
+                        {{ t((stanceTone[coin.stance] || stanceTone.hold).label) }}
                     </span>
                     <span class="text-[11px] text-dark-300 leading-snug flex-1">{{ coin.why || '—' }}</span>
                     <span
@@ -174,10 +177,10 @@ const confidencePct = computed(() => Math.round((Number(view.value?.confidence) 
             <!-- ที่มาและความสด — ตัวชี้ว่ารอบวิเคราะห์ยังเดินอยู่จริงไหม -->
             <div class="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between gap-2">
                 <span class="text-[10px] text-dark-500 font-mono">
-                    {{ view.model }} · รอบ{{ view.scope === 'tactical' ? 'สั้น' : 'ใหญ่' }}
+                    {{ view.model }} · {{ view.scope === 'tactical' ? t('ui.tradingAiMarketViewPanel.scope.tactical') : t('ui.tradingAiMarketViewPanel.scope.strategic') }}
                 </span>
                 <span :class="['text-[10px]', expiringSoon ? 'text-amber-300' : 'text-dark-500']">
-                    ประเมิน {{ ageText }}
+                    {{ t('ui.tradingAiMarketViewPanel.assessed', { age: ageText }) }}
                 </span>
             </div>
         </template>

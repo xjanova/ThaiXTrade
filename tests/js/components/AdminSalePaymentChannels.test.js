@@ -34,6 +34,7 @@ vi.mock('@/Components/Admin/SaleLaunchPanel.vue', () => ({ default: { template: 
 vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 
 import TokenSalesIndex from '@/Pages/Admin/TokenSales/Index.vue';
+import { t } from '@/Composables/useTranslation';
 
 const existingSale = {
     id: 1,
@@ -149,8 +150,8 @@ describe('ฟอร์มรอบขาย — ช่องทางรับ�
 
     it.each([
         [['CARD'], 'Stripe'],
-        [['CARD', 'CRYPTO'], 'Stripe + USDT'],
-        [['CARD', 'BANK', 'CRYPTO'], 'Stripe + โอนเงิน + USDT'],
+        [['CARD', 'CRYPTO'], `Stripe + ${t('admin.tokenSales.channels.crypto.short')}`],
+        [['CARD', 'BANK', 'CRYPTO'], `Stripe + ${t('admin.tokenSales.channels.bank.short')} + ${t('admin.tokenSales.channels.crypto.short')}`],
         [['USDT', 'BNB'], 'Stripe'],
         [null, 'Stripe'],
     ])('การ์ดรอบขายบอกช่องทางตามจริง %j', async (saved, label) => {
@@ -160,7 +161,7 @@ describe('ฟอร์มรอบขาย — ช่องทางรับ�
     });
 
     it('บอกว่าไม่รับ USDT แล้วเว้นกระเป๋าว่างได้', async () => {
-        expect((await openCreate()).text()).toContain('ถ้าไม่เปิดรับ USDT เว้นว่างได้');
+        expect((await openCreate()).text()).toContain(t('admin.tokenSales.saleModal.walletHint'));
     });
 
     it('เซิร์ฟเวอร์ปฏิเสธแล้วผู้ใช้เห็นข้อความในฟอร์ม', async () => {

@@ -15,6 +15,9 @@ const STORAGE_KEY = 'tpix_theme';
 export const THEMES = [
     {
         id: 'classic',
+        // คีย์คำแปล — ใช้ t(theme.nameKey) ให้ชื่อเปลี่ยนตามภาษาทันที (nameTh/nameEn เก็บไว้ให้โค้ดเดิม)
+        nameKey: 'fn.useTheme.classic.name',
+        taglineKey: 'fn.useTheme.classic.tagline',
         nameTh: 'กระจกเข้ม',
         nameEn: 'Glass Dark',
         taglineTh: 'ฟ้า-ม่วง บนกระจกฝ้า',
@@ -24,6 +27,8 @@ export const THEMES = [
     },
     {
         id: 'xp-silver',
+        nameKey: 'fn.useTheme.xpSilver.name',
+        taglineKey: 'fn.useTheme.xpSilver.tagline',
         nameTh: 'เงินคลาสสิก',
         nameEn: 'XP Silver',
         taglineTh: 'โครเมียมเงิน ขอบนูน 3 มิติ',

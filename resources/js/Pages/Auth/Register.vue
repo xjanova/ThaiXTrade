@@ -9,6 +9,9 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import SocialLoginButtons from '@/Components/Auth/SocialLoginButtons.vue';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     turnstileEnabled: {
@@ -38,7 +41,14 @@ const form = useForm({
 
 const turnstileReady = ref(false);
 const turnstileLoadFailed = ref(false);
-const turnstileError = ref('');
+// เก็บเป็น key + params แล้วแปลตอน render — ข้อความค้างบนจอได้ ต้องเปลี่ยนภาษาตามทันที
+const turnstileErrorKey = ref('');
+const turnstileErrorParams = ref({});
+const turnstileError = computed(() => (turnstileErrorKey.value ? t(turnstileErrorKey.value, turnstileErrorParams.value) : ''));
+const setTurnstileError = (key = '', params = {}) => {
+    turnstileErrorKey.value = key;
+    turnstileErrorParams.value = params;
+};
 let turnstileWidgetId = null;
 
 const turnstileRequired = computed(() => {
@@ -55,7 +65,7 @@ const waitForTurnstile = () => {
         } else if (attempts > 50) {
             clearInterval(interval);
             turnstileLoadFailed.value = true;
-            turnstileError.value = 'Turnstile timeout — please refresh';
+            setTurnstileError('page.authRegister.turnstile.timeout');
         }
     }, 100);
 };
@@ -86,7 +96,7 @@ const loadTurnstile = () => {
 
     script.onerror = () => {
         turnstileLoadFailed.value = true;
-        turnstileError.value = 'Unable to load security verification — please refresh';
+        setTurnstileError('page.authRegister.turnstile.loadFailed');
     };
 
     document.head.appendChild(script);
@@ -101,7 +111,7 @@ const renderTurnstile = () => {
             try { window.turnstile.remove(turnstileWidgetId); } catch {}
         }
 
-        turnstileError.value = '';
+        setTurnstileError();
 
         turnstileWidgetId = window.turnstile.render(container, {
             sitekey: props.turnstileSiteKey,
@@ -109,7 +119,7 @@ const renderTurnstile = () => {
             callback: (token) => {
                 form['cf-turnstile-response'] = token;
                 turnstileReady.value = true;
-                turnstileError.value = '';
+                setTurnstileError();
             },
             'expired-callback': () => {
                 form['cf-turnstile-response'] = '';
@@ -117,7 +127,7 @@ const renderTurnstile = () => {
             },
             'error-callback': (errorCode) => {
                 turnstileLoadFailed.value = true;
-                turnstileError.value = `Verification error (${errorCode})`;
+                setTurnstileError('page.authRegister.turnstile.verifyError', { code: errorCode });
                 form['cf-turnstile-response'] = '';
             },
         });
@@ -153,7 +163,7 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Register" />
+    <Head :title="t('page.authRegister.pageTitle')" />
 
     <div class="min-h-screen bg-dark-950 flex items-center justify-center p-4">
         <!-- Background Effects -->
@@ -170,12 +180,12 @@ const submit = () => {
                     <BrandLogo variant="mark" class="w-20 h-20 mx-auto mb-4 rounded-full shadow-glow-brand" />
                 </Link>
                 <h1 class="text-2xl font-bold text-white">TPIX <span class="text-gradient">TRADE</span></h1>
-                <p class="text-dark-400 text-sm mt-1">Create your trading account</p>
+                <p class="text-dark-400 text-sm mt-1">{{ t('page.authRegister.subtitle') }}</p>
             </div>
 
             <!-- Register Card -->
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-glass">
-                <h2 class="text-lg font-semibold text-white mb-6">Create Account</h2>
+                <h2 class="text-lg font-semibold text-white mb-6">{{ t('page.authRegister.heading') }}</h2>
 
                 <!-- Error Messages -->
                 <div v-if="Object.keys(form.errors).length > 0" class="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
@@ -192,7 +202,7 @@ const submit = () => {
                 <form @submit.prevent="submit" class="space-y-5">
                     <!-- Name -->
                     <div>
-                        <label for="name" class="block text-sm font-medium text-dark-300 mb-2">Name</label>
+                        <label for="name" class="block text-sm font-medium text-dark-300 mb-2">{{ t('page.authRegister.fields.name') }}</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                 <svg class="w-5 h-5 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -206,7 +216,7 @@ const submit = () => {
                                 required
                                 autofocus
                                 autocomplete="name"
-                                placeholder="Your name"
+                                :placeholder="t('page.authRegister.placeholders.name')"
                                 class="w-full bg-dark-800/50 border border-dark-600 rounded-xl pl-12 pr-4 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
                             />
                         </div>
@@ -214,7 +224,7 @@ const submit = () => {
 
                     <!-- Email -->
                     <div>
-                        <label for="email" class="block text-sm font-medium text-dark-300 mb-2">Email Address</label>
+                        <label for="email" class="block text-sm font-medium text-dark-300 mb-2">{{ t('page.authRegister.fields.email') }}</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                 <svg class="w-5 h-5 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -235,7 +245,7 @@ const submit = () => {
 
                     <!-- Password -->
                     <div>
-                        <label for="password" class="block text-sm font-medium text-dark-300 mb-2">Password</label>
+                        <label for="password" class="block text-sm font-medium text-dark-300 mb-2">{{ t('page.authRegister.fields.password') }}</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                 <svg class="w-5 h-5 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -248,7 +258,7 @@ const submit = () => {
                                 :type="showPassword ? 'text' : 'password'"
                                 required
                                 autocomplete="new-password"
-                                placeholder="Min 8 chars, mixed case + numbers"
+                                :placeholder="t('page.authRegister.placeholders.password')"
                                 class="w-full bg-dark-800/50 border border-dark-600 rounded-xl pl-12 pr-12 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
                             />
                             <button
@@ -269,7 +279,7 @@ const submit = () => {
 
                     <!-- Confirm Password -->
                     <div>
-                        <label for="password_confirmation" class="block text-sm font-medium text-dark-300 mb-2">Confirm Password</label>
+                        <label for="password_confirmation" class="block text-sm font-medium text-dark-300 mb-2">{{ t('page.authRegister.fields.confirmPassword') }}</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                 <svg class="w-5 h-5 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -282,7 +292,7 @@ const submit = () => {
                                 :type="showPasswordConfirm ? 'text' : 'password'"
                                 required
                                 autocomplete="new-password"
-                                placeholder="Confirm your password"
+                                :placeholder="t('page.authRegister.placeholders.confirmPassword')"
                                 class="w-full bg-dark-800/50 border border-dark-600 rounded-xl pl-12 pr-12 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
                             />
                             <button
@@ -319,8 +329,8 @@ const submit = () => {
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        <span v-if="form.processing">Creating account...</span>
-                        <span v-else>Create Account</span>
+                        <span v-if="form.processing">{{ t('page.authRegister.submitting') }}</span>
+                        <span v-else>{{ t('page.authRegister.submit') }}</span>
                     </button>
                 </form>
 
@@ -330,9 +340,9 @@ const submit = () => {
                 <!-- Login Link -->
                 <div class="mt-6 text-center">
                     <p class="text-dark-400 text-sm">
-                        Already have an account?
+                        {{ t('page.authRegister.haveAccount') }}
                         <Link href="/login" class="text-primary-400 hover:text-primary-300 font-medium transition-colors">
-                            Sign in
+                            {{ t('page.authRegister.signIn') }}
                         </Link>
                     </p>
                 </div>
@@ -340,7 +350,7 @@ const submit = () => {
 
             <!-- Footer -->
             <p class="text-center text-dark-500 text-xs mt-6">
-                TPIX TRADE &middot; by Xman Studio
+                TPIX TRADE &middot; {{ t('page.authRegister.byLine') }}
             </p>
         </div>
     </div>

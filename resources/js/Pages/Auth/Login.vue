@@ -67,7 +67,8 @@ const form = useForm({
 
 const turnstileReady = ref(false);
 const turnstileLoadFailed = ref(false);
-const turnstileError = ref('');
+// เก็บเป็นคีย์คำแปล (ไม่ใช่ข้อความ) — ข้อความค้างบนจอ ต้องเปลี่ยนตามภาษาตอนสลับ TH/EN
+const turnstileError = ref(null);
 let turnstileWidgetId = null;
 
 const turnstileRequired = computed(() => {
@@ -84,7 +85,7 @@ const waitForTurnstile = () => {
         } else if (attempts > 50) {
             clearInterval(interval);
             turnstileLoadFailed.value = true;
-            turnstileError.value = 'Turnstile timeout — please refresh';
+            turnstileError.value = { key: 'page.authLogin.turnstile.timeout' };
         }
     }, 100);
 };
@@ -115,7 +116,7 @@ const loadTurnstile = () => {
 
     script.onerror = () => {
         turnstileLoadFailed.value = true;
-        turnstileError.value = 'Unable to load security verification — please refresh';
+        turnstileError.value = { key: 'page.authLogin.turnstile.loadFailed' };
     };
 
     document.head.appendChild(script);
@@ -130,7 +131,7 @@ const renderTurnstile = () => {
             try { window.turnstile.remove(turnstileWidgetId); } catch {}
         }
 
-        turnstileError.value = '';
+        turnstileError.value = null;
 
         turnstileWidgetId = window.turnstile.render(container, {
             sitekey: props.turnstileSiteKey,
@@ -138,7 +139,7 @@ const renderTurnstile = () => {
             callback: (token) => {
                 form['cf-turnstile-response'] = token;
                 turnstileReady.value = true;
-                turnstileError.value = '';
+                turnstileError.value = null;
             },
             'expired-callback': () => {
                 form['cf-turnstile-response'] = '';
@@ -146,7 +147,7 @@ const renderTurnstile = () => {
             },
             'error-callback': (errorCode) => {
                 turnstileLoadFailed.value = true;
-                turnstileError.value = `Verification error (${errorCode})`;
+                turnstileError.value = { key: 'page.authLogin.turnstile.error', params: { code: errorCode } };
                 form['cf-turnstile-response'] = '';
             },
         });
@@ -182,7 +183,7 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Login" />
+    <Head :title="t('page.authLogin.title')" />
 
     <div class="min-h-screen bg-dark-950 flex items-center justify-center p-4">
         <!-- Background Effects -->
@@ -199,12 +200,12 @@ const submit = () => {
                     <BrandLogo variant="mark" class="w-20 h-20 mx-auto mb-4 rounded-full shadow-glow-brand" />
                 </Link>
                 <h1 class="text-2xl font-bold text-white">TPIX <span class="text-gradient">TRADE</span></h1>
-                <p class="text-dark-400 text-sm mt-1">Welcome back, Trader</p>
+                <p class="text-dark-400 text-sm mt-1">{{ t('page.authLogin.welcome') }}</p>
             </div>
 
             <!-- Login Card -->
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-glass">
-                <h2 class="text-lg font-semibold text-white mb-6">Sign in to your account</h2>
+                <h2 class="text-lg font-semibold text-white mb-6">{{ t('page.authLogin.heading') }}</h2>
 
                 <!-- อันดับ 1: เข้าสู่ระบบด้วยแอป TPIX Wallet -->
                 <TpixWalletAppCard :mobile="mobile" sign-in @connect="showWalletLogin = true" />
@@ -231,7 +232,7 @@ const submit = () => {
                 <form @submit.prevent="submit" class="space-y-5">
                     <!-- Email -->
                     <div>
-                        <label for="email" class="block text-sm font-medium text-dark-300 mb-2">Email Address</label>
+                        <label for="email" class="block text-sm font-medium text-dark-300 mb-2">{{ t('page.authLogin.email') }}</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                 <svg class="w-5 h-5 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -245,7 +246,7 @@ const submit = () => {
                                 required
                                 autofocus
                                 autocomplete="email"
-                                placeholder="you@example.com"
+                                :placeholder="t('page.authLogin.emailPlaceholder')"
                                 class="w-full bg-dark-800/50 border border-dark-600 rounded-xl pl-12 pr-4 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
                             />
                         </div>
@@ -253,7 +254,7 @@ const submit = () => {
 
                     <!-- Password -->
                     <div>
-                        <label for="password" class="block text-sm font-medium text-dark-300 mb-2">Password</label>
+                        <label for="password" class="block text-sm font-medium text-dark-300 mb-2">{{ t('page.authLogin.password') }}</label>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                 <svg class="w-5 h-5 text-dark-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -266,12 +267,13 @@ const submit = () => {
                                 :type="showPassword ? 'text' : 'password'"
                                 required
                                 autocomplete="current-password"
-                                placeholder="Enter your password"
+                                :placeholder="t('page.authLogin.passwordPlaceholder')"
                                 class="w-full bg-dark-800/50 border border-dark-600 rounded-xl pl-12 pr-12 py-3 text-white placeholder-dark-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
                             />
                             <button
                                 type="button"
                                 @click="showPassword = !showPassword"
+                                :aria-label="showPassword ? t('page.authLogin.hidePassword') : t('page.authLogin.showPassword')"
                                 class="absolute inset-y-0 right-0 pr-4 flex items-center text-dark-500 hover:text-dark-300 transition-colors"
                             >
                                 <svg v-if="showPassword" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -293,7 +295,7 @@ const submit = () => {
                                 type="checkbox"
                                 class="w-4 h-4 rounded border-dark-600 bg-dark-800 text-primary-500 focus:ring-primary-500 focus:ring-offset-dark-900"
                             />
-                            <span class="text-sm text-dark-400">Remember me</span>
+                            <span class="text-sm text-dark-400">{{ t('page.authLogin.remember') }}</span>
                         </label>
                     </div>
 
@@ -302,7 +304,7 @@ const submit = () => {
                         <div id="cf-turnstile-user" class="flex justify-center">
                             <!-- Cloudflare Turnstile widget -->
                         </div>
-                        <p v-if="turnstileError" class="text-center text-xs text-amber-400">{{ turnstileError }}</p>
+                        <p v-if="turnstileError" class="text-center text-xs text-amber-400">{{ t(turnstileError.key, turnstileError.params) }}</p>
                     </div>
 
                     <!-- Submit -->
@@ -315,8 +317,8 @@ const submit = () => {
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        <span v-if="form.processing">Signing in...</span>
-                        <span v-else>Sign In</span>
+                        <span v-if="form.processing">{{ t('page.authLogin.signingIn') }}</span>
+                        <span v-else>{{ t('page.authLogin.signIn') }}</span>
                     </button>
                 </form>
 
@@ -326,9 +328,9 @@ const submit = () => {
                 <!-- Register Link -->
                 <div class="mt-6 text-center">
                     <p class="text-dark-400 text-sm">
-                        Don't have an account?
+                        {{ t('page.authLogin.noAccount') }}
                         <Link href="/register" class="text-primary-400 hover:text-primary-300 font-medium transition-colors">
-                            Create one
+                            {{ t('page.authLogin.createOne') }}
                         </Link>
                     </p>
                 </div>
@@ -336,7 +338,7 @@ const submit = () => {
 
             <!-- Footer -->
             <p class="text-center text-dark-500 text-xs mt-6">
-                TPIX TRADE &middot; by Xman Studio
+                {{ t('page.authLogin.footer') }}
             </p>
         </div>
 

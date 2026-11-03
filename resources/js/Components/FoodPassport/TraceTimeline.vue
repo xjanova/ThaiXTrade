@@ -4,6 +4,9 @@
  * ผู้บริโภคสแกน QR → เห็นที่นี่
  */
 import { ref, onMounted } from 'vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     product: { type: Object, default: null },
@@ -63,12 +66,12 @@ onMounted(() => {
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
             </svg>
-            กลับ
+            {{ t('common.back') }}
         </button>
 
         <div v-if="loading" class="glass-card rounded-2xl p-12 text-center">
             <div class="spinner mx-auto mb-3"></div>
-            <p class="text-dark-400">กำลังโหลดข้อมูล...</p>
+            <p class="text-dark-400">{{ t('ui.foodPassportTraceTimeline.loading') }}</p>
         </div>
 
         <div v-else-if="productData || product" class="space-y-6">
@@ -81,7 +84,7 @@ onMounted(() => {
                         <p class="text-dark-400 text-sm mt-1">{{ (productData || product)?.origin }}</p>
                         <div class="flex flex-wrap gap-3 mt-3">
                             <span class="px-2.5 py-1 rounded-lg bg-dark-800 text-dark-300 text-xs">
-                                Batch: {{ (productData || product)?.batch_number }}
+                                {{ t('ui.foodPassportTraceTimeline.batch', { batch: (productData || product)?.batch_number }) }}
                             </span>
                             <span v-if="(productData || product)?.weight_kg" class="px-2.5 py-1 rounded-lg bg-dark-800 text-dark-300 text-xs">
                                 {{ (productData || product)?.weight_kg }} kg
@@ -95,7 +98,7 @@ onMounted(() => {
                                     ? 'bg-trading-green/10 text-trading-green'
                                     : 'bg-primary-500/10 text-primary-400'
                             ]">
-                                {{ (productData || product)?.status === 'certified' ? 'Certified' : (productData || product)?.status }}
+                                {{ (productData || product)?.status === 'certified' ? t('ui.foodPassportTraceTimeline.certified') : (productData || product)?.status }}
                             </span>
                         </div>
                     </div>
@@ -104,7 +107,7 @@ onMounted(() => {
 
             <!-- Journey Timeline -->
             <div class="glass-card rounded-2xl p-6">
-                <h3 class="text-lg font-bold text-white mb-6">เส้นทางอาหาร (Food Journey)</h3>
+                <h3 class="text-lg font-bold text-white mb-6">{{ t('ui.foodPassportTraceTimeline.journeyTitle') }}</h3>
 
                 <div class="relative">
                     <!-- Timeline Line -->
@@ -132,8 +135,8 @@ onMounted(() => {
                                 <h4 :class="['font-semibold', stage.completed ? 'text-white' : 'text-dark-500']">
                                     {{ stageConfig[stage.stage]?.label || stage.stage }}
                                 </h4>
-                                <span v-if="stage.completed" class="text-[10px] text-trading-green px-1.5 py-0.5 rounded-full bg-trading-green/10">PASSED</span>
-                                <span v-else class="text-[10px] text-dark-600 px-1.5 py-0.5 rounded-full bg-dark-800">PENDING</span>
+                                <span v-if="stage.completed" class="text-[10px] text-trading-green px-1.5 py-0.5 rounded-full bg-trading-green/10">{{ t('ui.foodPassportTraceTimeline.passed') }}</span>
+                                <span v-else class="text-[10px] text-dark-600 px-1.5 py-0.5 rounded-full bg-dark-800">{{ t('ui.foodPassportTraceTimeline.pending') }}</span>
                             </div>
 
                             <!-- Trace records for this stage -->
@@ -149,15 +152,15 @@ onMounted(() => {
                                                 <span v-if="trace.location" class="text-dark-500 text-xs">📍 {{ trace.location }}</span>
                                             </div>
                                         </div>
-                                        <span class="text-dark-600 text-xs">{{ new Date(trace.recorded_at).toLocaleString('th-TH') }}</span>
+                                        <span class="text-dark-600 text-xs">{{ new Date(trace.recorded_at).toLocaleString(locale === 'th' ? 'th-TH' : 'en-US') }}</span>
                                     </div>
 
                                     <!-- Expanded details -->
                                     <div v-if="activeTrace === trace.id" class="mt-2 pt-2 border-t border-white/5 text-xs space-y-1">
-                                        <p v-if="trace.weight_kg" class="text-dark-400">น้ำหนัก: {{ trace.weight_kg }} kg</p>
+                                        <p v-if="trace.weight_kg" class="text-dark-400">{{ t('ui.foodPassportTraceTimeline.weight', { kg: trace.weight_kg }) }}</p>
                                         <p v-if="trace.ph_level" class="text-dark-400">pH: {{ trace.ph_level }}</p>
                                         <p v-if="trace.notes" class="text-dark-400">{{ trace.notes }}</p>
-                                        <p class="text-dark-600 font-mono">Recorder: {{ trace.recorder_address?.slice(0, 10) }}...</p>
+                                        <p class="text-dark-600 font-mono">{{ t('ui.foodPassportTraceTimeline.recorder', { addr: trace.recorder_address?.slice(0, 10) }) }}</p>
                                         <p v-if="trace.tx_hash" class="text-primary-400 font-mono">TX: {{ trace.tx_hash?.slice(0, 16) }}...</p>
                                     </div>
                                 </div>
@@ -169,25 +172,25 @@ onMounted(() => {
 
             <!-- Sensor Data (if available) -->
             <div v-if="sensorData?.has_data" class="glass-card rounded-2xl p-6">
-                <h3 class="text-lg font-bold text-white mb-4">IoT Sensor Data</h3>
+                <h3 class="text-lg font-bold text-white mb-4">{{ t('ui.foodPassportTraceTimeline.sensorTitle') }}</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div class="p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/10 text-center">
                         <p class="text-2xl font-bold text-cyan-400">{{ sensorData.temperature?.current }}°C</p>
-                        <p class="text-dark-400 text-xs mt-1">อุณหภูมิล่าสุด</p>
-                        <p class="text-dark-600 text-[10px] mt-0.5">Min: {{ sensorData.temperature?.min }}°C | Max: {{ sensorData.temperature?.max }}°C</p>
+                        <p class="text-dark-400 text-xs mt-1">{{ t('ui.foodPassportTraceTimeline.latestTemp') }}</p>
+                        <p class="text-dark-600 text-[10px] mt-0.5">{{ t('ui.foodPassportTraceTimeline.minMax', { min: sensorData.temperature?.min, max: sensorData.temperature?.max }) }}</p>
                     </div>
                     <div class="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10 text-center">
                         <p class="text-2xl font-bold text-blue-400">{{ sensorData.humidity?.current }}%</p>
-                        <p class="text-dark-400 text-xs mt-1">ความชื้นล่าสุด</p>
-                        <p class="text-dark-600 text-[10px] mt-0.5">Avg: {{ sensorData.humidity?.avg }}%</p>
+                        <p class="text-dark-400 text-xs mt-1">{{ t('ui.foodPassportTraceTimeline.latestHumidity') }}</p>
+                        <p class="text-dark-600 text-[10px] mt-0.5">{{ t('ui.foodPassportTraceTimeline.avgHumidity', { avg: sensorData.humidity?.avg }) }}</p>
                     </div>
                     <div class="p-4 rounded-xl bg-green-500/5 border border-green-500/10 text-center">
                         <p class="text-2xl font-bold text-green-400">{{ sensorData.total_readings }}</p>
-                        <p class="text-dark-400 text-xs mt-1">จำนวนข้อมูล</p>
+                        <p class="text-dark-400 text-xs mt-1">{{ t('ui.foodPassportTraceTimeline.totalReadings') }}</p>
                     </div>
                     <div class="p-4 rounded-xl bg-purple-500/5 border border-purple-500/10 text-center">
                         <p class="text-2xl font-bold text-purple-400">{{ sensorData.temperature?.avg }}°C</p>
-                        <p class="text-dark-400 text-xs mt-1">อุณหภูมิเฉลี่ย</p>
+                        <p class="text-dark-400 text-xs mt-1">{{ t('ui.foodPassportTraceTimeline.avgTemp') }}</p>
                     </div>
                 </div>
             </div>
@@ -195,7 +198,7 @@ onMounted(() => {
 
         <div v-else class="glass-card rounded-2xl p-12 text-center">
             <p class="text-4xl mb-3">🔍</p>
-            <p class="text-dark-400">ไม่พบข้อมูลสินค้า</p>
+            <p class="text-dark-400">{{ t('ui.foodPassportTraceTimeline.notFound') }}</p>
         </div>
     </div>
 </template>

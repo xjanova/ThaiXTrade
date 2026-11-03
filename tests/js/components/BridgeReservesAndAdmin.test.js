@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { t } from '@/Composables/useTranslation';
 
 const reserves = {
     snapshot: {
@@ -67,8 +68,8 @@ describe('Admin bridge page', () => {
         });
 
         expect(wrapper.text()).toContain('หยุดอัตโนมัติ (reserve_deficit)');
-        expect(wrapper.text()).toContain('ลงทะเบียน TPIXBridgeMinter');
+        expect(wrapper.text()).toContain(t('admin.bridge.readiness.minter'));
         expect(wrapper.text()).toContain('0x1000000000000000000000000000000000000001');
-        expect(wrapper.text()).toContain('เปิดสะพาน');
+        expect(wrapper.text()).toContain(t('admin.bridge.switch.startButton'));
     });
 });

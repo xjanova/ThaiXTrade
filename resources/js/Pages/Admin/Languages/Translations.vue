@@ -9,6 +9,9 @@ import { ref, computed } from 'vue';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import Modal from '@/Components/Admin/Modal.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     language: {
@@ -24,6 +27,22 @@ const props = defineProps({
         default: () => ['general', 'navigation', 'trading', 'errors', 'auth', 'wallet', 'settings', 'support'],
     },
 });
+
+// ชื่อกลุ่มที่แสดง — ค่า group ที่ส่งเซิร์ฟเวอร์ยังเป็น id เดิม (general, trading, ...)
+const GROUP_KEYS = {
+    general: 'admin.languagesTranslations.groups.general',
+    navigation: 'admin.languagesTranslations.groups.navigation',
+    trading: 'admin.languagesTranslations.groups.trading',
+    errors: 'admin.languagesTranslations.groups.errors',
+    auth: 'admin.languagesTranslations.groups.auth',
+    wallet: 'admin.languagesTranslations.groups.wallet',
+    settings: 'admin.languagesTranslations.groups.settings',
+    support: 'admin.languagesTranslations.groups.support',
+};
+const groupLabel = (group) => {
+    if (GROUP_KEYS[group]) return t(GROUP_KEYS[group]);
+    return group ? group.charAt(0).toUpperCase() + group.slice(1) : '';
+};
 
 const activeGroup = ref(props.groups[0] || 'general');
 const showAddModal = ref(false);
@@ -83,16 +102,16 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
 </script>
 
 <template>
-    <Head :title="`Translations - ${language.name}`" />
+    <Head :title="t('admin.languagesTranslations.headTitle', { name: language.name })" />
 
-    <AdminLayout :title="`Translations: ${language.name}`">
+    <AdminLayout :title="t('admin.languagesTranslations.layoutTitle', { name: language.name })">
         <!-- Back Link -->
         <div class="mb-6">
             <Link href="/admin/languages" class="inline-flex items-center gap-2 text-sm text-dark-400 hover:text-white transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                Back to Languages
+                {{ t('admin.languagesTranslations.back') }}
             </Link>
         </div>
 
@@ -107,17 +126,17 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button class="btn-secondary px-4 py-2.5 text-sm opacity-50 cursor-not-allowed" disabled title="Coming soon">
-                        Import
+                    <button class="btn-secondary px-4 py-2.5 text-sm opacity-50 cursor-not-allowed" disabled :title="t('common.comingSoon')">
+                        {{ t('admin.languagesTranslations.import') }}
                     </button>
-                    <button class="btn-secondary px-4 py-2.5 text-sm opacity-50 cursor-not-allowed" disabled title="Coming soon">
-                        Export
+                    <button class="btn-secondary px-4 py-2.5 text-sm opacity-50 cursor-not-allowed" disabled :title="t('common.comingSoon')">
+                        {{ t('admin.languagesTranslations.export') }}
                     </button>
                     <button @click="openAddModal" class="btn-primary px-4 py-2.5 text-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                         </svg>
-                        Add Key
+                        {{ t('admin.languagesTranslations.addKey') }}
                     </button>
                 </div>
             </div>
@@ -129,10 +148,10 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                 v-for="group in groups"
                 :key="group"
                 @click="activeGroup = group"
-                class="px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 capitalize whitespace-nowrap"
+                class="px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap"
                 :class="activeGroup === group ? 'bg-primary-500/10 text-primary-400' : 'text-dark-400 hover:text-white hover:bg-white/5'"
             >
-                {{ group }}
+                {{ groupLabel(group) }}
             </button>
         </div>
 
@@ -141,8 +160,8 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
             <table class="w-full">
                 <thead>
                     <tr class="bg-dark-800/50">
-                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 w-1/3">Key</th>
-                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">Value</th>
+                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 w-1/3">{{ t('admin.languagesTranslations.key') }}</th>
+                        <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">{{ t('admin.languagesTranslations.value') }}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -167,8 +186,8 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                 <tbody v-if="Object.keys(currentTranslations).length === 0">
                     <tr>
                         <td colspan="2" class="py-12 text-center">
-                            <p class="text-dark-400 text-sm">No translations for this group</p>
-                            <button @click="openAddModal" class="mt-2 text-sm text-primary-400 hover:text-primary-300">Add first translation</button>
+                            <p class="text-dark-400 text-sm">{{ t('admin.languagesTranslations.empty') }}</p>
+                            <button @click="openAddModal" class="mt-2 text-sm text-primary-400 hover:text-primary-300">{{ t('admin.languagesTranslations.addFirst') }}</button>
                         </td>
                     </tr>
                 </tbody>
@@ -186,39 +205,39 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
         >
             <div v-if="hasChanges" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
                 <div class="bg-dark-800 border border-white/10 rounded-2xl px-6 py-3 shadow-glass flex items-center gap-4">
-                    <p class="text-sm text-dark-300">You have unsaved changes</p>
+                    <p class="text-sm text-dark-300">{{ t('admin.languagesTranslations.unsaved') }}</p>
                     <button @click="saveTranslations" class="btn-primary px-6 py-2 text-sm">
-                        Save All Changes
+                        {{ t('admin.languagesTranslations.saveAll') }}
                     </button>
                 </div>
             </div>
         </Transition>
 
         <!-- Add Translation Modal -->
-        <Modal :show="showAddModal" title="Add Translation Key" @close="showAddModal = false">
+        <Modal :show="showAddModal" :title="t('admin.languagesTranslations.modal.title')" @close="showAddModal = false">
             <form @submit.prevent="addTranslation" class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-2">Group</label>
+                    <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.languagesTranslations.modal.group') }}</label>
                     <select v-model="addForm.group" :class="inputClass">
-                        <option v-for="group in groups" :key="group" :value="group">{{ group.charAt(0).toUpperCase() + group.slice(1) }}</option>
+                        <option v-for="group in groups" :key="group" :value="group">{{ groupLabel(group) }}</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-2">Key</label>
+                    <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.languagesTranslations.key') }}</label>
                     <input v-model="addForm.key" type="text" :class="inputClass" placeholder="welcome_message" />
                     <p v-if="addForm.errors.key" class="mt-1 text-sm text-red-400">{{ addForm.errors.key }}</p>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-2">Value</label>
-                    <input v-model="addForm.value" type="text" :class="inputClass" placeholder="Welcome to TPIX TRADE" />
+                    <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.languagesTranslations.value') }}</label>
+                    <input v-model="addForm.value" type="text" :class="inputClass" :placeholder="t('admin.languagesTranslations.modal.valuePlaceholder')" />
                     <p v-if="addForm.errors.value" class="mt-1 text-sm text-red-400">{{ addForm.errors.value }}</p>
                 </div>
             </form>
             <template #footer>
                 <div class="flex items-center justify-end gap-3">
-                    <button @click="showAddModal = false" class="px-4 py-2 rounded-xl text-sm text-dark-300 hover:text-white transition-colors">Cancel</button>
+                    <button @click="showAddModal = false" class="px-4 py-2 rounded-xl text-sm text-dark-300 hover:text-white transition-colors">{{ t('common.cancel') }}</button>
                     <button @click="addTranslation" :disabled="addForm.processing" class="btn-primary px-6 py-2.5 text-sm">
-                        {{ addForm.processing ? 'Adding...' : 'Add Translation' }}
+                        {{ addForm.processing ? t('admin.languagesTranslations.modal.adding') : t('admin.languagesTranslations.modal.add') }}
                     </button>
                 </div>
             </template>

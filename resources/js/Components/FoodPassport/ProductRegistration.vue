@@ -5,6 +5,9 @@
  */
 import { ref, computed } from 'vue';
 import { useFoodPassportWrite } from '@/Composables/useFoodPassportWrite';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     categories: { type: Object, required: true },
@@ -45,7 +48,7 @@ async function submitForm() {
     const result = await post('/api/v1/food-passport/register', props.walletAddress, {
         ...form.value,
         weight_kg: form.value.weight_kg ? parseFloat(form.value.weight_kg) : null,
-    },'ลงทะเบียนไม่สำเร็จ กรุณาลองใหม่');
+    }, t('ui.foodPassportProductRegistration.registerFailed'));
 
     loading.value = false;
 
@@ -53,7 +56,8 @@ async function submitForm() {
     if (result.stale) return;
 
     if (result.ok) {
-        success.value = `ลงทะเบียนสำเร็จ! Product ID: ${result.data.id} | Batch: ${result.data.batch_number}`;
+        // เก็บค่าไว้ แล้วแปลตอน render — เปลี่ยนภาษาแล้วข้อความสำเร็จต้องเปลี่ยนตาม
+        success.value = { id: result.data.id, batch: result.data.batch_number };
         emit('registered', result.data);
         form.value = { name: '', category: '', origin: '', producer_name: '', description: '', weight_kg: '', harvest_date: '', expiry_date: '' };
     } else {
@@ -74,8 +78,8 @@ async function verifyAndSubmit() {
             <div class="flex items-center gap-3">
                 <span class="text-3xl">📝</span>
                 <div>
-                    <h2 class="text-xl font-bold text-white">ลงทะเบียนสินค้า</h2>
-                    <p class="text-dark-400 text-sm">ขั้นตอนที่ 1 — กรอกข้อมูลสินค้าเพื่อเริ่มติดตามบน Blockchain</p>
+                    <h2 class="text-xl font-bold text-white">{{ t('ui.foodPassportProductRegistration.title') }}</h2>
+                    <p class="text-dark-400 text-sm">{{ t('ui.foodPassportProductRegistration.subtitle') }}</p>
                 </div>
             </div>
         </div>
@@ -83,15 +87,15 @@ async function verifyAndSubmit() {
         <!-- Not Connected -->
         <div v-if="!isConnected" class="glass-card rounded-2xl p-12 text-center">
             <p class="text-4xl mb-3">🔒</p>
-            <p class="text-white font-medium">กรุณาเชื่อมต่อ Wallet ก่อน</p>
-            <p class="text-dark-400 text-sm mt-1">เชื่อมต่อ MetaMask, Trust Wallet, หรือ TPIX Wallet</p>
+            <p class="text-white font-medium">{{ t('ui.foodPassportProductRegistration.connectFirst') }}</p>
+            <p class="text-dark-400 text-sm mt-1">{{ t('ui.foodPassportProductRegistration.connectHint') }}</p>
         </div>
 
         <!-- Registration Form -->
         <div v-else class="glass-card rounded-2xl p-6 space-y-5">
             <!-- Success -->
             <div v-if="success" class="p-4 rounded-xl bg-trading-green/10 border border-trading-green/30 text-trading-green text-sm">
-                {{ success }}
+                {{ t('ui.foodPassportProductRegistration.success', { id: success.id, batch: success.batch }) }}
             </div>
 
             <!-- Error -->
@@ -100,21 +104,21 @@ async function verifyAndSubmit() {
                 <button v-if="needsVerification" type="button" data-test="verify-wallet"
                     @click="verifyAndSubmit" :disabled="isVerifying || loading"
                     class="mt-3 block w-full py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 text-white font-medium disabled:opacity-60">
-                    {{ isVerifying ? 'กำลังรอลายเซ็น...' : 'เซ็นยืนยันกระเป๋า แล้วลงทะเบียน' }}
+                    {{ isVerifying ? t('ui.foodPassportProductRegistration.waitingSignature') : t('ui.foodPassportProductRegistration.verifyAndRegister') }}
                 </button>
             </div>
 
             <!-- Name -->
             <div>
-                <label class="block text-sm font-medium text-dark-300 mb-1.5">ชื่อสินค้า <span class="text-trading-red">*</span></label>
+                <label class="block text-sm font-medium text-dark-300 mb-1.5">{{ t('ui.foodPassportProductRegistration.name') }} <span class="text-trading-red">*</span></label>
                 <input v-model="form.name" type="text"
                     class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:border-primary-500 text-sm"
-                    placeholder="เช่น ข้าวหอมมะลิ ทุ่งกุลาร้องไห้" />
+                    :placeholder="t('ui.foodPassportProductRegistration.namePlaceholder')" />
             </div>
 
             <!-- Category -->
             <div>
-                <label class="block text-sm font-medium text-dark-300 mb-1.5">หมวดหมู่ <span class="text-trading-red">*</span></label>
+                <label class="block text-sm font-medium text-dark-300 mb-1.5">{{ t('ui.foodPassportProductRegistration.category') }} <span class="text-trading-red">*</span></label>
                 <div class="grid grid-cols-4 gap-2">
                     <button v-for="(cat, key) in categories" :key="key"
                         @click="form.category = key"
@@ -132,35 +136,35 @@ async function verifyAndSubmit() {
 
             <!-- Origin -->
             <div>
-                <label class="block text-sm font-medium text-dark-300 mb-1.5">แหล่งผลิต <span class="text-trading-red">*</span></label>
+                <label class="block text-sm font-medium text-dark-300 mb-1.5">{{ t('ui.foodPassportProductRegistration.origin') }} <span class="text-trading-red">*</span></label>
                 <input v-model="form.origin" type="text"
                     class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:border-primary-500 text-sm"
-                    placeholder="เช่น สุรินทร์, ประเทศไทย" />
+                    :placeholder="t('ui.foodPassportProductRegistration.originPlaceholder')" />
             </div>
 
             <!-- Producer Name -->
             <div>
-                <label class="block text-sm font-medium text-dark-300 mb-1.5">ชื่อเกษตรกร / ฟาร์ม</label>
+                <label class="block text-sm font-medium text-dark-300 mb-1.5">{{ t('ui.foodPassportProductRegistration.producer') }}</label>
                 <input v-model="form.producer_name" type="text"
                     class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:border-primary-500 text-sm"
-                    placeholder="เช่น ฟาร์มลุงสม" />
+                    :placeholder="t('ui.foodPassportProductRegistration.producerPlaceholder')" />
             </div>
 
             <!-- Weight + Dates -->
             <div class="grid grid-cols-3 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-1.5">น้ำหนัก (กก.)</label>
+                    <label class="block text-sm font-medium text-dark-300 mb-1.5">{{ t('ui.foodPassportProductRegistration.weight') }}</label>
                     <input v-model="form.weight_kg" type="number" step="0.01"
                         class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:border-primary-500 text-sm"
                         placeholder="0.00" />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-1.5">วันเก็บเกี่ยว</label>
+                    <label class="block text-sm font-medium text-dark-300 mb-1.5">{{ t('ui.foodPassportProductRegistration.harvestDate') }}</label>
                     <input v-model="form.harvest_date" type="date"
                         class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white focus:border-primary-500 text-sm" />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-dark-300 mb-1.5">วันหมดอายุ</label>
+                    <label class="block text-sm font-medium text-dark-300 mb-1.5">{{ t('ui.foodPassportProductRegistration.expiryDate') }}</label>
                     <input v-model="form.expiry_date" type="date"
                         class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white focus:border-primary-500 text-sm" />
                 </div>
@@ -168,19 +172,19 @@ async function verifyAndSubmit() {
 
             <!-- Description -->
             <div>
-                <label class="block text-sm font-medium text-dark-300 mb-1.5">รายละเอียดเพิ่มเติม</label>
+                <label class="block text-sm font-medium text-dark-300 mb-1.5">{{ t('ui.foodPassportProductRegistration.description') }}</label>
                 <textarea v-model="form.description" rows="3"
                     class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:border-primary-500 text-sm resize-none"
-                    placeholder="รายละเอียดเพิ่มเติมเกี่ยวกับสินค้า..."></textarea>
+                    :placeholder="t('ui.foodPassportProductRegistration.descriptionPlaceholder')"></textarea>
             </div>
 
             <!-- Wallet Info -->
             <div class="p-3 rounded-xl bg-dark-800/30 border border-white/5">
                 <div class="flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full bg-trading-green"></span>
-                    <span class="text-dark-400 text-xs">Wallet:</span>
+                    <span class="text-dark-400 text-xs">{{ t('ui.foodPassportProductRegistration.walletLabel') }}</span>
                     <span class="text-white text-xs font-mono">{{ walletAddress?.slice(0, 6) }}...{{ walletAddress?.slice(-4) }}</span>
-                    <span class="text-dark-600 text-xs ml-auto">TPIX Chain | Gas FREE</span>
+                    <span class="text-dark-600 text-xs ml-auto">{{ t('ui.foodPassportProductRegistration.chainGasFree') }}</span>
                 </div>
             </div>
 
@@ -192,7 +196,7 @@ async function verifyAndSubmit() {
                         ? 'bg-gradient-to-r from-green-500 to-cyan-500 text-white hover:from-green-600 hover:to-cyan-600 shadow-lg shadow-green-500/25'
                         : 'bg-dark-700 text-dark-500 cursor-not-allowed'
                 ]">
-                {{ loading ? 'กำลังลงทะเบียน...' : 'ลงทะเบียนสินค้า' }}
+                {{ loading ? t('ui.foodPassportProductRegistration.submitting') : t('ui.foodPassportProductRegistration.submit') }}
             </button>
         </div>
     </div>

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { findKeystoreFor, normalizeRecipient, parseTpixAmount, friendlySendError } from '@/utils/treasuryColdWallet';
+import { t } from '@/Composables/useTranslation';
 
 // keystore รูปแบบ V3 แบบย่อ — ฟังก์ชันอ่านแค่ address กับการมีอยู่ของ crypto ไม่ถอดรหัส
 const ks = (addressHex) => ({ version: 3, address: addressHex, crypto: { kdf: 'scrypt' } });
@@ -34,12 +35,12 @@ describe('findKeystoreFor', () => {
 
     it('says so when the bundle has no entry for this wallet', () => {
         const bundle = { 'token-sale': JSON.stringify(ks(TOKEN_SALE.slice(2))) };
-        expect(() => findKeystoreFor(JSON.stringify(bundle), LIQUIDITY)).toThrow('ไม่มี keystore');
+        expect(() => findKeystoreFor(JSON.stringify(bundle), LIQUIDITY)).toThrow(t('util.treasuryColdWallet.errors.walletNotInFile'));
     });
 
     it('rejects non-JSON and arrays', () => {
-        expect(() => findKeystoreFor('not json', LIQUIDITY)).toThrow('ไม่ใช่ JSON');
-        expect(() => findKeystoreFor('[1,2]', LIQUIDITY)).toThrow('ไม่รู้จักรูปแบบไฟล์');
+        expect(() => findKeystoreFor('not json', LIQUIDITY)).toThrow(t('util.treasuryColdWallet.errors.notJson'));
+        expect(() => findKeystoreFor('[1,2]', LIQUIDITY)).toThrow(t('util.treasuryColdWallet.errors.unknownFormat'));
     });
 });
 
@@ -81,10 +82,10 @@ describe('parseTpixAmount', () => {
 
 describe('friendlySendError', () => {
     it('maps the errors an admin will actually hit', () => {
-        expect(friendlySendError(new Error('incorrect password'))).toBe('รหัสผ่าน keystore ไม่ถูกต้อง');
-        expect(friendlySendError({ shortMessage: 'insufficient funds for intrinsic transaction cost' })).toBe('ยอดในกระเป๋าไม่พอ');
-        expect(friendlySendError(new Error('nonce too low'))).toContain('อย่ากดส่งซ้ำ');
-        expect(friendlySendError(new TypeError('Failed to fetch'))).toContain('ต่อเชนไม่ได้');
+        expect(friendlySendError(new Error('incorrect password'))).toBe(t('util.treasuryColdWallet.errors.wrongPassword'));
+        expect(friendlySendError({ shortMessage: 'insufficient funds for intrinsic transaction cost' })).toBe(t('util.treasuryColdWallet.errors.insufficientFunds'));
+        expect(friendlySendError(new Error('nonce too low'))).toBe(t('util.treasuryColdWallet.errors.alreadySent'));
+        expect(friendlySendError(new TypeError('Failed to fetch'))).toBe(t('util.treasuryColdWallet.errors.network'));
     });
 
     it('truncates long unknown messages instead of dumping them', () => {

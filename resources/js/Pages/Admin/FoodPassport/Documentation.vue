@@ -5,34 +5,38 @@
  * Developed by Xman Studio
  */
 
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const activeSection = ref('overview');
 
-const sections = [
-    { id: 'overview', label: 'ภาพรวมระบบ', icon: '🏗️' },
-    { id: 'architecture', label: 'สถาปัตยกรรม', icon: '🔧' },
-    { id: 'setup', label: 'การติดตั้ง', icon: '📦' },
-    { id: 'iot', label: 'IoT Devices', icon: '📡' },
-    { id: 'api', label: 'API Reference', icon: '🔌' },
-    { id: 'blockchain', label: 'Smart Contracts', icon: '⛓️' },
-    { id: 'mobile', label: 'Mobile App', icon: '📱' },
-    { id: 'admin', label: 'Admin Guide', icon: '⚙️' },
-];
+// computed เพื่อให้ป้ายเมนูเปลี่ยนภาษาทันทีเมื่อสลับ TH/EN
+const sections = computed(() => [
+    { id: 'overview', label: t('admin.foodPassportDocumentation.sections.overview'), icon: '🏗️' },
+    { id: 'architecture', label: t('admin.foodPassportDocumentation.sections.architecture'), icon: '🔧' },
+    { id: 'setup', label: t('admin.foodPassportDocumentation.sections.setup'), icon: '📦' },
+    { id: 'iot', label: t('admin.foodPassportDocumentation.sections.iot'), icon: '📡' },
+    { id: 'api', label: t('admin.foodPassportDocumentation.sections.api'), icon: '🔌' },
+    { id: 'blockchain', label: t('admin.foodPassportDocumentation.sections.blockchain'), icon: '⛓️' },
+    { id: 'mobile', label: t('admin.foodPassportDocumentation.sections.mobile'), icon: '📱' },
+    { id: 'admin', label: t('admin.foodPassportDocumentation.sections.admin'), icon: '⚙️' },
+]);
 </script>
 
 <template>
-    <AdminLayout title="FoodPassport Docs">
+    <AdminLayout :title="t('admin.foodPassportDocumentation.pageTitle')">
         <!-- Header -->
         <div class="mb-6">
             <Link href="/admin/food-passport" class="text-sm text-gray-400 hover:text-white transition-colors mb-2 inline-flex items-center gap-1">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
                 FoodPassport
             </Link>
-            <h1 class="text-2xl font-bold text-white">FoodPassport Documentation</h1>
-            <p class="text-sm text-gray-400 mt-1">คู่มือติดตั้ง ตั้งค่า และการทำงานของระบบ Food Traceability ทั้งหมด</p>
+            <h1 class="text-2xl font-bold text-white">{{ t('admin.foodPassportDocumentation.header.title') }}</h1>
+            <p class="text-sm text-gray-400 mt-1">{{ t('admin.foodPassportDocumentation.header.subtitle') }}</p>
         </div>
 
         <!-- Section Nav -->
@@ -56,26 +60,26 @@ const sections = [
                     <div class="flex items-center gap-4 mb-6">
                         <span class="text-5xl">🌾</span>
                         <div>
-                            <h2 class="text-2xl font-bold text-white">FoodPassport คืออะไร?</h2>
-                            <p class="text-gray-400 mt-1">ระบบตรวจสอบย้อนกลับอาหารบน Blockchain + IoT</p>
+                            <h2 class="text-2xl font-bold text-white">{{ t('admin.foodPassportDocumentation.overview.title') }}</h2>
+                            <p class="text-gray-400 mt-1">{{ t('admin.foodPassportDocumentation.overview.subtitle') }}</p>
                         </div>
                     </div>
                     <div class="prose prose-invert max-w-none text-gray-300 space-y-4">
-                        <p>FoodPassport เป็นระบบ <span class="text-white font-semibold">Food Traceability</span> ที่ผสาน Blockchain กับ IoT Sensor เพื่อติดตามสินค้าเกษตรตั้งแต่ฟาร์มจนถึงผู้บริโภค ทุกข้อมูลถูกบันทึกอย่างโปร่งใส ไม่สามารถแก้ไขได้</p>
-                        <p>ระบบทำงานบน <span class="text-primary-400 font-semibold">TPIX Chain (Chain ID: 4289)</span> — Gasless, ไม่มีค่าธรรมเนียม</p>
+                        <p>{{ t('admin.foodPassportDocumentation.overview.p1Before') }} <span class="text-white font-semibold">{{ t('admin.foodPassportDocumentation.overview.p1Highlight') }}</span> {{ t('admin.foodPassportDocumentation.overview.p1After') }}</p>
+                        <p>{{ t('admin.foodPassportDocumentation.overview.p2Before') }} <span class="text-primary-400 font-semibold">TPIX Chain (Chain ID: 4289)</span> {{ t('admin.foodPassportDocumentation.overview.p2After') }}</p>
                     </div>
                 </div>
 
                 <!-- Key Features -->
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div v-for="feature in [
-                        { icon: '📦', title: 'ลงทะเบียนสินค้า', desc: 'เกษตรกร/ผู้ผลิตลงทะเบียนสินค้าพร้อม Batch ID, แหล่งผลิต, หมวดหมู่ บันทึกบน Blockchain' },
-                        { icon: '📡', title: 'IoT Sensor Tracking', desc: 'ติดตามอุณหภูมิ ความชื้น pH น้ำหนัก GPS อัตโนมัติผ่าน IoT ทุกจุดใน Supply Chain' },
-                        { icon: '🌡️', title: 'Cold Chain Alert', desc: 'แจ้งเตือนเมื่ออุณหภูมิ/สภาพแวดล้อมผิดปกติ ป้องกันสินค้าเสียหาย' },
-                        { icon: '🏆', title: 'NFT Certificate', desc: 'ออกใบรับรอง NFT (ERC-721) เมื่อสินค้าผ่านมาตรฐาน ตรวจสอบได้ตลอดกาล' },
-                        { icon: '🪙', title: 'FDP Token Reward', desc: 'รับ FDP Token (ERC-20) เมื่อใช้งาน — 100 FDP/ใบรับรอง, 1 FDP/Trace' },
-                        { icon: '📱', title: 'Mobile App Ready', desc: 'พร้อมเชื่อมต่อกับ Mobile App สแกน QR ดูข้อมูลสินค้า ผ่าน API' },
-                    ]" :key="feature.title" class="glass-dark rounded-xl border border-white/10 p-5">
+                        { id: 'register', icon: '📦', title: t('admin.foodPassportDocumentation.overview.features.register.title'), desc: t('admin.foodPassportDocumentation.overview.features.register.desc') },
+                        { id: 'iot', icon: '📡', title: t('admin.foodPassportDocumentation.overview.features.iot.title'), desc: t('admin.foodPassportDocumentation.overview.features.iot.desc') },
+                        { id: 'coldChain', icon: '🌡️', title: t('admin.foodPassportDocumentation.overview.features.coldChain.title'), desc: t('admin.foodPassportDocumentation.overview.features.coldChain.desc') },
+                        { id: 'nft', icon: '🏆', title: t('admin.foodPassportDocumentation.overview.features.nft.title'), desc: t('admin.foodPassportDocumentation.overview.features.nft.desc') },
+                        { id: 'fdp', icon: '🪙', title: t('admin.foodPassportDocumentation.overview.features.fdp.title'), desc: t('admin.foodPassportDocumentation.overview.features.fdp.desc') },
+                        { id: 'mobile', icon: '📱', title: t('admin.foodPassportDocumentation.overview.features.mobile.title'), desc: t('admin.foodPassportDocumentation.overview.features.mobile.desc') },
+                    ]" :key="feature.id" class="glass-dark rounded-xl border border-white/10 p-5">
                         <span class="text-3xl">{{ feature.icon }}</span>
                         <h3 class="text-white font-semibold mt-3 mb-1">{{ feature.title }}</h3>
                         <p class="text-sm text-gray-400">{{ feature.desc }}</p>
@@ -84,16 +88,16 @@ const sections = [
 
                 <!-- Flow Diagram -->
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h3 class="text-lg font-bold text-white mb-6">Supply Chain Flow</h3>
+                    <h3 class="text-lg font-bold text-white mb-6">{{ t('admin.foodPassportDocumentation.overview.flow.title') }}</h3>
                     <div class="flex flex-wrap items-center justify-center gap-3">
                         <div v-for="(step, i) in [
-                            { icon: '🌱', label: 'Farm', stage: 'registered' },
-                            { icon: '🏭', label: 'Processing', stage: 'in_transit' },
-                            { icon: '🚛', label: 'Transport', stage: 'in_transit' },
-                            { icon: '🏪', label: 'Storage', stage: 'at_storage' },
-                            { icon: '🛒', label: 'Retail', stage: 'at_retail' },
-                            { icon: '✅', label: 'Certified', stage: 'certified' },
-                        ]" :key="step.label" class="flex items-center gap-3">
+                            { id: 'farm', icon: '🌱', label: t('admin.foodPassportDocumentation.overview.flow.farm'), stage: 'registered' },
+                            { id: 'processing', icon: '🏭', label: t('admin.foodPassportDocumentation.overview.flow.processing'), stage: 'in_transit' },
+                            { id: 'transport', icon: '🚛', label: t('admin.foodPassportDocumentation.overview.flow.transport'), stage: 'in_transit' },
+                            { id: 'storage', icon: '🏪', label: t('admin.foodPassportDocumentation.overview.flow.storage'), stage: 'at_storage' },
+                            { id: 'retail', icon: '🛒', label: t('admin.foodPassportDocumentation.overview.flow.retail'), stage: 'at_retail' },
+                            { id: 'certified', icon: '✅', label: t('admin.foodPassportDocumentation.overview.flow.certified'), stage: 'certified' },
+                        ]" :key="step.id" class="flex items-center gap-3">
                             <div class="text-center">
                                 <div class="w-16 h-16 rounded-xl bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/20 flex items-center justify-center mb-1">
                                     <span class="text-2xl">{{ step.icon }}</span>
@@ -105,7 +109,7 @@ const sections = [
                             </svg>
                         </div>
                     </div>
-                    <p class="text-center text-xs text-gray-500 mt-4">ทุกจุดมี IoT Sensor บันทึกข้อมูลอัตโนมัติ → Blockchain</p>
+                    <p class="text-center text-xs text-gray-500 mt-4">{{ t('admin.foodPassportDocumentation.overview.flow.note') }}</p>
                 </div>
             </div>
         </template>
@@ -114,17 +118,17 @@ const sections = [
         <template v-if="activeSection === 'architecture'">
             <div class="space-y-6">
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h2 class="text-xl font-bold text-white mb-6">System Architecture</h2>
+                    <h2 class="text-xl font-bold text-white mb-6">{{ t('admin.foodPassportDocumentation.architecture.title') }}</h2>
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <!-- Backend Stack -->
                         <div class="space-y-4">
-                            <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">Backend (Laravel)</h3>
+                            <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">{{ t('admin.foodPassportDocumentation.architecture.backendTitle') }}</h3>
                             <div class="space-y-2">
                                 <div v-for="item in [
-                                    { label: 'FoodPassportApiController', desc: '17 API endpoints (products, traces, certificates, IoT)' },
-                                    { label: 'FoodPassportService', desc: 'Business logic — register, trace, mint, verify' },
-                                    { label: 'IoTService', desc: 'Device management, data ingestion, batch processing' },
-                                    { label: 'FoodPassportController (Admin)', desc: 'Dashboard, CRUD, alerts, device management' },
+                                    { label: 'FoodPassportApiController', desc: t('admin.foodPassportDocumentation.architecture.backend.apiController') },
+                                    { label: 'FoodPassportService', desc: t('admin.foodPassportDocumentation.architecture.backend.service') },
+                                    { label: 'IoTService', desc: t('admin.foodPassportDocumentation.architecture.backend.iotService') },
+                                    { label: 'FoodPassportController (Admin)', desc: t('admin.foodPassportDocumentation.architecture.backend.adminController') },
                                 ]" :key="item.label" class="flex gap-3 p-3 rounded-lg bg-white/5">
                                     <div class="w-2 h-2 rounded-full bg-green-500 mt-2 flex-shrink-0"></div>
                                     <div>
@@ -137,13 +141,13 @@ const sections = [
 
                         <!-- Models -->
                         <div class="space-y-4">
-                            <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">Database Models</h3>
+                            <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider">{{ t('admin.foodPassportDocumentation.architecture.modelsTitle') }}</h3>
                             <div class="space-y-2">
                                 <div v-for="item in [
-                                    { label: 'FoodProduct', desc: 'สินค้า — name, batch_id, category, origin, status, producer_address' },
-                                    { label: 'FoodTrace', desc: 'ข้อมูล trace — stage, temperature, humidity, weight, pH, GPS, device' },
-                                    { label: 'FoodCertificate', desc: 'NFT certificate — token_id, tx_hash, certificate_data, status' },
-                                    { label: 'IoTDevice', desc: 'อุปกรณ์ IoT — device_id, type, owner, config (API key), last_ping' },
+                                    { label: 'FoodProduct', desc: t('admin.foodPassportDocumentation.architecture.models.product') },
+                                    { label: 'FoodTrace', desc: t('admin.foodPassportDocumentation.architecture.models.trace') },
+                                    { label: 'FoodCertificate', desc: t('admin.foodPassportDocumentation.architecture.models.certificate') },
+                                    { label: 'IoTDevice', desc: t('admin.foodPassportDocumentation.architecture.models.device') },
                                 ]" :key="item.label" class="flex gap-3 p-3 rounded-lg bg-white/5">
                                     <div class="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0"></div>
                                     <div>
@@ -158,26 +162,26 @@ const sections = [
 
                 <!-- Smart Contracts -->
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h3 class="text-lg font-bold text-white mb-4">Smart Contracts (TPIX Chain)</h3>
+                    <h3 class="text-lg font-bold text-white mb-4">{{ t('admin.foodPassportDocumentation.architecture.contractsTitle') }}</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="p-4 rounded-xl bg-gradient-to-br from-purple-500/5 to-blue-500/5 border border-purple-500/20">
                             <p class="text-white font-semibold mb-1">FoodPassportNFT.sol</p>
-                            <p class="text-xs text-gray-400 mb-3">ERC-721 — ใบรับรองอาหาร NFT</p>
+                            <p class="text-xs text-gray-400 mb-3">{{ t('admin.foodPassportDocumentation.architecture.nft.desc') }}</p>
                             <ul class="text-xs text-gray-400 space-y-1">
-                                <li>• registerProduct() — ลงทะเบียนสินค้า</li>
-                                <li>• addTrace() — เพิ่ม trace data</li>
-                                <li>• mintCertificate() — ออกใบรับรอง NFT</li>
-                                <li>• getProductHistory() — ดูประวัติสินค้า</li>
+                                <li>• registerProduct() — {{ t('admin.foodPassportDocumentation.architecture.nft.registerProduct') }}</li>
+                                <li>• addTrace() — {{ t('admin.foodPassportDocumentation.architecture.nft.addTrace') }}</li>
+                                <li>• mintCertificate() — {{ t('admin.foodPassportDocumentation.architecture.nft.mintCertificate') }}</li>
+                                <li>• getProductHistory() — {{ t('admin.foodPassportDocumentation.architecture.nft.getProductHistory') }}</li>
                             </ul>
                         </div>
                         <div class="p-4 rounded-xl bg-gradient-to-br from-amber-500/5 to-orange-500/5 border border-amber-500/20">
                             <p class="text-white font-semibold mb-1">FoodPassportToken.sol</p>
-                            <p class="text-xs text-gray-400 mb-3">ERC-20 — FDP Reward Token</p>
+                            <p class="text-xs text-gray-400 mb-3">{{ t('admin.foodPassportDocumentation.architecture.token.desc') }}</p>
                             <ul class="text-xs text-gray-400 space-y-1">
-                                <li>• 100 FDP ต่อการออกใบรับรอง</li>
-                                <li>• 1 FDP ต่อการบันทึก trace</li>
-                                <li>• Staking สำหรับ Trust Score</li>
-                                <li>• Governance voting rights</li>
+                                <li>• {{ t('admin.foodPassportDocumentation.architecture.token.item1') }}</li>
+                                <li>• {{ t('admin.foodPassportDocumentation.architecture.token.item2') }}</li>
+                                <li>• {{ t('admin.foodPassportDocumentation.architecture.token.item3') }}</li>
+                                <li>• {{ t('admin.foodPassportDocumentation.architecture.token.item4') }}</li>
                             </ul>
                         </div>
                     </div>
@@ -185,19 +189,19 @@ const sections = [
 
                 <!-- Data Flow -->
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h3 class="text-lg font-bold text-white mb-4">Data Flow</h3>
+                    <h3 class="text-lg font-bold text-white mb-4">{{ t('admin.foodPassportDocumentation.architecture.dataFlow.title') }}</h3>
                     <div class="space-y-3 font-mono text-sm">
                         <div class="p-3 rounded-lg bg-white/5 text-gray-300">
-                            <span class="text-cyan-400">IoT Device</span> → HTTP POST /api/v1/food-passport/iot/ingest → <span class="text-green-400">Laravel API</span>
+                            <span class="text-cyan-400">{{ t('admin.foodPassportDocumentation.architecture.dataFlow.iotDevice') }}</span> → HTTP POST /api/v1/food-passport/iot/ingest → <span class="text-green-400">Laravel API</span>
                         </div>
                         <div class="p-3 rounded-lg bg-white/5 text-gray-300">
-                            <span class="text-green-400">Laravel API</span> → Validate + IoTService.ingestData() → <span class="text-blue-400">Database (food_traces)</span>
+                            <span class="text-green-400">Laravel API</span> → {{ t('admin.foodPassportDocumentation.architecture.dataFlow.validate') }} + IoTService.ingestData() → <span class="text-blue-400">{{ t('admin.foodPassportDocumentation.architecture.dataFlow.database') }} (food_traces)</span>
                         </div>
                         <div class="p-3 rounded-lg bg-white/5 text-gray-300">
-                            <span class="text-blue-400">Database</span> → FoodPassportService.addTrace() → <span class="text-purple-400">TPIX Blockchain</span>
+                            <span class="text-blue-400">{{ t('admin.foodPassportDocumentation.architecture.dataFlow.database') }}</span> → FoodPassportService.addTrace() → <span class="text-purple-400">TPIX Blockchain</span>
                         </div>
                         <div class="p-3 rounded-lg bg-white/5 text-gray-300">
-                            <span class="text-purple-400">Blockchain</span> → Smart Contract event → <span class="text-yellow-400">NFT Certificate / FDP Reward</span>
+                            <span class="text-purple-400">Blockchain</span> → {{ t('admin.foodPassportDocumentation.architecture.dataFlow.contractEvent') }} → <span class="text-yellow-400">{{ t('admin.foodPassportDocumentation.architecture.dataFlow.reward') }}</span>
                         </div>
                     </div>
                 </div>
@@ -208,23 +212,23 @@ const sections = [
         <template v-if="activeSection === 'setup'">
             <div class="space-y-6">
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h2 class="text-xl font-bold text-white mb-6">การติดตั้งระบบ FoodPassport</h2>
+                    <h2 class="text-xl font-bold text-white mb-6">{{ t('admin.foodPassportDocumentation.setup.title') }}</h2>
 
                     <!-- Step 1 -->
                     <div class="space-y-8">
                         <div>
                             <div class="flex items-center gap-3 mb-3">
                                 <div class="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white font-bold text-sm">1</div>
-                                <h3 class="text-lg font-semibold text-white">Run Migration</h3>
+                                <h3 class="text-lg font-semibold text-white">{{ t('admin.foodPassportDocumentation.setup.step1.title') }}</h3>
                             </div>
                             <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
                                 <pre>php artisan migrate
 
-# สร้างตาราง:
-# - iot_devices      (อุปกรณ์ IoT)
-# - food_products    (สินค้าเกษตร)
-# - food_traces      (ข้อมูล trace ทุกจุด)
-# - food_certificates (ใบรับรอง NFT)</pre>
+# {{ t('admin.foodPassportDocumentation.setup.step1.createsTables') }}
+# - iot_devices      ({{ t('admin.foodPassportDocumentation.setup.step1.iotDevices') }})
+# - food_products    ({{ t('admin.foodPassportDocumentation.setup.step1.foodProducts') }})
+# - food_traces      ({{ t('admin.foodPassportDocumentation.setup.step1.foodTraces') }})
+# - food_certificates ({{ t('admin.foodPassportDocumentation.setup.step1.foodCertificates') }})</pre>
                             </div>
                         </div>
 
@@ -232,7 +236,7 @@ const sections = [
                         <div>
                             <div class="flex items-center gap-3 mb-3">
                                 <div class="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white font-bold text-sm">2</div>
-                                <h3 class="text-lg font-semibold text-white">Deploy Smart Contracts</h3>
+                                <h3 class="text-lg font-semibold text-white">{{ t('admin.foodPassportDocumentation.setup.step2.title') }}</h3>
                             </div>
                             <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
                                 <pre># Deploy FoodPassportNFT (ERC-721)
@@ -241,7 +245,7 @@ npx hardhat run scripts/deploy-food-passport-nft.js --network tpix
 # Deploy FoodPassportToken (ERC-20 FDP)
 npx hardhat run scripts/deploy-food-passport-token.js --network tpix
 
-# บันทึก Contract Address ลงใน .env
+# {{ t('admin.foodPassportDocumentation.setup.step2.saveAddress') }}
 FOOD_PASSPORT_NFT_ADDRESS=0x...
 FOOD_PASSPORT_TOKEN_ADDRESS=0x...</pre>
                             </div>
@@ -251,16 +255,16 @@ FOOD_PASSPORT_TOKEN_ADDRESS=0x...</pre>
                         <div>
                             <div class="flex items-center gap-3 mb-3">
                                 <div class="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white font-bold text-sm">3</div>
-                                <h3 class="text-lg font-semibold text-white">ตั้งค่า Environment</h3>
+                                <h3 class="text-lg font-semibold text-white">{{ t('admin.foodPassportDocumentation.setup.step3.title') }}</h3>
                             </div>
                             <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
-                                <pre># .env — เพิ่มค่าเหล่านี้
+                                <pre># .env — {{ t('admin.foodPassportDocumentation.setup.step3.addValues') }}
 FOOD_PASSPORT_NFT_ADDRESS=0x...
 FOOD_PASSPORT_TOKEN_ADDRESS=0x...
 TPIX_RPC_URL=https://rpc.tpixchain.com
 TPIX_CHAIN_ID=4289
 
-# IoT Settings
+# {{ t('admin.foodPassportDocumentation.setup.step3.iotSettings') }}
 IOT_API_KEY_PREFIX=fpk_
 IOT_BATCH_LIMIT=100
 IOT_TEMP_ALERT_MIN=0
@@ -272,19 +276,19 @@ IOT_TEMP_ALERT_MAX=40</pre>
                         <div>
                             <div class="flex items-center gap-3 mb-3">
                                 <div class="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white font-bold text-sm">4</div>
-                                <h3 class="text-lg font-semibold text-white">ตรวจสอบ Routes</h3>
+                                <h3 class="text-lg font-semibold text-white">{{ t('admin.foodPassportDocumentation.setup.step4.title') }}</h3>
                             </div>
                             <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
                                 <pre>php artisan route:list --path=food-passport
 
-# ต้องเห็น:
+# {{ t('admin.foodPassportDocumentation.setup.step4.shouldSee') }}
 # GET  /api/v1/food-passport/products
 # POST /api/v1/food-passport/register
 # POST /api/v1/food-passport/trace
 # POST /api/v1/food-passport/iot/ingest
 # POST /api/v1/food-passport/iot/batch-ingest
 # GET  /admin/food-passport
-# ... (และอื่นๆ)</pre>
+# ... ({{ t('admin.foodPassportDocumentation.setup.step4.andMore') }})</pre>
                             </div>
                         </div>
 
@@ -292,21 +296,21 @@ IOT_TEMP_ALERT_MAX=40</pre>
                         <div>
                             <div class="flex items-center gap-3 mb-3">
                                 <div class="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-white font-bold text-sm">5</div>
-                                <h3 class="text-lg font-semibold text-white">Test ระบบ</h3>
+                                <h3 class="text-lg font-semibold text-white">{{ t('admin.foodPassportDocumentation.setup.step5.title') }}</h3>
                             </div>
                             <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
-                                <pre># ทดสอบ IoT device registration (ต้องยืนยันกระเป๋าก่อน — session เว็บ หรือ X-Wallet-Session ของแอป)
+                                <pre># {{ t('admin.foodPassportDocumentation.setup.step5.testRegister') }}
 curl -X POST /api/v1/food-passport/iot/register-device \
-  -d '{"wallet_address":"0x...","name":"Sensor ทดสอบ","type":"temperature"}'
-# → data.device_id + data.api_key (fpk_...) — api_key แสดงครั้งเดียว
+  -d '{"wallet_address":"0x...","name":"{{ t('admin.foodPassportDocumentation.setup.step5.sampleName') }}","type":"temperature"}'
+# → data.device_id + data.api_key (fpk_...) — {{ t('admin.foodPassportDocumentation.setup.step5.keyShownOnce') }}
 
-# ทดสอบ data ingestion (ต้องมี API key ของเครื่องนั้น)
+# {{ t('admin.foodPassportDocumentation.setup.step5.testIngest') }}
 curl -X POST /api/v1/food-passport/iot/ingest \
   -H "Authorization: Bearer fpk_..." \
   -d '{"device_id":"TPIX-IOT-1A2B3C4D","product_id":1,"stage":"farm","temperature":4.5,"humidity":80}'
 
-# ดู Admin dashboard
-# เปิด /admin/food-passport ในเบราว์เซอร์</pre>
+# {{ t('admin.foodPassportDocumentation.setup.step5.viewDashboard') }}
+# {{ t('admin.foodPassportDocumentation.setup.step5.openInBrowser') }}</pre>
                             </div>
                         </div>
                     </div>
@@ -318,17 +322,17 @@ curl -X POST /api/v1/food-passport/iot/ingest \
         <template v-if="activeSection === 'iot'">
             <div class="space-y-6">
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h2 class="text-xl font-bold text-white mb-2">IoT Device Setup Guide</h2>
-                    <p class="text-gray-400 mb-6">วิธีติดตั้งและตั้งค่า IoT Sensor เพื่อส่งข้อมูลเข้าระบบ FoodPassport</p>
+                    <h2 class="text-xl font-bold text-white mb-2">{{ t('admin.foodPassportDocumentation.iot.title') }}</h2>
+                    <p class="text-gray-400 mb-6">{{ t('admin.foodPassportDocumentation.iot.subtitle') }}</p>
 
                     <!-- Supported Devices -->
-                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">Supported Device Types</h3>
+                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">{{ t('admin.foodPassportDocumentation.iot.supportedTitle') }}</h3>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                         <div v-for="dev in [
-                            { icon: '🌡️', type: 'temperature', name: 'Temperature Sensor', desc: 'วัดอุณหภูมิ -40°C to 125°C, ความแม่นยำ ±0.5°C' },
-                            { icon: '💧', type: 'humidity', name: 'Humidity Sensor', desc: 'วัดความชื้นสัมพัทธ์ 0-100% RH' },
-                            { icon: '📍', type: 'gps', name: 'GPS Tracker', desc: 'ติดตามตำแหน่ง real-time, geofencing' },
-                            { icon: '⚖️', type: 'weight', name: 'Weight Scale', desc: 'ชั่งน้ำหนักอัตโนมัติ, ตรวจจับการเปลี่ยนแปลง' },
+                            { icon: '🌡️', type: 'temperature', name: t('admin.foodPassportDocumentation.iot.devices.temperature.name'), desc: t('admin.foodPassportDocumentation.iot.devices.temperature.desc') },
+                            { icon: '💧', type: 'humidity', name: t('admin.foodPassportDocumentation.iot.devices.humidity.name'), desc: t('admin.foodPassportDocumentation.iot.devices.humidity.desc') },
+                            { icon: '📍', type: 'gps', name: t('admin.foodPassportDocumentation.iot.devices.gps.name'), desc: t('admin.foodPassportDocumentation.iot.devices.gps.desc') },
+                            { icon: '⚖️', type: 'weight', name: t('admin.foodPassportDocumentation.iot.devices.weight.name'), desc: t('admin.foodPassportDocumentation.iot.devices.weight.desc') },
                         ]" :key="dev.type" class="p-4 rounded-xl bg-white/5 border border-white/5">
                             <span class="text-2xl">{{ dev.icon }}</span>
                             <p class="text-white font-semibold mt-2">{{ dev.name }}</p>
@@ -340,16 +344,16 @@ curl -X POST /api/v1/food-passport/iot/ingest \
 
                 <!-- Registration -->
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h3 class="text-lg font-bold text-white mb-4">1. ลงทะเบียน Device</h3>
+                    <h3 class="text-lg font-bold text-white mb-4">{{ t('admin.foodPassportDocumentation.iot.register.title') }}</h3>
                     <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
                         <pre>POST /api/v1/food-passport/iot/register-device
-// ต้องยืนยันกระเป๋า: session ของเว็บ หรือ X-Wallet-Session ของแอป
+// {{ t('admin.foodPassportDocumentation.iot.register.authNote') }}
 
 {
-  "wallet_address": "0xAbC...123",     // กระเป๋าเจ้าของ — ต้องเป็นกระเป๋าที่ยืนยันแล้ว
-  "type": "temperature",               // ประเภท: temperature, humidity, gps, camera, weight, ph, multi
-  "name": "ฟาร์มสุรินทร์ Sensor #1",   // ชื่อเรียก
-  "location": "สุรินทร์, ประเทศไทย",    // ที่ตั้ง (optional)
+  "wallet_address": "0xAbC...123",     // {{ t('admin.foodPassportDocumentation.iot.register.walletComment') }}
+  "type": "temperature",               // {{ t('admin.foodPassportDocumentation.iot.register.typeComment') }}: temperature, humidity, gps, camera, weight, ph, multi
+  "name": "{{ t('admin.foodPassportDocumentation.iot.register.sampleName') }}",   // {{ t('admin.foodPassportDocumentation.iot.register.nameComment') }}
+  "location": "{{ t('admin.foodPassportDocumentation.iot.register.sampleLocation') }}",    // {{ t('admin.foodPassportDocumentation.iot.register.locationComment') }}
   "config": { "protocol": "http", "interval_minutes": 15 }
 }
 
@@ -358,14 +362,14 @@ curl -X POST /api/v1/food-passport/iot/ingest \
   "success": true,
   "data": {
     "id": 1,
-    "device_id": "TPIX-IOT-1A2B3C4D",   // ระบบออกให้
+    "device_id": "TPIX-IOT-1A2B3C4D",   // {{ t('admin.foodPassportDocumentation.iot.register.issuedBySystem') }}
     "owner_address": "0xabc...123",
     "has_api_key": true,
-    "api_key": "fpk_a1b2c3d4e5f6..."      // ← แสดงครั้งเดียว ระบบเก็บแค่ hash
+    "api_key": "fpk_a1b2c3d4e5f6..."      // ← {{ t('admin.foodPassportDocumentation.iot.register.shownOnce') }}
   }
 }
 
-// กุญแจหาย/หลุด หรือเครื่องที่ลงทะเบียนก่อนมีระบบกุญแจ → ออกใหม่ (กุญแจเดิมใช้ไม่ได้ทันที)
+// {{ t('admin.foodPassportDocumentation.iot.register.rotateNote') }}
 POST /api/v1/food-passport/iot/rotate-key/{deviceId}
 { "wallet_address": "0xAbC...123" }   // → data.api_key</pre>
                     </div>
@@ -373,21 +377,21 @@ POST /api/v1/food-passport/iot/rotate-key/{deviceId}
 
                 <!-- Data Ingestion -->
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h3 class="text-lg font-bold text-white mb-4">2. ส่งข้อมูล (Data Ingestion)</h3>
+                    <h3 class="text-lg font-bold text-white mb-4">{{ t('admin.foodPassportDocumentation.iot.ingest.title') }}</h3>
                     <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto mb-4">
                         <pre>POST /api/v1/food-passport/iot/ingest
 Authorization: Bearer fpk_a1b2c3d4e5f6...
 
 {
-  "device_id": "TPIX-IOT-1A2B3C4D",    // ต้องเป็นเครื่องเจ้าของ API key
-  "product_id": 42,                    // สินค้าที่ track
-  "stage": "storage",                  // ขั้นตอน: farm, processing, storage, transport, retail
-  "location": "คลังสินค้า บางนา",
+  "device_id": "TPIX-IOT-1A2B3C4D",    // {{ t('admin.foodPassportDocumentation.iot.ingest.deviceComment') }}
+  "product_id": 42,                    // {{ t('admin.foodPassportDocumentation.iot.ingest.productComment') }}
+  "stage": "storage",                  // {{ t('admin.foodPassportDocumentation.iot.ingest.stageComment') }}: farm, processing, storage, transport, retail
+  "location": "{{ t('admin.foodPassportDocumentation.iot.ingest.sampleLocation') }}",
   "temperature": 4.5,                  // °C (optional)
   "humidity": 78.2,                    // % (optional)
   "weight_kg": 25.3,                   // kg (optional)
   "ph_level": 6.8,                     // (optional)
-  "data": {                            // ข้อมูลเพิ่มเติม (optional)
+  "data": {                            // {{ t('admin.foodPassportDocumentation.iot.ingest.extraComment') }}
     "battery": 85,
     "signal_strength": -42,
     "gps": { "lat": 13.7563, "lng": 100.5018 }
@@ -395,7 +399,7 @@ Authorization: Bearer fpk_a1b2c3d4e5f6...
 }</pre>
                     </div>
 
-                    <h4 class="text-white font-semibold mb-2">Batch Ingestion (ส่งหลายรายการพร้อมกัน)</h4>
+                    <h4 class="text-white font-semibold mb-2">{{ t('admin.foodPassportDocumentation.iot.batch.title') }}</h4>
                     <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
                         <pre>POST /api/v1/food-passport/iot/batch-ingest
 Authorization: Bearer fpk_a1b2c3d4e5f6...
@@ -407,14 +411,14 @@ Authorization: Bearer fpk_a1b2c3d4e5f6...
     { "device_id": "TPIX-IOT-1A2B3C4D", "product_id": 42, "stage": "storage", "temperature": 5.1, "humidity": 76 }
   ]
 }
-// สูงสุด 100 แถวต่อคำขอ · ทุกแถวต้องเป็นเครื่องเจ้าของ API key (กุญแจหนึ่งดอก = เครื่องเดียว)
-// มีแถวของเครื่องอื่นปน → 403 DEVICE_MISMATCH ทั้งชุด</pre>
+// {{ t('admin.foodPassportDocumentation.iot.batch.limitNote') }}
+// {{ t('admin.foodPassportDocumentation.iot.batch.mismatchNote') }}</pre>
                     </div>
                 </div>
 
                 <!-- Arduino/ESP32 Example -->
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h3 class="text-lg font-bold text-white mb-4">3. ตัวอย่างโค้ด Arduino/ESP32</h3>
+                    <h3 class="text-lg font-bold text-white mb-4">{{ t('admin.foodPassportDocumentation.iot.arduino.title') }}</h3>
                     <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
                         <pre>// ESP32 + DHT22 Temperature/Humidity Sensor
 #include &lt;WiFi.h&gt;
@@ -460,21 +464,21 @@ void setup() {
 
 void loop() {
   sendData();
-  delay(900000); // ทุก 15 นาที
+  delay(900000); // {{ t('admin.foodPassportDocumentation.iot.arduino.every15') }}
 }</pre>
                     </div>
                 </div>
 
                 <!-- Config Management -->
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h3 class="text-lg font-bold text-white mb-4">4. จัดการ Device ผ่าน Admin</h3>
+                    <h3 class="text-lg font-bold text-white mb-4">{{ t('admin.foodPassportDocumentation.iot.manage.title') }}</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div v-for="action in [
-                            { title: 'เปลี่ยนสถานะ', desc: 'Active / Inactive / Maintenance — inactive device จะถูกปฏิเสธข้อมูล', color: 'green' },
-                            { title: 'Regenerate API Key', desc: 'สร้าง key ใหม่ — key เดิมใช้งานไม่ได้ทันที ต้องอัพเดท device · key ใหม่แสดงในแถบแจ้งผลครั้งเดียว (ระบบเก็บแค่ hash) คัดลอกส่งเจ้าของเครื่อง', color: 'yellow' },
-                            { title: 'ดู Trace Count', desc: 'จำนวน traces ที่ device ส่งมา ดูว่ายังทำงานอยู่หรือไม่', color: 'blue' },
-                            { title: 'ลบ Device', desc: 'ลบ device ออกจากระบบ — traces ที่บันทึกไว้แล้วยังคงอยู่', color: 'red' },
-                        ]" :key="action.title" class="p-4 rounded-xl bg-white/5">
+                            { id: 'status', title: t('admin.foodPassportDocumentation.iot.manage.status.title'), desc: t('admin.foodPassportDocumentation.iot.manage.status.desc'), color: 'green' },
+                            { id: 'regenerate', title: t('admin.foodPassportDocumentation.iot.manage.regenerate.title'), desc: t('admin.foodPassportDocumentation.iot.manage.regenerate.desc'), color: 'yellow' },
+                            { id: 'traceCount', title: t('admin.foodPassportDocumentation.iot.manage.traceCount.title'), desc: t('admin.foodPassportDocumentation.iot.manage.traceCount.desc'), color: 'blue' },
+                            { id: 'delete', title: t('admin.foodPassportDocumentation.iot.manage.delete.title'), desc: t('admin.foodPassportDocumentation.iot.manage.delete.desc'), color: 'red' },
+                        ]" :key="action.id" class="p-4 rounded-xl bg-white/5">
                             <p class="text-white font-semibold">{{ action.title }}</p>
                             <p class="text-xs text-gray-400 mt-1">{{ action.desc }}</p>
                         </div>
@@ -487,28 +491,28 @@ void loop() {
         <template v-if="activeSection === 'api'">
             <div class="space-y-6">
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h2 class="text-xl font-bold text-white mb-6">API Reference</h2>
+                    <h2 class="text-xl font-bold text-white mb-6">{{ t('admin.foodPassportDocumentation.api.title') }}</h2>
 
                     <div class="space-y-3">
                         <div v-for="ep in [
-                            { method: 'GET', path: '/api/v1/food-passport/products', desc: 'ดึงรายการสินค้าทั้งหมด (paginated)' },
-                            { method: 'GET', path: '/api/v1/food-passport/products/{id}', desc: 'ดึงรายละเอียดสินค้า + traces' },
-                            { method: 'GET', path: '/api/v1/food-passport/verify/{id}', desc: 'ตรวจสอบ journey ของสินค้า' },
-                            { method: 'GET', path: '/api/v1/food-passport/stats', desc: 'สถิติรวมของระบบ' },
-                            { method: 'GET', path: '/api/v1/food-passport/certificates', desc: 'ใบรับรอง NFT ทั้งหมด' },
-                            { method: 'GET', path: '/api/v1/food-passport/sensor-data/{productId}', desc: 'ข้อมูล sensor ล่าสุดของสินค้า' },
-                            { method: 'POST', path: '/api/v1/food-passport/register', desc: 'ลงทะเบียนสินค้าใหม่' },
-                            { method: 'POST', path: '/api/v1/food-passport/trace', desc: 'เพิ่ม trace (manual)' },
-                            { method: 'POST', path: '/api/v1/food-passport/mint', desc: 'Mint NFT certificate' },
-                            { method: 'GET', path: '/api/v1/food-passport/my-products?wallet_address=0x...', desc: 'สินค้าของกระเป๋าที่ยืนยันแล้ว' },
-                            { method: 'POST', path: '/api/v1/food-passport/iot/ingest', desc: 'IoT data ingestion (single) — Authorization: Bearer <API key ของเครื่อง>' },
-                            { method: 'POST', path: '/api/v1/food-passport/iot/batch-ingest', desc: 'IoT batch ingestion (max 100, เครื่องเดียวต่อคำขอ) — Bearer API key' },
-                            { method: 'POST', path: '/api/v1/food-passport/iot/register-device', desc: 'ลงทะเบียน IoT device (กระเป๋าที่ยืนยันแล้ว) — ได้ API key ครั้งเดียว' },
-                            { method: 'POST', path: '/api/v1/food-passport/iot/rotate-key/{deviceId}', desc: 'ออก API key ใหม่ให้เครื่องของฉัน — กุญแจเดิมใช้ไม่ได้ทันที' },
-                            { method: 'GET', path: '/api/v1/food-passport/iot/my-devices?wallet_address=0x...', desc: 'Devices ของกระเป๋าที่ยืนยันแล้ว' },
-                            { method: 'GET', path: '/api/v1/food-passport/iot/test/{deviceId}', desc: 'เครื่องเช็คว่า API key ใช้ได้ (ping) — Bearer API key' },
-                            { method: 'GET', path: '/api/v1/food-passport/iot/config/{deviceId}', desc: 'ดึง config ของ device — Bearer API key' },
-                            { method: 'GET', path: '/api/v1/food-passport/fdp-token-info', desc: 'ข้อมูล FDP Token' },
+                            { method: 'GET', path: '/api/v1/food-passport/products', desc: t('admin.foodPassportDocumentation.api.endpoints.products') },
+                            { method: 'GET', path: '/api/v1/food-passport/products/{id}', desc: t('admin.foodPassportDocumentation.api.endpoints.productDetail') },
+                            { method: 'GET', path: '/api/v1/food-passport/verify/{id}', desc: t('admin.foodPassportDocumentation.api.endpoints.verify') },
+                            { method: 'GET', path: '/api/v1/food-passport/stats', desc: t('admin.foodPassportDocumentation.api.endpoints.stats') },
+                            { method: 'GET', path: '/api/v1/food-passport/certificates', desc: t('admin.foodPassportDocumentation.api.endpoints.certificates') },
+                            { method: 'GET', path: '/api/v1/food-passport/sensor-data/{productId}', desc: t('admin.foodPassportDocumentation.api.endpoints.sensorData') },
+                            { method: 'POST', path: '/api/v1/food-passport/register', desc: t('admin.foodPassportDocumentation.api.endpoints.register') },
+                            { method: 'POST', path: '/api/v1/food-passport/trace', desc: t('admin.foodPassportDocumentation.api.endpoints.trace') },
+                            { method: 'POST', path: '/api/v1/food-passport/mint', desc: t('admin.foodPassportDocumentation.api.endpoints.mint') },
+                            { method: 'GET', path: '/api/v1/food-passport/my-products?wallet_address=0x...', desc: t('admin.foodPassportDocumentation.api.endpoints.myProducts') },
+                            { method: 'POST', path: '/api/v1/food-passport/iot/ingest', desc: t('admin.foodPassportDocumentation.api.endpoints.ingest') },
+                            { method: 'POST', path: '/api/v1/food-passport/iot/batch-ingest', desc: t('admin.foodPassportDocumentation.api.endpoints.batchIngest') },
+                            { method: 'POST', path: '/api/v1/food-passport/iot/register-device', desc: t('admin.foodPassportDocumentation.api.endpoints.registerDevice') },
+                            { method: 'POST', path: '/api/v1/food-passport/iot/rotate-key/{deviceId}', desc: t('admin.foodPassportDocumentation.api.endpoints.rotateKey') },
+                            { method: 'GET', path: '/api/v1/food-passport/iot/my-devices?wallet_address=0x...', desc: t('admin.foodPassportDocumentation.api.endpoints.myDevices') },
+                            { method: 'GET', path: '/api/v1/food-passport/iot/test/{deviceId}', desc: t('admin.foodPassportDocumentation.api.endpoints.testDevice') },
+                            { method: 'GET', path: '/api/v1/food-passport/iot/config/{deviceId}', desc: t('admin.foodPassportDocumentation.api.endpoints.deviceConfig') },
+                            { method: 'GET', path: '/api/v1/food-passport/fdp-token-info', desc: t('admin.foodPassportDocumentation.api.endpoints.fdpTokenInfo') },
                         ]" :key="ep.path + ep.method" class="flex items-start gap-3 p-3 rounded-lg bg-white/5">
                             <span
                                 class="inline-block px-2 py-0.5 rounded text-xs font-bold font-mono flex-shrink-0 mt-0.5"
@@ -526,10 +530,10 @@ void loop() {
 
                 <!-- Response Format -->
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h3 class="text-lg font-bold text-white mb-4">Response Format</h3>
+                    <h3 class="text-lg font-bold text-white mb-4">{{ t('admin.foodPassportDocumentation.api.responseFormat') }}</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <p class="text-sm text-green-400 mb-2 font-semibold">Success Response</p>
+                            <p class="text-sm text-green-400 mb-2 font-semibold">{{ t('admin.foodPassportDocumentation.api.successResponse') }}</p>
                             <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300">
                                 <pre>{
   "success": true,
@@ -543,7 +547,7 @@ void loop() {
                             </div>
                         </div>
                         <div>
-                            <p class="text-sm text-red-400 mb-2 font-semibold">Error Response</p>
+                            <p class="text-sm text-red-400 mb-2 font-semibold">{{ t('admin.foodPassportDocumentation.api.errorResponse') }}</p>
                             <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300">
                                 <pre>{
   "success": false,
@@ -563,7 +567,7 @@ void loop() {
         <template v-if="activeSection === 'blockchain'">
             <div class="space-y-6">
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h2 class="text-xl font-bold text-white mb-6">Smart Contract Details</h2>
+                    <h2 class="text-xl font-bold text-white mb-6">{{ t('admin.foodPassportDocumentation.blockchain.title') }}</h2>
 
                     <div class="space-y-8">
                         <!-- NFT Contract -->
@@ -576,20 +580,20 @@ void loop() {
 // Contract Functions:
 
 registerProduct(name, category, origin)
-  → บันทึกสินค้าบน blockchain
+  → {{ t('admin.foodPassportDocumentation.blockchain.nft.registerProduct') }}
   → Returns: productId
 
 addTrace(productId, stage, location, data)
-  → เพิ่ม trace point
+  → {{ t('admin.foodPassportDocumentation.blockchain.nft.addTrace') }}
   → Emits: TraceAdded event
 
 mintCertificate(productId)
-  → ออก NFT ใบรับรอง (ต้องมี >= 2 traces)
+  → {{ t('admin.foodPassportDocumentation.blockchain.nft.mintCertificate') }}
   → Mints ERC-721 token
   → Emits: CertificateMinted event
 
 getProductHistory(productId)
-  → ดึงประวัติ traces ทั้งหมด
+  → {{ t('admin.foodPassportDocumentation.blockchain.nft.getProductHistory') }}
   → Returns: Trace[]</pre>
                             </div>
                         </div>
@@ -607,13 +611,13 @@ Decimals: 18
 Chain:    TPIX Chain (4289)
 
 // Reward System:
-mintCertificate → +100 FDP (ให้เจ้าของสินค้า)
-addTrace        → +1 FDP (ให้ผู้บันทึก trace)
+mintCertificate → +100 FDP ({{ t('admin.foodPassportDocumentation.blockchain.token.toOwner') }})
+addTrace        → +1 FDP ({{ t('admin.foodPassportDocumentation.blockchain.token.toRecorder') }})
 
 // Staking:
-stake(amount) → เพิ่ม Trust Score
-unstake()     → ถอน stake (7 วัน cooldown)
-getTrustScore(address) → คำนวณคะแนนความน่าเชื่อถือ</pre>
+stake(amount) → {{ t('admin.foodPassportDocumentation.blockchain.token.stake') }}
+unstake()     → {{ t('admin.foodPassportDocumentation.blockchain.token.unstake') }}
+getTrustScore(address) → {{ t('admin.foodPassportDocumentation.blockchain.token.trustScore') }}</pre>
                             </div>
                         </div>
                     </div>
@@ -621,14 +625,14 @@ getTrustScore(address) → คำนวณคะแนนความน่า�
 
                 <!-- Chain Config -->
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h3 class="text-lg font-bold text-white mb-4">TPIX Chain Configuration</h3>
+                    <h3 class="text-lg font-bold text-white mb-4">{{ t('admin.foodPassportDocumentation.blockchain.chainConfig.title') }}</h3>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div v-for="item in [
-                            { label: 'Chain ID', value: '4289' },
-                            { label: 'RPC URL', value: 'rpc.tpixchain.com' },
-                            { label: 'Gas', value: 'FREE (Gasless)' },
-                            { label: 'Block Time', value: '~3 seconds' },
-                        ]" :key="item.label" class="p-4 rounded-xl bg-white/5">
+                            { id: 'chainId', label: 'Chain ID', value: '4289' },
+                            { id: 'rpc', label: 'RPC URL', value: 'rpc.tpixchain.com' },
+                            { id: 'gas', label: t('admin.foodPassportDocumentation.blockchain.chainConfig.gasLabel'), value: t('admin.foodPassportDocumentation.blockchain.chainConfig.gasValue') },
+                            { id: 'blockTime', label: t('admin.foodPassportDocumentation.blockchain.chainConfig.blockTimeLabel'), value: t('admin.foodPassportDocumentation.blockchain.chainConfig.blockTimeValue') },
+                        ]" :key="item.id" class="p-4 rounded-xl bg-white/5">
                             <p class="text-xs text-gray-400">{{ item.label }}</p>
                             <p class="text-white font-semibold mt-1">{{ item.value }}</p>
                         </div>
@@ -644,36 +648,36 @@ getTrustScore(address) → คำนวณคะแนนความน่า�
                     <div class="flex items-center gap-4 mb-6">
                         <span class="text-5xl">📱</span>
                         <div>
-                            <h2 class="text-2xl font-bold text-white">Mobile App Integration</h2>
-                            <p class="text-gray-400 mt-1">FoodPassport Mobile App — สแกน QR, ดูข้อมูลสินค้า, IoT Dashboard</p>
+                            <h2 class="text-2xl font-bold text-white">{{ t('admin.foodPassportDocumentation.mobile.title') }}</h2>
+                            <p class="text-gray-400 mt-1">{{ t('admin.foodPassportDocumentation.mobile.subtitle') }}</p>
                         </div>
                     </div>
 
                     <div class="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 mb-6">
                         <p class="text-yellow-400 font-semibold flex items-center gap-2">
-                            <span>⚡</span> Coming Soon — Mobile App อยู่ในแผนพัฒนา
+                            <span>⚡</span> {{ t('admin.foodPassportDocumentation.mobile.comingSoon') }}
                         </p>
-                        <p class="text-sm text-gray-400 mt-1">API ทั้งหมดพร้อมแล้ว — Mobile App สามารถเชื่อมต่อได้ทันทีผ่าน REST API</p>
+                        <p class="text-sm text-gray-400 mt-1">{{ t('admin.foodPassportDocumentation.mobile.comingSoonDesc') }}</p>
                     </div>
                 </div>
 
                 <!-- Mobile Features -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div v-for="feature in [
-                        { icon: '📷', title: 'QR Code Scanner', desc: 'สแกน QR Code บนสินค้า ดู journey ตั้งแต่ฟาร์มถึงชั้นวาง แสดง trace timeline + sensor data + certificate', status: 'ready' },
-                        { icon: '📊', title: 'IoT Dashboard', desc: 'ดู sensor data แบบ real-time, กราฟอุณหภูมิ/ความชื้น, alerts เมื่อผิดปกติ', status: 'ready' },
-                        { icon: '📝', title: 'Product Registration', desc: 'เกษตรกรลงทะเบียนสินค้าจากมือถือ ถ่ายรูป เลือกหมวดหมู่ ระบุแหล่งผลิต', status: 'ready' },
-                        { icon: '🔔', title: 'Push Notifications', desc: 'แจ้งเตือนเมื่ออุณหภูมิผิดปกติ, สินค้าเปลี่ยนสถานะ, ได้รับ FDP Token', status: 'planned' },
-                        { icon: '👛', title: 'Wallet Integration', desc: 'เชื่อมต่อ Wallet, ดู FDP Token balance, stake/unstake, ดู Trust Score', status: 'ready' },
-                        { icon: '🗺️', title: 'Supply Chain Map', desc: 'แผนที่แสดง journey ของสินค้า จากต้นทางถึงปลายทาง GPS tracking', status: 'planned' },
-                    ]" :key="feature.title" class="glass-dark rounded-xl border border-white/10 p-5">
+                        { id: 'qr', icon: '📷', title: t('admin.foodPassportDocumentation.mobile.features.qr.title'), desc: t('admin.foodPassportDocumentation.mobile.features.qr.desc'), status: 'ready' },
+                        { id: 'iotDashboard', icon: '📊', title: t('admin.foodPassportDocumentation.mobile.features.iotDashboard.title'), desc: t('admin.foodPassportDocumentation.mobile.features.iotDashboard.desc'), status: 'ready' },
+                        { id: 'registration', icon: '📝', title: t('admin.foodPassportDocumentation.mobile.features.registration.title'), desc: t('admin.foodPassportDocumentation.mobile.features.registration.desc'), status: 'ready' },
+                        { id: 'push', icon: '🔔', title: t('admin.foodPassportDocumentation.mobile.features.push.title'), desc: t('admin.foodPassportDocumentation.mobile.features.push.desc'), status: 'planned' },
+                        { id: 'wallet', icon: '👛', title: t('admin.foodPassportDocumentation.mobile.features.wallet.title'), desc: t('admin.foodPassportDocumentation.mobile.features.wallet.desc'), status: 'ready' },
+                        { id: 'map', icon: '🗺️', title: t('admin.foodPassportDocumentation.mobile.features.map.title'), desc: t('admin.foodPassportDocumentation.mobile.features.map.desc'), status: 'planned' },
+                    ]" :key="feature.id" class="glass-dark rounded-xl border border-white/10 p-5">
                         <div class="flex items-start justify-between mb-2">
                             <span class="text-3xl">{{ feature.icon }}</span>
                             <span
                                 class="text-xs px-2 py-0.5 rounded-full font-medium"
                                 :class="feature.status === 'ready' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'"
                             >
-                                {{ feature.status === 'ready' ? 'API Ready' : 'Planned' }}
+                                {{ feature.status === 'ready' ? t('admin.foodPassportDocumentation.mobile.statusReady') : t('admin.foodPassportDocumentation.mobile.statusPlanned') }}
                             </span>
                         </div>
                         <h3 class="text-white font-semibold mt-2 mb-1">{{ feature.title }}</h3>
@@ -683,26 +687,26 @@ getTrustScore(address) → คำนวณคะแนนความน่า�
 
                 <!-- API Endpoints for Mobile -->
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h3 class="text-lg font-bold text-white mb-4">API Endpoints สำหรับ Mobile App</h3>
+                    <h3 class="text-lg font-bold text-white mb-4">{{ t('admin.foodPassportDocumentation.mobile.endpointsTitle') }}</h3>
                     <div class="bg-dark-900 rounded-xl p-4 font-mono text-sm text-gray-300 overflow-x-auto">
-                        <pre>// QR Scanner → ดูข้อมูลสินค้า
+                        <pre>// {{ t('admin.foodPassportDocumentation.mobile.code.qr') }}
 GET /api/v1/food-passport/verify/{productId}
 
-// ลงทะเบียนสินค้า
+// {{ t('admin.foodPassportDocumentation.mobile.code.register') }}
 POST /api/v1/food-passport/register
   { name, category, origin, producer_address }
 
-// ดูสินค้าของฉัน
+// {{ t('admin.foodPassportDocumentation.mobile.code.myProducts') }}
 GET /api/v1/food-passport/my-products?wallet_address=0x...
 
-// IoT Dashboard
+// {{ t('admin.foodPassportDocumentation.mobile.code.iotDashboard') }}
 GET /api/v1/food-passport/sensor-data/{productId}
 GET /api/v1/food-passport/iot/my-devices?wallet_address=0x...
 
 // FDP Token
 GET /api/v1/food-passport/fdp-token-info
 
-// ทั้งหมดเป็น JSON REST API — ใช้ได้กับ React Native, Flutter, Swift, Kotlin</pre>
+// {{ t('admin.foodPassportDocumentation.mobile.code.allRest') }}</pre>
                     </div>
                 </div>
             </div>
@@ -712,74 +716,74 @@ GET /api/v1/food-passport/fdp-token-info
         <template v-if="activeSection === 'admin'">
             <div class="space-y-6">
                 <div class="glass-dark rounded-2xl border border-white/10 p-8">
-                    <h2 class="text-xl font-bold text-white mb-6">Admin Management Guide</h2>
+                    <h2 class="text-xl font-bold text-white mb-6">{{ t('admin.foodPassportDocumentation.adminGuide.title') }}</h2>
 
                     <div class="space-y-8">
                         <!-- Dashboard -->
                         <div>
-                            <h3 class="text-lg font-semibold text-white mb-3">📊 Dashboard</h3>
-                            <p class="text-gray-400 mb-3">หน้าแรกแสดงสถิติภาพรวม — จำนวนสินค้า, certificates, devices, alerts</p>
+                            <h3 class="text-lg font-semibold text-white mb-3">📊 {{ t('admin.foodPassportDocumentation.adminGuide.dashboard.title') }}</h3>
+                            <p class="text-gray-400 mb-3">{{ t('admin.foodPassportDocumentation.adminGuide.dashboard.desc') }}</p>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div v-for="stat in [
-                                    'Total Products — จำนวนสินค้าทั้งหมด',
-                                    'Certified — สินค้าที่ได้ใบรับรอง',
-                                    'Total Traces — จำนวน trace records',
-                                    'Certificates — ใบรับรอง NFT ที่ออก',
-                                    'IoT Devices — อุปกรณ์ทั้งหมด',
-                                    'Active Devices — อุปกรณ์ที่ทำงานอยู่',
-                                    'Offline Devices — อุปกรณ์ที่ไม่ตอบสนอง > 1 ชั่วโมง',
-                                    'Temp Alerts (24h) — การแจ้งเตือนอุณหภูมิ',
-                                ]" :key="stat" class="text-sm text-gray-400 flex items-start gap-2">
+                                    { id: 's1', text: t('admin.foodPassportDocumentation.adminGuide.dashboard.stats.s1') },
+                                    { id: 's2', text: t('admin.foodPassportDocumentation.adminGuide.dashboard.stats.s2') },
+                                    { id: 's3', text: t('admin.foodPassportDocumentation.adminGuide.dashboard.stats.s3') },
+                                    { id: 's4', text: t('admin.foodPassportDocumentation.adminGuide.dashboard.stats.s4') },
+                                    { id: 's5', text: t('admin.foodPassportDocumentation.adminGuide.dashboard.stats.s5') },
+                                    { id: 's6', text: t('admin.foodPassportDocumentation.adminGuide.dashboard.stats.s6') },
+                                    { id: 's7', text: t('admin.foodPassportDocumentation.adminGuide.dashboard.stats.s7') },
+                                    { id: 's8', text: t('admin.foodPassportDocumentation.adminGuide.dashboard.stats.s8') },
+                                ]" :key="stat.id" class="text-sm text-gray-400 flex items-start gap-2">
                                     <div class="w-1.5 h-1.5 rounded-full bg-primary-500 mt-1.5 flex-shrink-0"></div>
-                                    {{ stat }}
+                                    {{ stat.text }}
                                 </div>
                             </div>
                         </div>
 
                         <!-- Product Management -->
                         <div>
-                            <h3 class="text-lg font-semibold text-white mb-3">📦 Product Management</h3>
+                            <h3 class="text-lg font-semibold text-white mb-3">📦 {{ t('admin.foodPassportDocumentation.adminGuide.products.title') }}</h3>
                             <ul class="space-y-2 text-sm text-gray-400">
-                                <li class="flex gap-2"><span class="text-green-400">•</span> ดูรายการสินค้าทั้งหมด พร้อมกรองตาม status</li>
-                                <li class="flex gap-2"><span class="text-green-400">•</span> เปลี่ยนสถานะสินค้า: registered → in_transit → at_storage → at_retail → certified</li>
-                                <li class="flex gap-2"><span class="text-green-400">•</span> ดู trace timeline ของสินค้า พร้อมข้อมูล sensor</li>
-                                <li class="flex gap-2"><span class="text-green-400">•</span> Suspend สินค้าที่มีปัญหา (soft delete)</li>
-                                <li class="flex gap-2"><span class="text-green-400">•</span> ดู journey verification — blockchain ยืนยันว่าข้อมูลถูกต้อง</li>
+                                <li class="flex gap-2"><span class="text-green-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.products.item1') }}</li>
+                                <li class="flex gap-2"><span class="text-green-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.products.item2') }}</li>
+                                <li class="flex gap-2"><span class="text-green-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.products.item3') }}</li>
+                                <li class="flex gap-2"><span class="text-green-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.products.item4') }}</li>
+                                <li class="flex gap-2"><span class="text-green-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.products.item5') }}</li>
                             </ul>
                         </div>
 
                         <!-- Device Management -->
                         <div>
-                            <h3 class="text-lg font-semibold text-white mb-3">📡 IoT Device Management</h3>
+                            <h3 class="text-lg font-semibold text-white mb-3">📡 {{ t('admin.foodPassportDocumentation.adminGuide.devices.title') }}</h3>
                             <ul class="space-y-2 text-sm text-gray-400">
-                                <li class="flex gap-2"><span class="text-cyan-400">•</span> ดูรายการ devices ทั้งหมด กรองตาม status/type</li>
-                                <li class="flex gap-2"><span class="text-cyan-400">•</span> เปลี่ยนสถานะ: Active / Inactive / Maintenance</li>
-                                <li class="flex gap-2"><span class="text-cyan-400">•</span> Regenerate API Key — เมื่อ key รั่วไหลหรือต้องการความปลอดภัยใหม่</li>
-                                <li class="flex gap-2"><span class="text-cyan-400">•</span> ดูจำนวน traces ที่ device ส่งมา</li>
-                                <li class="flex gap-2"><span class="text-cyan-400">•</span> ตรวจสอบ last ping — device ที่ offline > 1 ชม. จะมีสถานะสีแดง</li>
-                                <li class="flex gap-2"><span class="text-cyan-400">•</span> ลบ device ที่ไม่ใช้แล้ว</li>
+                                <li class="flex gap-2"><span class="text-cyan-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.devices.item1') }}</li>
+                                <li class="flex gap-2"><span class="text-cyan-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.devices.item2') }}</li>
+                                <li class="flex gap-2"><span class="text-cyan-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.devices.item3') }}</li>
+                                <li class="flex gap-2"><span class="text-cyan-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.devices.item4') }}</li>
+                                <li class="flex gap-2"><span class="text-cyan-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.devices.item5') }}</li>
+                                <li class="flex gap-2"><span class="text-cyan-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.devices.item6') }}</li>
                             </ul>
                         </div>
 
                         <!-- Certificates -->
                         <div>
-                            <h3 class="text-lg font-semibold text-white mb-3">🏆 Certificate Management</h3>
+                            <h3 class="text-lg font-semibold text-white mb-3">🏆 {{ t('admin.foodPassportDocumentation.adminGuide.certificates.title') }}</h3>
                             <ul class="space-y-2 text-sm text-gray-400">
-                                <li class="flex gap-2"><span class="text-yellow-400">•</span> ดูใบรับรอง NFT ทั้งหมด</li>
-                                <li class="flex gap-2"><span class="text-yellow-400">•</span> Revoke ใบรับรอง — ระบุเหตุผล, สินค้าจะกลับสถานะ registered</li>
-                                <li class="flex gap-2"><span class="text-yellow-400">•</span> ดูสถิติ: total, active, revoked</li>
+                                <li class="flex gap-2"><span class="text-yellow-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.certificates.item1') }}</li>
+                                <li class="flex gap-2"><span class="text-yellow-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.certificates.item2') }}</li>
+                                <li class="flex gap-2"><span class="text-yellow-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.certificates.item3') }}</li>
                             </ul>
                         </div>
 
                         <!-- Temperature Alerts -->
                         <div>
-                            <h3 class="text-lg font-semibold text-white mb-3">🌡️ Temperature Alerts</h3>
+                            <h3 class="text-lg font-semibold text-white mb-3">🌡️ {{ t('admin.foodPassportDocumentation.adminGuide.alerts.title') }}</h3>
                             <ul class="space-y-2 text-sm text-gray-400">
-                                <li class="flex gap-2"><span class="text-red-400">•</span> ดูรายการอุณหภูมิที่เกินค่าที่ตั้งไว้ (default: 0°C - 40°C)</li>
-                                <li class="flex gap-2"><span class="text-red-400">•</span> ปรับ threshold ได้ตามต้องการ (min/max temp)</li>
-                                <li class="flex gap-2"><span class="text-red-400">•</span> เลือกช่วงเวลา: 1 ชม. ถึง 7 วัน</li>
-                                <li class="flex gap-2"><span class="text-red-400">•</span> แสดง deviation — สินค้าเกิน/ต่ำกว่าเกณฑ์เท่าไร</li>
-                                <li class="flex gap-2"><span class="text-red-400">•</span> Link ไปยัง product detail เพื่อดูข้อมูลเพิ่มเติม</li>
+                                <li class="flex gap-2"><span class="text-red-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.alerts.item1') }}</li>
+                                <li class="flex gap-2"><span class="text-red-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.alerts.item2') }}</li>
+                                <li class="flex gap-2"><span class="text-red-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.alerts.item3') }}</li>
+                                <li class="flex gap-2"><span class="text-red-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.alerts.item4') }}</li>
+                                <li class="flex gap-2"><span class="text-red-400">•</span> {{ t('admin.foodPassportDocumentation.adminGuide.alerts.item5') }}</li>
                             </ul>
                         </div>
                     </div>

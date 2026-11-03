@@ -7,8 +7,11 @@
 import { ref, computed } from 'vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
 
 defineOptions({ layout: AdminLayout });
+
+const { t } = useTranslation();
 
 const props = defineProps({
     banners: { type: Array, default: () => [] },
@@ -88,7 +91,7 @@ function toggleActive(banner) {
 // ลบ
 const confirmDelete = ref(null);
 function deleteBanner(banner) {
-    if (confirm(`ลบ "${banner.title}" ?`)) {
+    if (confirm(t('admin.banners.confirmDelete', { title: banner.title }))) {
         useForm({}).delete(`/admin/banners/${banner.id}`);
     }
 }
@@ -99,22 +102,31 @@ function typeBadge(type) {
     return map[type] || 'bg-gray-500/20 text-gray-400';
 }
 
+// ป้ายประเภท/ตำแหน่ง: server ส่งมาเป็นภาษาไทยอย่างเดียว — แปลตาม key ฝั่ง client ถ้าไม่มีคำแปลใช้ป้ายจาก server
+function optionLabel(group, key, fallback) {
+    const k = `admin.banners.${group}.${key}`;
+    const v = t(k);
+    return v === k ? (fallback || key) : v;
+}
+const typeLabel = (key) => optionLabel('types', key, props.types[key]);
+const placementLabel = (key) => optionLabel('placements', key, props.placements[key]);
+
 // ป้ายชื่อ input class
 const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors text-sm';
 </script>
 
 <template>
-    <Head title="Banners — Admin" />
+    <Head :title="t('admin.banners.pageTitle')" />
 
     <div class="space-y-6">
         <!-- Header -->
         <div class="flex items-center justify-between">
             <div>
-                <h1 class="text-2xl font-bold text-white">Banner Ads</h1>
-                <p class="text-dark-400 text-sm mt-1">จัดการป้ายโฆษณา รองรับ Image, Google AdSense, Custom HTML</p>
+                <h1 class="text-2xl font-bold text-white">{{ t('admin.banners.title') }}</h1>
+                <p class="text-dark-400 text-sm mt-1">{{ t('admin.banners.subtitle') }}</p>
             </div>
             <button @click="openCreate" class="btn-primary px-4 py-2 rounded-xl text-sm font-medium">
-                + เพิ่ม Banner
+                {{ t('admin.banners.addButton') }}
             </button>
         </div>
 
@@ -122,19 +134,19 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div class="glass-card p-4 rounded-xl text-center">
                 <p class="text-2xl font-bold text-white">{{ stats.total || 0 }}</p>
-                <p class="text-xs text-dark-400 mt-1">ทั้งหมด</p>
+                <p class="text-xs text-dark-400 mt-1">{{ t('admin.banners.stats.total') }}</p>
             </div>
             <div class="glass-card p-4 rounded-xl text-center">
                 <p class="text-2xl font-bold text-trading-green">{{ stats.active || 0 }}</p>
-                <p class="text-xs text-dark-400 mt-1">กำลังแสดง</p>
+                <p class="text-xs text-dark-400 mt-1">{{ t('admin.banners.stats.active') }}</p>
             </div>
             <div class="glass-card p-4 rounded-xl text-center">
                 <p class="text-2xl font-bold text-primary-400">{{ (stats.total_views || 0).toLocaleString() }}</p>
-                <p class="text-xs text-dark-400 mt-1">Views รวม</p>
+                <p class="text-xs text-dark-400 mt-1">{{ t('admin.banners.stats.totalViews') }}</p>
             </div>
             <div class="glass-card p-4 rounded-xl text-center">
                 <p class="text-2xl font-bold text-yellow-400">{{ (stats.total_clicks || 0).toLocaleString() }}</p>
-                <p class="text-xs text-dark-400 mt-1">Clicks รวม</p>
+                <p class="text-xs text-dark-400 mt-1">{{ t('admin.banners.stats.totalClicks') }}</p>
             </div>
         </div>
 
@@ -143,12 +155,12 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
             <button @click="filterPlacement = 'all'"
                 :class="filterPlacement === 'all' ? 'bg-primary-500 text-white' : 'bg-dark-700 text-dark-400 hover:text-white'"
                 class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
-                ทั้งหมด
+                {{ t('admin.banners.filterAll') }}
             </button>
             <button v-for="(label, key) in placements" :key="key" @click="filterPlacement = key"
                 :class="filterPlacement === key ? 'bg-primary-500 text-white' : 'bg-dark-700 text-dark-400 hover:text-white'"
                 class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
-                {{ label }}
+                {{ placementLabel(key) }}
             </button>
         </div>
 
@@ -157,13 +169,13 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
             <table class="w-full">
                 <thead>
                     <tr class="border-b border-white/5">
-                        <th class="text-left p-4 text-xs text-dark-400 uppercase">Title</th>
-                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden sm:table-cell">Type</th>
-                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden md:table-cell">Placement</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">Views</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">Clicks</th>
-                        <th class="text-center p-4 text-xs text-dark-400 uppercase">Status</th>
-                        <th class="text-right p-4 text-xs text-dark-400 uppercase">Actions</th>
+                        <th class="text-left p-4 text-xs text-dark-400 uppercase">{{ t('admin.banners.table.title') }}</th>
+                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden sm:table-cell">{{ t('admin.banners.table.type') }}</th>
+                        <th class="text-left p-4 text-xs text-dark-400 uppercase hidden md:table-cell">{{ t('admin.banners.table.placement') }}</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">{{ t('admin.banners.table.views') }}</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase hidden lg:table-cell">{{ t('admin.banners.table.clicks') }}</th>
+                        <th class="text-center p-4 text-xs text-dark-400 uppercase">{{ t('admin.banners.table.status') }}</th>
+                        <th class="text-right p-4 text-xs text-dark-400 uppercase">{{ t('admin.banners.table.actions') }}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -180,22 +192,22 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                                 </div>
                             </div>
                         </td>
-                        <td class="p-4 hidden sm:table-cell"><span :class="typeBadge(banner.type)" class="px-2 py-1 rounded-md text-xs font-medium">{{ types[banner.type] || banner.type }}</span></td>
-                        <td class="p-4 text-dark-400 text-xs hidden md:table-cell">{{ placements[banner.placement] || banner.placement }}</td>
+                        <td class="p-4 hidden sm:table-cell"><span :class="typeBadge(banner.type)" class="px-2 py-1 rounded-md text-xs font-medium">{{ typeLabel(banner.type) }}</span></td>
+                        <td class="p-4 text-dark-400 text-xs hidden md:table-cell">{{ placementLabel(banner.placement) }}</td>
                         <td class="p-4 text-center text-dark-300 text-sm hidden lg:table-cell">{{ banner.view_count?.toLocaleString() }}</td>
                         <td class="p-4 text-center text-dark-300 text-sm hidden lg:table-cell">{{ banner.click_count?.toLocaleString() }}</td>
                         <td class="p-4 text-center">
                             <button @click="toggleActive(banner)" :class="banner.is_active ? 'bg-trading-green/20 text-trading-green' : 'bg-dark-600 text-dark-400'" class="px-3 py-1 rounded-full text-xs font-medium transition-colors">
-                                {{ banner.is_active ? 'Active' : 'Off' }}
+                                {{ banner.is_active ? t('admin.banners.status.active') : t('admin.banners.status.off') }}
                             </button>
                         </td>
                         <td class="p-4 text-right">
-                            <button @click="openEdit(banner)" class="text-primary-400 hover:text-primary-300 text-sm mr-3">แก้ไข</button>
-                            <button @click="deleteBanner(banner)" class="text-trading-red hover:text-red-400 text-sm">ลบ</button>
+                            <button @click="openEdit(banner)" class="text-primary-400 hover:text-primary-300 text-sm mr-3">{{ t('admin.banners.edit') }}</button>
+                            <button @click="deleteBanner(banner)" class="text-trading-red hover:text-red-400 text-sm">{{ t('admin.banners.delete') }}</button>
                         </td>
                     </tr>
                     <tr v-if="!filteredBanners.length">
-                        <td colspan="7" class="p-8 text-center text-dark-500">ยังไม่มี banner</td>
+                        <td colspan="7" class="p-8 text-center text-dark-500">{{ t('admin.banners.empty') }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -207,85 +219,85 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
         <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4" @click.self="showModal = false">
             <div class="fixed inset-0 bg-black/60" @click="showModal = false"></div>
             <div class="relative bg-dark-800 rounded-2xl border border-dark-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-5">
-                <h2 class="text-xl font-bold text-white">{{ editingBanner ? 'แก้ไข Banner' : 'เพิ่ม Banner ใหม่' }}</h2>
+                <h2 class="text-xl font-bold text-white">{{ editingBanner ? t('admin.banners.modal.editTitle') : t('admin.banners.modal.createTitle') }}</h2>
 
                 <form @submit.prevent="save" class="space-y-4">
                     <!-- Title -->
                     <div>
-                        <label class="block text-sm text-dark-300 mb-1">ชื่อ Banner</label>
-                        <input v-model="form.title" :class="inputClass" placeholder="เช่น Thaiprompt Promo" />
+                        <label class="block text-sm text-dark-300 mb-1">{{ t('admin.banners.form.name') }}</label>
+                        <input v-model="form.title" :class="inputClass" :placeholder="t('admin.banners.form.namePlaceholder')" />
                         <p v-if="form.errors.title" class="text-trading-red text-xs mt-1">{{ form.errors.title }}</p>
                     </div>
 
                     <!-- Type -->
                     <div>
-                        <label class="block text-sm text-dark-300 mb-1">ประเภท</label>
+                        <label class="block text-sm text-dark-300 mb-1">{{ t('admin.banners.form.type') }}</label>
                         <select v-model="form.type" :class="inputClass">
-                            <option v-for="(label, key) in types" :key="key" :value="key">{{ label }}</option>
+                            <option v-for="(label, key) in types" :key="key" :value="key">{{ typeLabel(key) }}</option>
                         </select>
                     </div>
 
                     <!-- Image fields -->
                     <template v-if="form.type === 'image'">
                         <div>
-                            <label class="block text-sm text-dark-300 mb-1">URL รูปภาพ</label>
+                            <label class="block text-sm text-dark-300 mb-1">{{ t('admin.banners.form.imageUrl') }}</label>
                             <input v-model="form.image_url" :class="inputClass" placeholder="https://..." />
                         </div>
                         <div>
-                            <label class="block text-sm text-dark-300 mb-1">URL ลิงก์ (คลิกไปที่)</label>
+                            <label class="block text-sm text-dark-300 mb-1">{{ t('admin.banners.form.linkUrl') }}</label>
                             <input v-model="form.link_url" :class="inputClass" placeholder="https://thaiprompt.com" />
                         </div>
                         <div>
-                            <label class="block text-sm text-dark-300 mb-1">เปิดลิงก์</label>
+                            <label class="block text-sm text-dark-300 mb-1">{{ t('admin.banners.form.openLink') }}</label>
                             <select v-model="form.target" :class="inputClass">
-                                <option value="_blank">Tab ใหม่</option>
-                                <option value="_self">Tab เดิม</option>
+                                <option value="_blank">{{ t('admin.banners.form.newTab') }}</option>
+                                <option value="_self">{{ t('admin.banners.form.sameTab') }}</option>
                             </select>
                         </div>
                         <!-- Preview -->
                         <div v-if="form.image_url" class="border border-dark-600 rounded-xl p-3">
-                            <p class="text-xs text-dark-500 mb-2">Preview:</p>
-                            <img :src="form.image_url" class="max-h-32 rounded-lg" alt="Preview" />
+                            <p class="text-xs text-dark-500 mb-2">{{ t('admin.banners.form.preview') }}</p>
+                            <img :src="form.image_url" class="max-h-32 rounded-lg" :alt="t('admin.banners.form.previewAlt')" />
                         </div>
                     </template>
 
                     <!-- Google AdSense fields -->
                     <template v-if="form.type === 'google_adsense'">
                         <div>
-                            <label class="block text-sm text-dark-300 mb-1">Google AdSense Code</label>
-                            <textarea v-model="form.ad_code" :class="inputClass" rows="5" placeholder='วาง ad code จาก Google เช่น &lt;ins class="adsbygoogle" data-ad-client="ca-pub-xxx" ...&gt;&lt;/ins&gt;'></textarea>
-                            <p class="text-xs text-dark-500 mt-1">วางโค้ดจาก Google AdSense ทั้งก้อน</p>
+                            <label class="block text-sm text-dark-300 mb-1">{{ t('admin.banners.form.adsenseCode') }}</label>
+                            <textarea v-model="form.ad_code" :class="inputClass" rows="5" :placeholder="t('admin.banners.form.adsensePlaceholder')"></textarea>
+                            <p class="text-xs text-dark-500 mt-1">{{ t('admin.banners.form.adsenseHint') }}</p>
                         </div>
                     </template>
 
                     <!-- Custom HTML fields -->
                     <template v-if="form.type === 'html'">
                         <div>
-                            <label class="block text-sm text-dark-300 mb-1">Custom HTML</label>
+                            <label class="block text-sm text-dark-300 mb-1">{{ t('admin.banners.form.customHtml') }}</label>
                             <textarea v-model="form.ad_code" :class="inputClass" rows="6" placeholder="<div>...</div>"></textarea>
                         </div>
                     </template>
 
                     <!-- Placement -->
                     <div>
-                        <label class="block text-sm text-dark-300 mb-1">ตำแหน่งที่แสดง</label>
+                        <label class="block text-sm text-dark-300 mb-1">{{ t('admin.banners.form.placement') }}</label>
                         <select v-model="form.placement" :class="inputClass">
-                            <option v-for="(label, key) in placements" :key="key" :value="key">{{ label }}</option>
+                            <option v-for="(label, key) in placements" :key="key" :value="key">{{ placementLabel(key) }}</option>
                         </select>
                     </div>
 
                     <!-- Sort + Schedule -->
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div>
-                            <label class="block text-sm text-dark-300 mb-1">ลำดับ</label>
+                            <label class="block text-sm text-dark-300 mb-1">{{ t('admin.banners.form.sortOrder') }}</label>
                             <input v-model.number="form.sort_order" type="number" :class="inputClass" min="0" />
                         </div>
                         <div>
-                            <label class="block text-sm text-dark-300 mb-1">เริ่มแสดง</label>
+                            <label class="block text-sm text-dark-300 mb-1">{{ t('admin.banners.form.startAt') }}</label>
                             <input v-model="form.start_at" type="datetime-local" :class="inputClass" />
                         </div>
                         <div>
-                            <label class="block text-sm text-dark-300 mb-1">หยุดแสดง</label>
+                            <label class="block text-sm text-dark-300 mb-1">{{ t('admin.banners.form.endAt') }}</label>
                             <input v-model="form.end_at" type="datetime-local" :class="inputClass" />
                         </div>
                     </div>
@@ -293,14 +305,14 @@ const inputClass = 'w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4
                     <!-- Active -->
                     <label class="flex items-center gap-3 cursor-pointer">
                         <input v-model="form.is_active" type="checkbox" class="w-4 h-4 rounded bg-dark-700 border-dark-500 text-primary-500 focus:ring-primary-500" />
-                        <span class="text-sm text-dark-300">เปิดใช้งาน (Active)</span>
+                        <span class="text-sm text-dark-300">{{ t('admin.banners.form.isActive') }}</span>
                     </label>
 
                     <!-- Buttons -->
                     <div class="flex justify-end gap-3 pt-3 border-t border-dark-600">
-                        <button type="button" @click="showModal = false" class="px-4 py-2 text-sm text-dark-400 hover:text-white transition-colors">ยกเลิก</button>
+                        <button type="button" @click="showModal = false" class="px-4 py-2 text-sm text-dark-400 hover:text-white transition-colors">{{ t('admin.banners.cancel') }}</button>
                         <button type="submit" :disabled="form.processing" class="btn-primary px-6 py-2 rounded-xl text-sm font-medium">
-                            {{ form.processing ? 'กำลังบันทึก...' : (editingBanner ? 'อัปเดต' : 'สร้าง') }}
+                            {{ form.processing ? t('admin.banners.saving') : (editingBanner ? t('admin.banners.update') : t('admin.banners.create')) }}
                         </button>
                     </div>
                 </form>

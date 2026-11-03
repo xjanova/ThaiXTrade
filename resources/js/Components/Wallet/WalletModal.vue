@@ -68,7 +68,7 @@ const allWallets = (() => {
             return [{
                 id: provider.id,
                 name: provider.name,
-                description: 'Connected Browser',
+                descKey: 'ui.walletWalletModal.desc.connectedBrowser',
                 popular: true,
                 color: provider.color,
                 detected: true,
@@ -82,26 +82,26 @@ const allWallets = (() => {
      * กระเป๋าในเว็บ (embedded) ย้ายลงมาหลังกระเป๋าภายนอก และเรียกว่า TPIX Web Wallet กันสับสนกับแอป
      */
     const baseWallets = [
-        { id: 'metamask', name: 'MetaMask', description: mobile ? 'Open in MetaMask' : 'Browser extension', popular: true, color: '#E2761B' },
-        { id: 'trustwallet', name: 'Trust Wallet', description: mobile ? 'Open in Trust Wallet' : 'Mobile & Extension', popular: true, color: '#3375BB' },
-        { id: 'coinbase', name: 'Coinbase Wallet', description: mobile ? 'Open in Coinbase' : 'Browser & Mobile', popular: true, color: '#0052FF' },
+        { id: 'metamask', name: 'MetaMask', descKey: mobile ? 'ui.walletWalletModal.desc.openMetaMask' : 'ui.walletWalletModal.desc.browserExtension', popular: true, color: '#E2761B' },
+        { id: 'trustwallet', name: 'Trust Wallet', descKey: mobile ? 'ui.walletWalletModal.desc.openTrust' : 'ui.walletWalletModal.desc.mobileExtension', popular: true, color: '#3375BB' },
+        { id: 'coinbase', name: 'Coinbase Wallet', descKey: mobile ? 'ui.walletWalletModal.desc.openCoinbase' : 'ui.walletWalletModal.desc.browserMobile', popular: true, color: '#0052FF' },
         // TPIX Web Wallet — ชื่อ/คำอธิบายมาจาก i18n ตอนวาด (wallet.app.webWallet)
         {
             id: 'tpix_wallet',
             name: 'TPIX Web Wallet',
-            description: 'Wallet ในตัวเว็บ — ไม่ต้องติดตั้ง',
+            descKey: 'wallet.app.webWalletDesc',
             popular: true,
             color: '#06B6D4',
             embedded: true,
         },
-        { id: 'okx', name: 'OKX Wallet', description: mobile ? 'Open in OKX' : 'Browser extension', popular: false, color: '#000000' },
-        { id: 'tokenpocket', name: 'TokenPocket', description: mobile ? 'Open in TokenPocket' : 'Browser extension', popular: false, color: '#2980FE' },
+        { id: 'okx', name: 'OKX Wallet', descKey: mobile ? 'ui.walletWalletModal.desc.openOkx' : 'ui.walletWalletModal.desc.browserExtension', popular: false, color: '#000000' },
+        { id: 'tokenpocket', name: 'TokenPocket', descKey: mobile ? 'ui.walletWalletModal.desc.openTokenPocket' : 'ui.walletWalletModal.desc.browserExtension', popular: false, color: '#2980FE' },
     ];
 
     // WalletConnect — QR code สำหรับเชื่อมแอพมือถือ (TPIX Wallet, MetaMask, Trust, etc.)
     baseWallets.push({
         id: 'walletconnect', name: 'WalletConnect',
-        description: mobile ? 'เชื่อมต่อแอพกระเป๋า' : 'Scan QR code จากแอพมือถือ',
+        descKey: mobile ? 'ui.walletWalletModal.desc.connectWalletApp' : 'ui.walletWalletModal.desc.scanQr',
         popular: false, color: '#3B99FC',
     });
 
@@ -224,7 +224,7 @@ const connectWallet = async (wallet) => {
     }
 
     if (wallet.supported === false) {
-        error.value = `${wallet.name} support coming soon.`;
+        error.value = t('ui.walletWalletModal.errors.comingSoon', { wallet: wallet.name });
         return;
     }
 
@@ -256,7 +256,7 @@ const connectWallet = async (wallet) => {
 
     // === Desktop หรือ อยู่ใน wallet browser: ใช้ injected provider ===
     if (!checkAnyWallet()) {
-        error.value = 'No wallet detected. Please install a wallet extension.';
+        error.value = t('ui.walletWalletModal.errors.noWallet');
         return;
     }
 
@@ -275,11 +275,11 @@ const connectWallet = async (wallet) => {
     } catch (err) {
         playErrorSound();
         if (err.code === 4001) {
-            error.value = 'Connection rejected. Please try again.';
+            error.value = t('ui.walletWalletModal.errors.rejected');
         } else if (err.message?.includes('timed out')) {
-            error.value = 'Connection timed out. Please try again.';
+            error.value = t('ui.walletWalletModal.errors.timeout');
         } else {
-            error.value = walletStore.error || err.message || 'Failed to connect. Please try again.';
+            error.value = walletStore.error || err.message || t('ui.walletWalletModal.errors.connectFailed');
         }
     } finally {
         isConnecting.value = false;
@@ -301,7 +301,7 @@ const openInExternalBrowser = () => {
 // Unlock embedded wallet ด้วย password
 async function unlockEmbedded() {
     if (!unlockPassword.value) {
-        error.value = 'Please enter your password.';
+        error.value = t('ui.walletWalletModal.errors.enterPassword');
         return;
     }
     isConnecting.value = true;
@@ -314,7 +314,7 @@ async function unlockEmbedded() {
         emit('close');
     } catch (err) {
         playErrorSound();
-        error.value = err.message || 'Failed to unlock wallet.';
+        error.value = err.message || t('ui.walletWalletModal.errors.unlockFailed');
     } finally {
         isConnecting.value = false;
     }
@@ -341,9 +341,10 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
         <div class="modal-content max-w-md">
             <!-- Header -->
             <div class="flex items-center justify-between mb-5">
-                <h2 class="text-xl font-bold text-white">Connect Wallet</h2>
+                <h2 class="text-xl font-bold text-white">{{ t('wallet.connect') }}</h2>
                 <button
                     @click="closeModal"
+                    :aria-label="t('common.close')"
                     class="p-2 rounded-xl text-dark-400 hover:text-white hover:bg-white/10 transition-all"
                 >
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -360,16 +361,16 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                     </svg>
                     <div class="flex-1">
                         <p class="text-amber-300 text-sm font-medium mb-1">
-                            Opened in {{ inAppBrowserDisplayName }}
+                            {{ t('ui.walletWalletModal.inApp.openedIn', { app: inAppBrowserDisplayName }) }}
                         </p>
                         <p class="text-amber-400/70 text-xs mb-3">
-                            For the best experience, open in an external browser or use a wallet app directly.
+                            {{ t('ui.walletWalletModal.inApp.hint') }}
                         </p>
                         <button
                             @click="openInExternalBrowser"
                             class="w-full py-2 px-3 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-300 text-sm font-medium hover:bg-amber-500/30 transition-all"
                         >
-                            Open in Browser
+                            {{ t('ui.walletWalletModal.inApp.openInBrowser') }}
                         </button>
                     </div>
                 </div>
@@ -378,16 +379,16 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
             <!-- Wallet Browser: Direct Connect -->
             <div v-if="isInWalletBrowser" class="mb-4 p-3 rounded-xl bg-trading-green/10 border border-trading-green/30">
                 <p class="text-trading-green text-sm">
-                    Wallet detected! Tap below to connect.
+                    {{ t('ui.walletWalletModal.walletDetected') }}
                 </p>
             </div>
 
             <p v-if="!isInWalletBrowser && !showWcPanel" class="text-dark-400 text-sm mb-5">
                 <template v-if="mobile">
-                    Select a wallet app to connect. It will open automatically.
+                    {{ t('ui.walletWalletModal.introMobile') }}
                 </template>
                 <template v-else>
-                    Connect your wallet to start trading. Your keys, your crypto.
+                    {{ t('ui.walletWalletModal.introDesktop') }}
                 </template>
             </p>
 
@@ -403,21 +404,21 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                         <div class="w-12 h-12 mx-auto rounded-xl bg-primary-500/20 flex items-center justify-center mb-3">
                             <BrandLogo variant="icon" alt="TPIX" class="w-8 h-8" />
                         </div>
-                        <h3 class="text-lg font-bold text-white">Unlock TPIX Wallet</h3>
+                        <h3 class="text-lg font-bold text-white">{{ t('ui.walletWalletModal.unlock.title') }}</h3>
                         <p class="text-dark-500 text-xs font-mono mt-1">{{ storedAddress }}</p>
                     </div>
                     <input v-model="unlockPassword" type="password"
                         class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-500 focus:border-primary-500 text-sm"
-                        placeholder="ใส่ Password" @keyup.enter="unlockEmbedded" />
+                        :placeholder="t('ui.walletWalletModal.unlock.passwordPlaceholder')" @keyup.enter="unlockEmbedded" />
                     <div v-if="error" class="p-2 rounded-lg bg-trading-red/10 text-trading-red text-sm">{{ error }}</div>
                     <div class="flex gap-3">
-                        <button @click="showUnlockPassword = false; error = null" class="flex-1 py-2 text-dark-400 hover:text-white text-sm">กลับ</button>
+                        <button @click="showUnlockPassword = false; error = null" class="flex-1 py-2 text-dark-400 hover:text-white text-sm">{{ t('common.back') }}</button>
                         <button @click="unlockEmbedded" :disabled="isConnecting" class="flex-1 py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-medium text-sm">
-                            {{ isConnecting ? 'กำลัง Unlock...' : 'Unlock' }}
+                            {{ isConnecting ? t('ui.walletWalletModal.unlock.unlocking') : t('ui.walletWalletModal.unlock.unlock') }}
                         </button>
                     </div>
                     <button @click="showEmbeddedSetup = true; showUnlockPassword = false" class="w-full text-center text-dark-500 hover:text-dark-400 text-xs">
-                        สร้าง Wallet ใหม่ หรือ Import
+                        {{ t('ui.walletWalletModal.unlock.createOrImport') }}
                     </button>
                 </div>
             </template>
@@ -437,7 +438,7 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                     class="w-full mt-3 text-center text-dark-500 hover:text-dark-300 text-xs"
                     @click="openInWalletBrowser"
                 >
-                    เปิดเว็บนี้ในเบราว์เซอร์ของแอป {{ dappBrowserProvider.name }} แทน
+                    {{ t('ui.walletWalletModal.openInAppBrowser', { app: dappBrowserProvider.name }) }}
                 </button>
             </template>
 
@@ -512,15 +513,15 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
 
                     <div class="flex-1 text-left">
                         <p class="font-semibold text-white">{{ wallet.embedded ? t('wallet.app.webWallet') : wallet.name }}</p>
-                        <p class="text-xs text-dark-400">{{ wallet.embedded ? t('wallet.app.webWalletDesc') : wallet.description }}</p>
+                        <p class="text-xs text-dark-400">{{ t(wallet.descKey) }}</p>
                     </div>
 
                     <!-- Status (ป้าย "แนะนำ" มีที่เดียวคือการ์ดแอป TPIX Wallet ด้านบน) -->
                     <div v-if="selectedWallet === wallet.id && isConnecting" class="spinner"></div>
-                    <span v-else-if="wallet.embedded && hasStoredWallet" class="text-[10px] text-trading-green px-2 py-0.5 rounded-full bg-trading-green/10">มี Wallet</span>
-                    <span v-else-if="isWalletDetected(wallet.id)" class="text-[10px] text-trading-green px-2 py-0.5 rounded-full bg-trading-green/10">Detected</span>
+                    <span v-else-if="wallet.embedded && hasStoredWallet" class="text-[10px] text-trading-green px-2 py-0.5 rounded-full bg-trading-green/10">{{ t('ui.walletWalletModal.badge.hasWallet') }}</span>
+                    <span v-else-if="isWalletDetected(wallet.id)" class="text-[10px] text-trading-green px-2 py-0.5 rounded-full bg-trading-green/10">{{ t('ui.walletWalletModal.badge.detected') }}</span>
                     <!-- Mobile: แสดง "Open" แทน arrow (ไม่แสดงสำหรับ embedded wallet) -->
-                    <span v-else-if="mobile && !wallet.embedded" class="text-[10px] text-primary-400 px-2 py-0.5 rounded-full bg-primary-500/10">Open</span>
+                    <span v-else-if="mobile && !wallet.embedded" class="text-[10px] text-primary-400 px-2 py-0.5 rounded-full bg-primary-500/10">{{ t('ui.walletWalletModal.badge.open') }}</span>
                     <svg v-else class="w-5 h-5 text-dark-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                     </svg>
@@ -585,7 +586,7 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                     </div>
                     <div class="flex-1">
                         <p class="font-semibold text-white text-sm">TPIX TRADE App</p>
-                        <p class="text-xs text-dark-400">Trade faster with our native app</p>
+                        <p class="text-xs text-dark-400">{{ t('ui.walletWalletModal.app.tagline') }}</p>
                     </div>
                 </div>
                 <div class="flex gap-2">
@@ -593,13 +594,13 @@ const inAppBrowserDisplayName = IN_APP_DISPLAY_NAMES[inAppBrowser] || inAppBrows
                         @click="openTpixApp"
                         class="flex-1 py-2 px-3 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-300 text-sm font-medium hover:bg-primary-500/30 transition-all"
                     >
-                        Open App
+                        {{ t('ui.walletWalletModal.app.open') }}
                     </button>
                     <button
                         @click="downloadTpixApp"
                         class="flex-1 py-2 px-3 rounded-lg bg-accent-500/20 border border-accent-500/30 text-accent-300 text-sm font-medium hover:bg-accent-500/30 transition-all"
                     >
-                        Download
+                        {{ t('wallet.app.download') }}
                     </button>
                 </div>
             </div>

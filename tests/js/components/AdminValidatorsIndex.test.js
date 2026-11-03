@@ -14,6 +14,7 @@ const axiosPost = vi.fn();
 vi.mock('axios', () => ({ default: { post: (...a) => axiosPost(...a), get: vi.fn().mockResolvedValue({ data: {} }) } }));
 
 import Index from '@/Pages/Admin/Validators/Index.vue';
+import { t } from '@/Composables/useTranslation';
 
 const BLS = '0x' + 'ab'.repeat(48);
 const NEW = '0x' + '1'.repeat(40);
@@ -56,8 +57,8 @@ describe('Admin/Validators/Index', () => {
 
     it('lists bindings awaiting a vote with the command to run', async () => {
         const w = mountPage();
-        await tab(w, 'ผูกกุญแจ / รอโหวต').trigger('click');
-        expect(w.text()).toContain('รอโหวตเข้า');
+        await tab(w, t('admin.validators.tabs.onboarding')).trigger('click');
+        expect(w.text()).toContain(t('admin.validators.stage.awaitingVote'));
         expect(w.text()).toContain(`validator-vote.sh auth --addr ${NEW} --bls ${BLS}`);
     });
 

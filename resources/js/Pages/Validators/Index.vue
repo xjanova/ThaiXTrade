@@ -11,6 +11,9 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 /*
  * ทุกตัวเลขบนหน้านี้มาจากเชน (บล็อก / NodeRegistryV2) — null = ไม่ทราบ ต้องโชว์ "—"
@@ -44,6 +47,7 @@ let worldLayer = null;
 let tileLayer = null;
 let tileErrors = 0;
 let attribControl = null;
+let zoomControl = null;
 let labelLayer = null;
 let cityLabels = [];
 let mapLoading = false;
@@ -101,9 +105,9 @@ const sealWindow = computed(() => networkStats.value.seal_window ?? validators.v
 
 // online: true = เซ็นบล็อกล่าสุด ๆ อยู่ · false = ไม่ได้เซ็นเลยในช่วงนั้น · null = ไม่ทราบ
 function statusText(v) {
-    if (v.online === true) return 'Signing';
-    if (v.online === false) return 'Not signing';
-    return 'Unknown';
+    if (v.online === true) return t('page.validators.status.signing');
+    if (v.online === false) return t('page.validators.status.notSigning');
+    return t('page.validators.status.unknown');
 }
 
 function statusColor(v) {
@@ -263,6 +267,17 @@ function dropTileLayer() {
     syncCityLabels();
 }
 
+// tooltip ของปุ่มซูมถูกเขียนลง DOM ตอนสร้าง — สลับภาษาแล้วต้องสร้างใหม่
+function addZoomControl() {
+    if (!leafletMap) return;
+    if (zoomControl) leafletMap.removeControl(zoomControl);
+    zoomControl = L.control.zoom({
+        position: 'topleft',
+        zoomInTitle: t('page.validators.map.zoomIn'),
+        zoomOutTitle: t('page.validators.map.zoomOut'),
+    }).addTo(leafletMap);
+}
+
 async function initMap() {
     if (leafletMap || mapLoading || typeof L === 'undefined') return;
     mapLoading = true;
@@ -283,7 +298,8 @@ async function initMap() {
         zoom: 3,
         minZoom: MAP_ZOOM.min,
         maxZoom: MAP_ZOOM.vectorMax,
-        zoomControl: true,
+        // ปุ่มซูมสร้างเองด้านล่าง — ค่าเริ่มต้นของ Leaflet มี tooltip ภาษาอังกฤษตายตัว
+        zoomControl: false,
         attributionControl: false,
         worldCopyJump: false,
         maxBounds: [[-85, -180], [85, 180]],
@@ -318,6 +334,7 @@ async function initMap() {
         pane: 'vectorBase',
     }).addTo(leafletMap);
 
+    addZoomControl();
     addTileLayer();
 
     labelLayer = L.layerGroup().addTo(leafletMap);
@@ -341,7 +358,7 @@ async function initMap() {
     mapLoading = false;
 }
 
-function addMarkers() {
+function addMarkers(recenter = true) {
     if (!markerGroup) return;
     markerGroup.clearLayers();
     // ระบายประเทศใหม่ให้ตรงกับตัวกรองปัจจุบัน
@@ -380,21 +397,21 @@ function addMarkers() {
         marker.bindPopup(`
             <div style="font-family: system-ui; min-width: 220px; padding: 2px 0;">
                 <div style="font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 8px;">
-                    ${flag(v.country_code)} ${escHtml(v.country_name) || 'Unknown'}
+                    ${flag(v.country_code)} ${escHtml(v.country_name) || escHtml(t('page.validators.unknownLocation'))}
                 </div>
                 <div style="margin-bottom: 8px;">${tierBadge}</div>
                 <div style="font-size: 10px; color: #06b6d4; font-family: 'Courier New', monospace; word-break: break-all; padding: 6px 8px; background: rgba(6,182,212,0.06); border-radius: 6px; border: 1px solid rgba(6,182,212,0.1);">
                     ${escHtml(v.address) || '—'}
                 </div>
-                ${v.endpoint ? `<div style="font-size: 10px; color: #6b7280; margin-top: 6px;">Endpoint: <span style="color: #9ca3af;">${escHtml(v.endpoint)}</span></div>` : ''}
+                ${v.endpoint ? `<div style="font-size: 10px; color: #6b7280; margin-top: 6px;">${escHtml(t('page.validators.popup.endpoint'))} <span style="color: #9ca3af;">${escHtml(v.endpoint)}</span></div>` : ''}
                 <div style="margin-top: 8px; display: flex; align-items: center; gap: 12px; font-size: 11px;">
                     <span style="display: flex; align-items: center; gap: 4px; color: ${statusColor(v)};">
                         <span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor(v)};"></span>
-                        ${statusText(v)}
+                        ${escHtml(statusText(v))}
                     </span>
-                    ${v.seals_signed != null ? `<span style="color: #9ca3af;">Recent seals: <strong style="color: #fff;">${escHtml(sealsText(v))}</strong></span>` : ''}
+                    ${v.seals_signed != null ? `<span style="color: #9ca3af;">${escHtml(t('page.validators.popup.recentSeals'))} <strong style="color: #fff;">${escHtml(sealsText(v))}</strong></span>` : ''}
                 </div>
-                ${v.stake_amount != null ? `<div style="margin-top: 6px; font-size: 11px; color: #9ca3af;">Staked: <strong style="color: #fff;">${fmtNum(v.stake_amount)}</strong> TPIX</div>` : ''}
+                ${v.stake_amount != null ? `<div style="margin-top: 6px; font-size: 11px; color: #9ca3af;">${escHtml(t('page.validators.popup.staked'))} <strong style="color: #fff;">${fmtNum(v.stake_amount)}</strong> TPIX</div>` : ''}
             </div>
         `, { className: 'validator-popup' });
 
@@ -402,7 +419,7 @@ function addMarkers() {
     });
 
     // Center map on markers
-    if (filteredValidators.value.length > 0) {
+    if (recenter && filteredValidators.value.length > 0) {
         const coords = filteredValidators.value
             .filter(hasLocation)
             .map(v => [v.latitude, v.longitude]);
@@ -439,6 +456,12 @@ watch([filterTier, filterCountry, searchQuery], () => {
     addMarkers();
 });
 
+// ป๊อปอัพของหมุดเป็น HTML ที่สร้างครั้งเดียว — สลับภาษาแล้วต้องสร้างใหม่ ไม่งั้นค้างภาษาเดิม
+watch(locale, () => {
+    addMarkers(false);   // แค่แปลป๊อปอัพใหม่ ไม่ต้องเลื่อนแผนที่
+    addZoomControl();
+});
+
 // ============================================================
 //  API calls
 // ============================================================
@@ -470,7 +493,7 @@ async function refreshData() {
 async function checkRewards() {
     const addr = rewardAddress.value.trim();
     if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
-        rewardResult.value = { error: 'Invalid wallet address format' };
+        rewardResult.value = { errorKey: 'page.validators.rewards.invalidAddress' };
         return;
     }
     isCheckingReward.value = true;
@@ -479,10 +502,10 @@ async function checkRewards() {
         const resp = await fetch(`/api/v1/validators/rewards?address=${addr}`);
         if (resp.ok) {
             const d = await resp.json();
-            rewardResult.value = d.success ? d.data : { error: d.error?.message || 'Failed' };
+            rewardResult.value = d.success ? d.data : (d.error?.message ? { error: d.error.message } : { errorKey: 'page.validators.rewards.failed' });
         }
     } catch {
-        rewardResult.value = { error: 'Network error' };
+        rewardResult.value = { errorKey: 'page.validators.rewards.networkError' };
     } finally {
         isCheckingReward.value = false;
     }
@@ -506,6 +529,7 @@ onUnmounted(() => {
     tileLayer = null;
     tileErrors = 0;
     attribControl = null;
+    zoomControl = null;
     labelLayer = null;
     cityLabels = [];
     markerGroup = null;
@@ -513,7 +537,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <Head title="Validator Network" />
+    <Head :title="t('page.validators.headTitle')" />
     <AppLayout>
         <div class="relative min-h-screen overflow-hidden">
 
@@ -547,40 +571,40 @@ onUnmounted(() => {
                         </div>
 
                         <h1 class="text-4xl md:text-5xl font-black mb-3">
-                            <span class="text-gradient-brand">Validator Network</span>
+                            <span class="text-gradient-brand">{{ t('page.validators.headTitle') }}</span>
                         </h1>
                         <p class="text-sm md:text-base text-gray-400 max-w-2xl mx-auto mb-8">
-                            The live TPIX Chain validator set, read straight from the chain
+                            {{ t('page.validators.hero.subtitle') }}
                         </p>
 
                         <!-- Stats preview (MasterNode-style 3-tile grid) -->
                         <div class="grid grid-cols-3 gap-3 sm:gap-4 max-w-md mx-auto mb-8">
                             <div class="glass-sm rounded-xl p-3">
-                                <div class="text-xs text-gray-400">Validators</div>
+                                <div class="text-xs text-gray-400">{{ t('page.validators.stats.validators') }}</div>
                                 <div class="text-xl font-black text-gradient">{{ fmtMaybe(networkStats.total_validators) }}</div>
                             </div>
                             <div class="glass-sm rounded-xl p-3">
-                                <div class="text-xs text-gray-400">Signing</div>
+                                <div class="text-xs text-gray-400">{{ t('page.validators.status.signing') }}</div>
                                 <div class="text-xl font-black text-cyan-400" data-test="hero-signing">{{ fmtMaybe(networkStats.active_validators) }}</div>
                             </div>
                             <div class="glass-sm rounded-xl p-3">
-                                <div class="text-xs text-gray-400">Block Height</div>
+                                <div class="text-xs text-gray-400">{{ t('page.validators.stats.blockHeight') }}</div>
                                 <div class="text-xl font-black text-trading-green">{{ fmtMaybe(networkStats.block_height) }}</div>
                             </div>
                         </div>
                         <p v-if="networkStats.chain_reachable === false" class="text-xs text-yellow-400/90 -mt-4 mb-6">
-                            Cannot reach TPIX Chain right now — figures show “—” until it responds.
+                            {{ t('page.validators.hero.chainUnreachable') }}
                         </p>
 
                         <!-- Primary actions -->
                         <div class="flex items-center justify-center gap-3 flex-wrap">
                             <Link href="/validators/apply"
                                 class="btn-brand px-8 py-3 text-base font-bold rounded-2xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300">
-                                Apply to Validate
+                                {{ t('page.validators.hero.apply') }}
                             </Link>
                             <button @click="refreshData" :disabled="isLoading"
                                 class="px-6 py-3 text-sm font-semibold rounded-2xl bg-white/5 text-gray-300 border border-white/10 hover:bg-white/10 transition-all disabled:opacity-50">
-                                {{ isLoading ? 'Refreshing...' : 'Refresh' }}
+                                {{ isLoading ? t('page.validators.hero.refreshing') : t('page.validators.hero.refresh') }}
                             </button>
                         </div>
                     </div>
@@ -591,16 +615,16 @@ onUnmounted(() => {
                 <!-- ============================================================ -->
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
                     <div v-for="stat in [
-                        { label: 'Total Nodes', value: fmtNum(validators.length), color: 'text-white', glow: '' },
-                        { label: 'Validators', value: tierCounts.validator, color: 'text-red-400', glow: 'hover:shadow-[0_0_20px_rgba(239,68,68,0.1)]' },
-                        { label: 'Guardians', value: tierCounts.guardian, color: 'text-yellow-400', glow: 'hover:shadow-[0_0_20px_rgba(245,158,11,0.1)]' },
-                        { label: 'Sentinels', value: tierCounts.sentinel, color: 'text-purple-400', glow: 'hover:shadow-[0_0_20px_rgba(168,85,247,0.1)]' },
-                        { label: 'Light Nodes', value: tierCounts.light, color: 'text-cyan-400', glow: 'hover:shadow-[0_0_20px_rgba(6,182,212,0.1)]' },
-                        { label: 'Countries', value: countries.length || '—', color: 'text-emerald-400', glow: '' },
-                        { label: 'Block Height', value: fmtMaybe(networkStats.block_height), color: 'text-white', glow: '' },
+                        { id: 'totalNodes', label: t('page.validators.stats.totalNodes'), value: fmtNum(validators.length), color: 'text-white', glow: '' },
+                        { id: 'validators', label: t('page.validators.stats.validators'), value: tierCounts.validator, color: 'text-red-400', glow: 'hover:shadow-[0_0_20px_rgba(239,68,68,0.1)]' },
+                        { id: 'guardians', label: t('page.validators.stats.guardians'), value: tierCounts.guardian, color: 'text-yellow-400', glow: 'hover:shadow-[0_0_20px_rgba(245,158,11,0.1)]' },
+                        { id: 'sentinels', label: t('page.validators.stats.sentinels'), value: tierCounts.sentinel, color: 'text-purple-400', glow: 'hover:shadow-[0_0_20px_rgba(168,85,247,0.1)]' },
+                        { id: 'lightNodes', label: t('page.validators.stats.lightNodes'), value: tierCounts.light, color: 'text-cyan-400', glow: 'hover:shadow-[0_0_20px_rgba(6,182,212,0.1)]' },
+                        { id: 'countries', label: t('page.validators.stats.countries'), value: countries.length || '—', color: 'text-emerald-400', glow: '' },
+                        { id: 'blockHeight', label: t('page.validators.stats.blockHeight'), value: fmtMaybe(networkStats.block_height), color: 'text-white', glow: '' },
                         // ยอดวางค้ำจริงใน NodeRegistryV2 — ไม่ใช่จำนวน validator × ขั้นต่ำของชั้น
-                        { label: 'Total Staked', value: fmtMaybe(networkStats.total_staked, ' TPIX'), color: 'text-trading-green', glow: 'hover:shadow-[0_0_20px_rgba(0,200,83,0.1)]' },
-                    ]" :key="stat.label"
+                        { id: 'totalStaked', label: t('page.validators.stats.totalStaked'), value: fmtMaybe(networkStats.total_staked, ' TPIX'), color: 'text-trading-green', glow: 'hover:shadow-[0_0_20px_rgba(0,200,83,0.1)]' },
+                    ]" :key="stat.id"
                        :class="['glass-card rounded-xl p-4 text-center group hover:scale-105 transition-all duration-300', stat.glow]">
                         <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{{ stat.label }}</div>
                         <div :class="['text-2xl font-black', stat.color]">{{ stat.value }}</div>
@@ -611,7 +635,7 @@ onUnmounted(() => {
                 <!--  Tier Filter Badges (clickable — like MasterNode tier cards)  -->
                 <!-- ============================================================ -->
                 <div class="flex flex-wrap gap-3 justify-center">
-                    <button v-for="(tc, key) in { all: { label: 'All Nodes', color: 'text-white', bg: 'bg-white/10 border-white/20', dot: '#fff', icon: '🌐' }, ...tierConfig }"
+                    <button v-for="(tc, key) in { all: { label: t('page.validators.filter.allNodes'), color: 'text-white', bg: 'bg-white/10 border-white/20', dot: '#fff', icon: '🌐' }, ...tierConfig }"
                             :key="key" @click="filterTier = key"
                             :class="['flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all duration-300',
                                 filterTier === key
@@ -630,9 +654,9 @@ onUnmounted(() => {
                 <!-- ============================================================ -->
                 <div class="flex gap-1 p-1 glass-sm rounded-xl max-w-xl mx-auto">
                     <button v-for="tab in [
-                        { id: 'map', label: 'World Map', icon: '🌍' },
-                        { id: 'list', label: 'Node List', icon: '📋' },
-                        { id: 'rewards', label: 'Rewards', icon: '💰' },
+                        { id: 'map', label: t('page.validators.tabs.map'), icon: '🌍' },
+                        { id: 'list', label: t('page.validators.tabs.list'), icon: '📋' },
+                        { id: 'rewards', label: t('page.validators.tabs.rewards'), icon: '💰' },
                     ]" :key="tab.id" @click="activeTab = tab.id"
                        :class="['flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all',
                            activeTab === tab.id
@@ -650,7 +674,7 @@ onUnmounted(() => {
                     <div class="flex flex-wrap gap-3 items-center">
                         <select v-model="filterCountry"
                             class="bg-dark-800/80 border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 focus:border-cyan-500/50 focus:outline-none backdrop-blur-sm">
-                            <option value="all">All Countries</option>
+                            <option value="all">{{ t('page.validators.filter.allCountries') }}</option>
                             <option v-for="[code, name] in countries" :key="code" :value="code">
                                 {{ flag(code) }} {{ name }}
                             </option>
@@ -658,8 +682,8 @@ onUnmounted(() => {
                         <div class="flex items-center gap-2 ml-auto">
                             <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                             <span class="text-xs text-gray-400" data-test="signing-summary">
-                                {{ signingCount }} / {{ validators.length }} signing
-                                <template v-if="sealWindow">in the last {{ sealWindow }} blocks</template>
+                                {{ t('page.validators.map.signingSummary', { signing: signingCount, total: validators.length }) }}
+                                <template v-if="sealWindow">{{ t('page.validators.map.inLastBlocks', { n: sealWindow }) }}</template>
                             </span>
                         </div>
                     </div>
@@ -674,15 +698,15 @@ onUnmounted(() => {
                                  data-test="locations-unknown"
                                  class="absolute inset-x-3 top-3 z-[500] mx-auto max-w-md px-4 py-3 rounded-xl text-xs text-center
                                         bg-black/70 border border-white/10 text-gray-300 backdrop-blur-sm pointer-events-none">
-                                Node locations are not reported yet — {{ filteredValidators.length }}
-                                {{ filteredValidators.length === 1 ? 'node' : 'nodes' }} with unknown location.
-                                Locations will appear once nodes report them.
+                                {{ filteredValidators.length === 1
+                                    ? t('page.validators.map.locationsUnknownOne', { n: filteredValidators.length })
+                                    : t('page.validators.map.locationsUnknownMany', { n: filteredValidators.length }) }}
                             </div>
                             <!-- ขึ้นเมื่อชั้นไทล์ใช้ไม่ได้ แผนที่ยังใช้งานได้แต่ซูมได้ตื้นกว่า -->
                             <div v-if="tilesDown"
                                  class="absolute bottom-3 left-3 z-[500] px-2.5 py-1 rounded-lg text-[10px] font-medium
                                         bg-black/60 border border-white/10 text-gray-400 backdrop-blur-sm pointer-events-none">
-                                แผนที่สำรอง (ออฟไลน์)
+                                {{ t('page.validators.map.fallback') }}
                             </div>
                         </div>
                     </div>
@@ -704,7 +728,7 @@ onUnmounted(() => {
                     <!-- Search -->
                     <div class="flex flex-wrap gap-3">
                         <div class="relative flex-1 min-w-[200px]">
-                            <input v-model="searchQuery" type="text" placeholder="Search by address, country, endpoint..."
+                            <input v-model="searchQuery" type="text" :placeholder="t('page.validators.list.searchPlaceholder')"
                                 class="w-full bg-dark-800/80 border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 pl-10 focus:border-cyan-500/50 focus:outline-none placeholder-gray-600 backdrop-blur-sm" />
                             <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -712,7 +736,7 @@ onUnmounted(() => {
                         </div>
                         <select v-model="filterCountry"
                             class="bg-dark-800/80 border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 focus:border-cyan-500/50 focus:outline-none backdrop-blur-sm">
-                            <option value="all">All Countries</option>
+                            <option value="all">{{ t('page.validators.filter.allCountries') }}</option>
                             <option v-for="[code, name] in countries" :key="code" :value="code">
                                 {{ flag(code) }} {{ name }}
                             </option>
@@ -725,14 +749,14 @@ onUnmounted(() => {
                             <table class="w-full text-sm">
                                 <thead>
                                     <tr class="border-b border-white/[0.06]">
-                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">Status</th>
-                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">Tier</th>
-                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">Address</th>
-                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden md:table-cell">Location</th>
-                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden lg:table-cell">Endpoint</th>
+                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">{{ t('page.validators.list.status') }}</th>
+                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">{{ t('page.validators.list.tier') }}</th>
+                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium">{{ t('page.validators.list.address') }}</th>
+                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden md:table-cell">{{ t('page.validators.list.location') }}</th>
+                                        <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden lg:table-cell">{{ t('page.validators.list.endpoint') }}</th>
                                         <th class="px-4 py-3.5 text-left text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden sm:table-cell"
-                                            title="Blocks this validator signed out of the most recent blocks">Recent seals</th>
-                                        <th class="px-4 py-3.5 text-right text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden sm:table-cell">Staked</th>
+                                            :title="t('page.validators.list.recentSealsHint')">{{ t('page.validators.list.recentSeals') }}</th>
+                                        <th class="px-4 py-3.5 text-right text-[10px] text-gray-500 uppercase tracking-wider font-medium hidden sm:table-cell">{{ t('page.validators.list.staked') }}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -764,7 +788,7 @@ onUnmounted(() => {
                                         </td>
                                         <td class="px-4 py-3.5 hidden md:table-cell">
                                             <span class="text-xs text-gray-300">
-                                                {{ flag(v.country_code) }} {{ v.country_name || 'Unknown' }}
+                                                {{ flag(v.country_code) }} {{ v.country_name || t('page.validators.unknownLocation') }}
                                             </span>
                                         </td>
                                         <td class="px-4 py-3.5 hidden lg:table-cell">
@@ -785,7 +809,7 @@ onUnmounted(() => {
                                     </tr>
                                     <tr v-if="filteredValidators.length === 0">
                                         <td colspan="7" class="px-4 py-16 text-center text-gray-500 text-sm">
-                                            No validators found matching your criteria
+                                            {{ t('page.validators.list.empty') }}
                                         </td>
                                     </tr>
                                 </tbody>
@@ -807,8 +831,8 @@ onUnmounted(() => {
                                 <div class="flex items-center gap-3">
                                     <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-cyan-500/20 flex items-center justify-center text-xl">💰</div>
                                     <div>
-                                        <h3 class="text-lg font-bold text-white">Check Validator Rewards</h3>
-                                        <p class="text-xs text-gray-400">Enter wallet address to check pending rewards</p>
+                                        <h3 class="text-lg font-bold text-white">{{ t('page.validators.rewards.title') }}</h3>
+                                        <p class="text-xs text-gray-400">{{ t('page.validators.rewards.subtitle') }}</p>
                                     </div>
                                 </div>
 
@@ -817,44 +841,44 @@ onUnmounted(() => {
                                         class="flex-1 bg-dark-800/80 border border-white/10 text-white text-sm rounded-xl px-4 py-3 font-mono focus:border-cyan-500/50 focus:outline-none placeholder-gray-600 backdrop-blur-sm" />
                                     <button @click="checkRewards" :disabled="isCheckingReward"
                                         class="btn-brand px-6 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-50">
-                                        {{ isCheckingReward ? 'Checking...' : 'Check' }}
+                                        {{ isCheckingReward ? t('page.validators.rewards.checking') : t('page.validators.rewards.check') }}
                                     </button>
                                 </div>
 
                                 <!-- Result — ทุกค่ามาจากเชน / NodeRegistryV2 ไม่ทราบ = "—" -->
                                 <div v-if="rewardResult" class="space-y-4" data-test="reward-result">
-                                    <div v-if="rewardResult.error" class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                                        {{ rewardResult.error }}
+                                    <div v-if="rewardResult.error || rewardResult.errorKey" class="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                                        {{ rewardResult.errorKey ? t(rewardResult.errorKey) : rewardResult.error }}
                                     </div>
                                     <template v-else>
                                         <div class="grid grid-cols-2 gap-4">
                                             <div class="glass-sm rounded-xl p-4 text-center">
-                                                <div class="text-[10px] text-gray-500 uppercase mb-1">Tier</div>
+                                                <div class="text-[10px] text-gray-500 uppercase mb-1">{{ t('page.validators.list.tier') }}</div>
                                                 <div :class="['text-lg font-black', tierConfig[rewardResult.tier]?.color || 'text-white']">
                                                     {{ tierConfig[rewardResult.tier]?.icon || '' }} {{ tierConfig[rewardResult.tier]?.label || rewardResult.tier || '—' }}
                                                 </div>
                                             </div>
                                             <div class="glass-sm rounded-xl p-4 text-center">
-                                                <div class="text-[10px] text-gray-500 uppercase mb-1">Status</div>
+                                                <div class="text-[10px] text-gray-500 uppercase mb-1">{{ t('page.validators.list.status') }}</div>
                                                 <div :class="['text-lg font-black', rewardResult.active ? 'text-emerald-400' : 'text-red-400']">
-                                                    {{ rewardResult.active ? 'Active' : 'Inactive' }}
+                                                    {{ rewardResult.active ? t('page.validators.rewards.active') : t('page.validators.rewards.inactive') }}
                                                 </div>
                                                 <div class="text-[10px] text-gray-500 mt-0.5">
-                                                    {{ rewardResult.in_validator_set ? 'In the block-signing validator set' : (rewardResult.registry_status ? 'NodeRegistry: ' + rewardResult.registry_status : 'Not registered as a node') }}
+                                                    {{ rewardResult.in_validator_set ? t('page.validators.rewards.inValidatorSet') : (rewardResult.registry_status ? t('page.validators.rewards.registryStatus', { status: rewardResult.registry_status }) : t('page.validators.rewards.notRegistered')) }}
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="glass-sm rounded-xl p-5">
                                             <div class="flex items-center justify-between">
                                                 <div>
-                                                    <div class="text-[10px] text-gray-500 uppercase mb-1">Pending Rewards</div>
+                                                    <div class="text-[10px] text-gray-500 uppercase mb-1">{{ t('page.validators.rewards.pending') }}</div>
                                                     <div class="text-2xl font-black text-trading-green">
                                                         {{ fmtMaybe(rewardResult.pending_rewards) }}
                                                         <span v-if="rewardResult.pending_rewards != null" class="text-sm text-gray-400 ml-1">TPIX</span>
                                                     </div>
                                                 </div>
                                                 <div class="text-right">
-                                                    <div class="text-[10px] text-gray-500 uppercase mb-1">Total Earned</div>
+                                                    <div class="text-[10px] text-gray-500 uppercase mb-1">{{ t('page.validators.rewards.totalEarned') }}</div>
                                                     <div class="text-lg font-bold text-white">
                                                         {{ fmtMaybe(rewardResult.total_earned) }}
                                                         <span v-if="rewardResult.total_earned != null" class="text-xs text-gray-400 ml-1">TPIX</span>
@@ -864,14 +888,14 @@ onUnmounted(() => {
                                         </div>
                                         <div class="grid grid-cols-2 gap-4">
                                             <div class="glass-sm rounded-xl p-4 text-center">
-                                                <div class="text-[10px] text-gray-500 uppercase mb-1">Staked (NodeRegistry)</div>
+                                                <div class="text-[10px] text-gray-500 uppercase mb-1">{{ t('page.validators.rewards.stakedRegistry') }}</div>
                                                 <div class="text-xl font-black text-white">
                                                     {{ fmtMaybe(rewardResult.stake_amount) }}
                                                     <span v-if="rewardResult.stake_amount != null" class="text-sm text-gray-400 ml-1">TPIX</span>
                                                 </div>
                                             </div>
                                             <div class="glass-sm rounded-xl p-4 text-center">
-                                                <div class="text-[10px] text-gray-500 uppercase mb-1">Wallet Balance</div>
+                                                <div class="text-[10px] text-gray-500 uppercase mb-1">{{ t('page.validators.rewards.walletBalance') }}</div>
                                                 <div class="text-xl font-black text-white">
                                                     {{ fmtMaybe(rewardResult.balance) }}
                                                     <span v-if="rewardResult.balance != null" class="text-sm text-gray-400 ml-1">TPIX</span>
@@ -879,7 +903,7 @@ onUnmounted(() => {
                                             </div>
                                         </div>
                                         <p class="text-[11px] text-gray-500">
-                                            Rewards and stake are read from NodeRegistryV2. “—” means this wallet has no node registered there.
+                                            {{ t('page.validators.rewards.note') }}
                                         </p>
                                     </template>
                                 </div>
@@ -891,7 +915,7 @@ onUnmounted(() => {
                     <!--  Reward share per tier — reward_share บน NodeRegistryV2     -->
                     <!-- ============================================================ -->
                     <div class="glass rounded-2xl p-6">
-                        <h3 class="text-sm font-bold text-white mb-4">Reward Share by Tier</h3>
+                        <h3 class="text-sm font-bold text-white mb-4">{{ t('page.validators.share.title') }}</h3>
                         <div v-if="shareBar.length" class="flex rounded-xl overflow-hidden h-8 sm:h-10 mb-3" data-test="share-bar">
                             <div v-for="seg in shareBar" :key="seg.id"
                                  :class="['bg-gradient-to-r flex items-center justify-center text-[8px] sm:text-[10px] font-bold', shareBarClass[seg.id]]"
@@ -899,11 +923,10 @@ onUnmounted(() => {
                                 <span class="hidden sm:inline">{{ seg.pct }}% {{ tierConfig[seg.id].label }}</span><span class="sm:hidden">{{ seg.pct }}%</span>
                             </div>
                         </div>
-                        <p v-else class="text-xs text-gray-500 mb-3">Reward shares are unavailable right now (could not read NodeRegistryV2).</p>
+                        <p v-else class="text-xs text-gray-500 mb-3">{{ t('page.validators.share.unavailable') }}</p>
                         <p class="text-xs text-gray-400">
-                            Rewards accrue on NodeRegistryV2 to registered nodes, split by tier and capped per node.
-                            Emission schedule and reward-pool status:
-                            <Link href="/masternode" class="text-cyan-400 hover:text-cyan-300">Master Node</Link>.
+                            {{ t('page.validators.share.desc') }}
+                            <Link href="/masternode" class="text-cyan-400 hover:text-cyan-300">{{ t('page.validators.share.masterNodeLink') }}</Link>.
                         </p>
                     </div>
 
@@ -914,16 +937,16 @@ onUnmounted(() => {
                         <div class="flex items-center gap-3">
                             <BrandLogo variant="icon" alt="TPIX" class="w-8 h-8 rounded-full ring-1 ring-white/10" />
                             <div>
-                                <h3 class="text-sm font-bold text-white uppercase tracking-wide">Node Tiers</h3>
-                                <p class="text-xs text-gray-400">Reward share &amp; minimum stake, as set on NodeRegistryV2</p>
+                                <h3 class="text-sm font-bold text-white uppercase tracking-wide">{{ t('page.validators.tiers.title') }}</h3>
+                                <p class="text-xs text-gray-400">{{ t('page.validators.tiers.subtitle') }}</p>
                             </div>
                         </div>
                         <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div v-for="info in [
-                                { tier: 'validator', desc: 'IBFT block sealers with governance power. Requires company KYC.' },
-                                { tier: 'guardian', desc: 'Premium masternodes.' },
-                                { tier: 'sentinel', desc: 'Standard masternodes for network integrity.' },
-                                { tier: 'light', desc: 'Easiest entry to support the network.' },
+                                { tier: 'validator', descKey: 'page.validators.tiers.desc.validator' },
+                                { tier: 'guardian', descKey: 'page.validators.tiers.desc.guardian' },
+                                { tier: 'sentinel', descKey: 'page.validators.tiers.desc.sentinel' },
+                                { tier: 'light', descKey: 'page.validators.tiers.desc.light' },
                             ]" :key="info.tier"
                                  class="group relative rounded-2xl overflow-hidden transition-all duration-500 hover:scale-[1.03] hover:-translate-y-1">
                                 <!-- Glow backdrop on hover (per-tier color) -->
@@ -947,10 +970,10 @@ onUnmounted(() => {
                                     <h4 :class="['text-base font-bold mb-1', tierConfig[info.tier].color]">
                                         {{ tierConfig[info.tier].icon }} {{ tierConfig[info.tier].label }}
                                     </h4>
-                                    <p class="text-[11px] text-gray-400 mb-3 leading-relaxed flex-1">{{ info.desc }}</p>
+                                    <p class="text-[11px] text-gray-400 mb-3 leading-relaxed flex-1">{{ t(info.descKey) }}</p>
                                     <div class="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-2" />
                                     <div class="flex items-center justify-between">
-                                        <span class="text-[10px] text-gray-500">Min Stake</span>
+                                        <span class="text-[10px] text-gray-500">{{ t('page.validators.tiers.minStake') }}</span>
                                         <span :class="['text-xs font-bold', tierConfig[info.tier].color]">{{ fmtMaybe(tiers?.[info.tier]?.min_stake, ' TPIX') }}</span>
                                     </div>
                                 </div>
@@ -975,22 +998,22 @@ onUnmounted(() => {
                             <BrandLogo variant="mark" alt="TPIX" class="relative w-16 h-16 rounded-full ring-2 ring-white/10" />
                         </div>
 
-                        <h3 class="text-xl md:text-2xl font-bold text-white mb-2">Become a TPIX Validator</h3>
+                        <h3 class="text-xl md:text-2xl font-bold text-white mb-2">{{ t('page.validators.cta.title') }}</h3>
                         <p class="text-sm text-gray-400 mb-6 max-w-lg mx-auto">
-                            Help secure the TPIX Chain and earn rewards. Apply now to join the validator network.
+                            {{ t('page.validators.cta.desc') }}
                         </p>
                         <div class="flex justify-center gap-3 flex-wrap">
                             <Link href="/validators/apply"
                                 class="btn-brand px-6 py-2.5 rounded-xl font-bold text-sm hover:scale-105 transition-transform">
-                                Apply Now
+                                {{ t('page.validators.cta.applyNow') }}
                             </Link>
                             <Link href="/masternode"
                                 class="btn-secondary px-6 py-2.5 rounded-xl font-bold text-sm">
-                                Run a Node
+                                {{ t('page.validators.cta.runNode') }}
                             </Link>
                             <Link href="/masternode/guide"
                                 class="btn-secondary px-6 py-2.5 rounded-xl font-bold text-sm">
-                                Setup Guide
+                                {{ t('page.validators.cta.setupGuide') }}
                             </Link>
                         </div>
                     </div>

@@ -15,6 +15,7 @@ import { router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { playConnectSound, playDisconnectSound, playErrorSound } from '@/Composables/useSounds';
 import { isMobile } from '@/utils/mobileWallet';
+import { t } from '@/Composables/useTranslation';
 import {
     getWalletConnectProvider,
     hasActiveSession,
@@ -89,7 +90,8 @@ function withTimeout(promise, ms, message = 'Operation timed out') {
     return Promise.race([
         promise,
         new Promise((_, reject) =>
-            setTimeout(() => reject(new Error(message)), ms)
+            // isTimeout: ข้อความด้านในเป็นอังกฤษ (บางอันไม่มีคำว่า 'timed out') — catch ใช้ธงนี้เลือกข้อความที่แปลแล้ว
+            setTimeout(() => reject(Object.assign(new Error(message), { isTimeout: true })), ms)
         ),
     ]);
 }
@@ -272,7 +274,7 @@ export const useWalletStore = defineStore('wallet', () => {
                 coinbase: 'Coinbase Wallet',
                 okx: 'OKX Wallet',
             };
-            error.value = `${names[type] || 'Wallet'} not detected. Please install the extension or open in the wallet's browser.`;
+            error.value = t('store.walletStore.errors.notDetected', { wallet: names[type] || t('store.walletStore.genericWallet') });
             throw new Error(error.value);
         }
 
@@ -292,7 +294,7 @@ export const useWalletStore = defineStore('wallet', () => {
             );
 
             if (!accounts || accounts.length === 0) {
-                throw new Error('No accounts returned from wallet.');
+                throw new Error(t('store.walletStore.errors.noAccounts'));
             }
 
             // สร้าง ethers provider และ signer (+ timeout)
@@ -371,11 +373,12 @@ export const useWalletStore = defineStore('wallet', () => {
         } catch (err) {
             playErrorSound();
             if (err.code === 4001) {
-                error.value = 'Connection rejected by user.';
-            } else if (err.message?.includes('timed out')) {
-                error.value = err.message;
+                error.value = t('store.walletStore.errors.rejected');
+            } else if (err?.isTimeout || err.message?.includes('timed out')) {
+                // ข้อความ timeout ภายในเป็นอังกฤษ (ใช้จับด้วย 'timed out') — โชว์ผู้ใช้ตามภาษาที่เลือก
+                error.value = t('store.walletStore.errors.connectTimeout');
             } else {
-                error.value = err.message || 'Failed to connect wallet.';
+                error.value = err.message || t('store.walletStore.errors.connectFailed');
             }
             throw err;
         } finally {
@@ -514,7 +517,7 @@ export const useWalletStore = defineStore('wallet', () => {
      */
     async function sendTPIX(toAddress, amount) {
         if (walletType.value !== 'tpix_wallet' || !signer.value) {
-            throw new Error('ต้องเชื่อม TPIX Wallet ก่อน');
+            throw new Error(t('store.walletStore.errors.embeddedRequired'));
         }
         const tx = await sendTPIXTx(signer.value, toAddress, amount);
         await refreshTPIXBalance();
@@ -783,7 +786,7 @@ export const useWalletStore = defineStore('wallet', () => {
             _assertCurrentAttempt(attempt);
 
             if (!hasActiveSession(wc)) {
-                throw new Error('No accounts returned from WalletConnect.');
+                throw new Error(t('store.walletStore.errors.noAccountsWc'));
             }
 
             // สร้าง ethers provider จาก WalletConnect provider (eth_accounts/eth_chainId ตอบในเครื่อง ไม่ไปถามแอป)
@@ -854,12 +857,12 @@ export const useWalletStore = defineStore('wallet', () => {
             }
             playErrorSound();
             wcStatus.value = 'error';
-            if (err.message?.includes('timed out')) {
-                error.value = err.message;
+            if (err?.isTimeout || err.message?.includes('timed out')) {
+                error.value = t('store.walletStore.errors.wcTimeout');
             } else if (err.message?.includes('User rejected') || err.code === 4001) {
-                error.value = 'Connection rejected by user.';
+                error.value = t('store.walletStore.errors.rejected');
             } else {
-                error.value = err.message || 'WalletConnect failed.';
+                error.value = err.message || t('store.walletStore.errors.wcFailed');
             }
             throw err;
         } finally {
@@ -1082,7 +1085,7 @@ export const useWalletStore = defineStore('wallet', () => {
                 return;
             }
 
-            error.value = 'TPIX Wallet ใช้ได้เฉพาะ TPIX Chain — เชื่อมกระเป๋าภายนอกเพื่อใช้เชนอื่น';
+            error.value = t('store.walletStore.errors.embeddedSingleChain');
             throw new Error('EMBEDDED_WALLET_SINGLE_CHAIN');
         }
 
@@ -1091,7 +1094,7 @@ export const useWalletStore = defineStore('wallet', () => {
         // เดิม return เฉยๆ ทำให้ผู้ใช้เห็นเหมือนสำเร็จทั้งที่ไม่มีอะไรเกิดขึ้น
         // และโค้ดที่เรียกต่อ (เช่นหน้า Bridge) เดินต่อบนเชนที่ผิด
         if (!injected) {
-            error.value = 'ไม่พบกระเป๋าที่เชื่อมอยู่ — เชื่อมกระเป๋าก่อนสลับเครือข่าย';
+            error.value = t('store.walletStore.errors.noProvider');
             throw new Error('NO_WALLET_PROVIDER');
         }
 
@@ -1102,8 +1105,8 @@ export const useWalletStore = defineStore('wallet', () => {
         } catch (err) {
             // ผู้ใช้กดยกเลิกเองไม่ใช่ระบบพัง — แยกข้อความให้ตรงกับสิ่งที่เกิดขึ้น
             error.value = err?.code === 4001
-                ? 'คุณยกเลิกการสลับเครือข่าย'
-                : 'ไม่สามารถสลับ network ได้';
+                ? t('store.walletStore.errors.switchCancelled')
+                : t('store.walletStore.errors.switchFailed');
             throw err;
         }
     }
@@ -1195,7 +1198,7 @@ export const useWalletStore = defineStore('wallet', () => {
              * ผูกสำเร็จแล้ว แล้วไปงงทีหลังว่าทำไมข้อมูลไม่ตรง
              */
             if (err?.response?.status === 409) {
-                linkError.value = err.response.data?.error?.message || 'ผูกกระเป๋ากับบัญชีไม่สำเร็จ';
+                linkError.value = err.response.data?.error?.message || t('store.walletStore.errors.linkFailed');
                 verifyError.value = 'link';
                 return false;
             }

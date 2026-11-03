@@ -8,6 +8,10 @@
 import { ref, computed } from 'vue';
 import { useForm, usePage, router } from '@inertiajs/vue3';
 import { sanitizeHtml } from '@/utils/sanitize';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
+const numLocale = computed(() => (locale.value === 'th' ? 'th-TH' : 'en-US'));
 
 const props = defineProps({
     news: {
@@ -26,20 +30,20 @@ const generateForm = useForm({
     language: 'th',
 });
 
-const categories = [
-    { value: 'market_update', label: 'Market Update' },
-    { value: 'analysis', label: 'Analysis' },
+const categories = computed(() => [
+    { value: 'market_update', label: t('admin.aINews.categories.marketUpdate') },
+    { value: 'analysis', label: t('admin.aINews.categories.analysis') },
     { value: 'defi', label: 'DeFi' },
     { value: 'nft', label: 'NFT' },
-    { value: 'regulation', label: 'Regulation' },
-    { value: 'technology', label: 'Technology' },
-    { value: 'tutorial', label: 'Tutorial' },
-];
+    { value: 'regulation', label: t('admin.aINews.categories.regulation') },
+    { value: 'technology', label: t('admin.aINews.categories.technology') },
+    { value: 'tutorial', label: t('admin.aINews.categories.tutorial') },
+]);
 
-const languages = [
-    { value: 'th', label: 'Thai' },
-    { value: 'en', label: 'English' },
-];
+const languages = computed(() => [
+    { value: 'th', label: t('admin.aINews.languages.th') },
+    { value: 'en', label: t('admin.aINews.languages.en') },
+]);
 
 const generatedPreview = ref(null);
 
@@ -152,7 +156,7 @@ const closePreview = () => {
 // Helpers
 const formatDate = (date) => {
     if (!date) return '-';
-    return new Date(date).toLocaleDateString('th-TH', {
+    return new Date(date).toLocaleDateString(numLocale.value, {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
@@ -175,7 +179,7 @@ const getCategoryColor = (category) => {
 };
 
 const getCategoryLabel = (category) => {
-    const found = categories.find((c) => c.value === category);
+    const found = categories.value.find((c) => c.value === category);
     return found ? found.label : category;
 };
 
@@ -188,6 +192,9 @@ const getStatusColor = (status) => {
     };
     return colors[status] || 'bg-dark-500/10 text-dark-400 border-dark-500/20';
 };
+
+const STATUSES = ['draft', 'review', 'published', 'archived'];
+const getStatusLabel = (status) => (STATUSES.includes(status) ? t(`admin.aINews.status.${status}`) : status);
 
 const getLanguageLabel = (code) => {
     return code === 'th' ? 'TH' : 'EN';
@@ -207,6 +214,14 @@ function decodeLabel(html) {
     txt.innerHTML = html;
     return txt.value;
 }
+
+// ป้าย « Previous / Next » ของ Laravel มาเป็นภาษาอังกฤษเสมอ — แปลให้ตามภาษาที่เลือก
+function pageLabel(html) {
+    const s = decodeLabel(html);
+    if (/previous/i.test(s) || s.includes('«')) return '« ' + t('common.previous');
+    if (/next/i.test(s) || s.includes('»')) return t('common.next') + ' »';
+    return s;
+}
 </script>
 
 <template>
@@ -220,8 +235,8 @@ function decodeLabel(html) {
                     </svg>
                 </div>
                 <div>
-                    <h1 class="text-2xl font-bold text-white">AI News</h1>
-                    <p class="text-dark-400 text-sm">Generate and manage AI-powered news articles</p>
+                    <h1 class="text-2xl font-bold text-white">{{ t('admin.aINews.title') }}</h1>
+                    <p class="text-dark-400 text-sm">{{ t('admin.aINews.subtitle') }}</p>
                 </div>
             </div>
             <div class="mt-4">
@@ -232,7 +247,7 @@ function decodeLabel(html) {
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                     </svg>
-                    Back to AI Dashboard
+                    {{ t('admin.aINews.backToDashboard') }}
                 </a>
             </div>
         </div>
@@ -270,7 +285,7 @@ function decodeLabel(html) {
                     <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
-                    Generate News Article
+                    {{ t('admin.aINews.generate.title') }}
                 </h2>
             </div>
 
@@ -279,11 +294,11 @@ function decodeLabel(html) {
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
                         <!-- Topic Input -->
                         <div class="lg:col-span-3">
-                            <label class="block text-sm font-medium text-dark-300 mb-2">Topic / Prompt</label>
+                            <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.aINews.generate.topic') }}</label>
                             <textarea
                                 v-model="generateForm.topic"
                                 rows="3"
-                                placeholder="Describe the news article topic, e.g. 'Bitcoin price breaks $100,000 for the first time in 2026...'"
+                                :placeholder="t('admin.aINews.generate.topicPlaceholder')"
                                 class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white placeholder-dark-400 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200 resize-none"
                             ></textarea>
                             <p v-if="generateForm.errors.topic" class="mt-1 text-sm text-red-400">{{ generateForm.errors.topic }}</p>
@@ -291,7 +306,7 @@ function decodeLabel(html) {
 
                         <!-- Category -->
                         <div>
-                            <label class="block text-sm font-medium text-dark-300 mb-2">Category</label>
+                            <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.aINews.fields.category') }}</label>
                             <select
                                 v-model="generateForm.category"
                                 class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
@@ -304,7 +319,7 @@ function decodeLabel(html) {
 
                         <!-- Language -->
                         <div>
-                            <label class="block text-sm font-medium text-dark-300 mb-2">Language</label>
+                            <label class="block text-sm font-medium text-dark-300 mb-2">{{ t('admin.aINews.fields.language') }}</label>
                             <select
                                 v-model="generateForm.language"
                                 class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
@@ -329,7 +344,7 @@ function decodeLabel(html) {
                                 <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
-                                <span>{{ generateForm.processing ? 'Generating...' : 'Generate Article' }}</span>
+                                <span>{{ generateForm.processing ? t('admin.aINews.generate.generating') : t('admin.aINews.generate.submit') }}</span>
                             </button>
                         </div>
                     </div>
@@ -346,7 +361,7 @@ function decodeLabel(html) {
                             <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            <span class="text-sm font-medium text-emerald-400">Article Generated Successfully</span>
+                            <span class="text-sm font-medium text-emerald-400">{{ t('admin.aINews.generate.success') }}</span>
                         </div>
                         <h3 class="text-lg font-semibold text-white mb-2">{{ generatedPreview.title }}</h3>
                         <p v-if="generatedPreview.summary" class="text-sm text-dark-300 mb-3">{{ generatedPreview.summary }}</p>
@@ -357,7 +372,7 @@ function decodeLabel(html) {
                             >
                                 {{ getCategoryLabel(generatedPreview.category) }}
                             </span>
-                            <span class="text-xs text-dark-500">Status: Draft</span>
+                            <span class="text-xs text-dark-500">{{ t('admin.aINews.generate.statusDraft') }}</span>
                         </div>
                     </div>
                 </Transition>
@@ -371,22 +386,22 @@ function decodeLabel(html) {
                     <svg class="w-5 h-5 text-dark-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                     </svg>
-                    News Articles
+                    {{ t('admin.aINews.list.title') }}
                 </h2>
-                <span class="text-sm text-dark-400">{{ newsData.data.length }} articles</span>
+                <span class="text-sm text-dark-400">{{ t('admin.aINews.list.count', { n: newsData.data.length }) }}</span>
             </div>
 
             <div class="overflow-x-auto">
                 <table class="w-full">
                     <thead>
                         <tr class="bg-dark-800/50">
-                            <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">Title</th>
-                            <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden md:table-cell">Category</th>
-                            <th class="text-center text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden sm:table-cell">Lang</th>
-                            <th class="text-center text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">Status</th>
-                            <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden lg:table-cell">Date</th>
-                            <th class="text-right text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden sm:table-cell">Views</th>
-                            <th class="text-right text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">Actions</th>
+                            <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">{{ t('admin.aINews.table.title') }}</th>
+                            <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden md:table-cell">{{ t('admin.aINews.fields.category') }}</th>
+                            <th class="text-center text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden sm:table-cell">{{ t('admin.aINews.table.lang') }}</th>
+                            <th class="text-center text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">{{ t('admin.aINews.table.status') }}</th>
+                            <th class="text-left text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden lg:table-cell">{{ t('admin.aINews.table.date') }}</th>
+                            <th class="text-right text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5 hidden sm:table-cell">{{ t('admin.aINews.table.views') }}</th>
+                            <th class="text-right text-xs font-medium text-dark-400 uppercase tracking-wider py-3 px-4 border-b border-white/5">{{ t('admin.aINews.table.actions') }}</th>
                         </tr>
                     </thead>
 
@@ -398,8 +413,8 @@ function decodeLabel(html) {
                                     <svg class="w-12 h-12 text-dark-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
                                     </svg>
-                                    <p class="text-dark-400 text-sm">No news articles yet</p>
-                                    <p class="text-dark-500 text-xs">Generate your first article above</p>
+                                    <p class="text-dark-400 text-sm">{{ t('admin.aINews.empty.title') }}</p>
+                                    <p class="text-dark-500 text-xs">{{ t('admin.aINews.empty.hint') }}</p>
                                 </div>
                             </td>
                         </tr>
@@ -439,14 +454,14 @@ function decodeLabel(html) {
                                         :class="getStatusColor(article.status)"
                                     >
                                         <span class="w-1.5 h-1.5 rounded-full mr-1.5 bg-current opacity-60"></span>
-                                        {{ article.status }}
+                                        {{ getStatusLabel(article.status) }}
                                     </span>
                                 </td>
                                 <td class="py-3 px-4 text-sm text-dark-400 hidden lg:table-cell">
                                     {{ formatDate(article.published_at || article.created_at) }}
                                 </td>
                                 <td class="py-3 px-4 text-right text-sm text-dark-400 hidden sm:table-cell">
-                                    {{ article.views.toLocaleString() }}
+                                    {{ article.views.toLocaleString(numLocale) }}
                                 </td>
                                 <td class="py-3 px-4">
                                     <div class="flex items-center justify-end gap-2">
@@ -454,7 +469,7 @@ function decodeLabel(html) {
                                         <button
                                             @click="startEdit(article)"
                                             class="p-1.5 rounded-lg text-dark-400 hover:text-white hover:bg-white/5 transition-colors"
-                                            title="Edit"
+                                            :title="t('admin.aINews.actions.edit')"
                                         >
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -467,7 +482,7 @@ function decodeLabel(html) {
                                             :class="article.status === 'published'
                                                 ? 'text-green-400 hover:text-green-300 hover:bg-green-500/10'
                                                 : 'text-dark-400 hover:text-green-400 hover:bg-green-500/10'"
-                                            :title="article.status === 'published' ? 'Unpublish' : 'Publish'"
+                                            :title="article.status === 'published' ? t('admin.aINews.actions.unpublish') : t('admin.aINews.actions.publish')"
                                         >
                                             <svg v-if="article.status === 'published'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -481,7 +496,7 @@ function decodeLabel(html) {
                                         <button
                                             @click="confirmDelete(article)"
                                             class="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                                            title="Delete"
+                                            :title="t('admin.aINews.actions.delete')"
                                         >
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -497,7 +512,7 @@ function decodeLabel(html) {
                                     <div class="space-y-4">
                                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                             <div>
-                                                <label class="block text-xs font-medium text-dark-300 mb-1">Title</label>
+                                                <label class="block text-xs font-medium text-dark-300 mb-1">{{ t('admin.aINews.table.title') }}</label>
                                                 <input
                                                     v-model="editForm.title"
                                                     type="text"
@@ -505,7 +520,7 @@ function decodeLabel(html) {
                                                 />
                                             </div>
                                             <div>
-                                                <label class="block text-xs font-medium text-dark-300 mb-1">Category</label>
+                                                <label class="block text-xs font-medium text-dark-300 mb-1">{{ t('admin.aINews.fields.category') }}</label>
                                                 <select
                                                     v-model="editForm.category"
                                                     class="w-full bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
@@ -516,7 +531,7 @@ function decodeLabel(html) {
                                         </div>
 
                                         <div>
-                                            <label class="block text-xs font-medium text-dark-300 mb-1">Summary</label>
+                                            <label class="block text-xs font-medium text-dark-300 mb-1">{{ t('admin.aINews.fields.summary') }}</label>
                                             <textarea
                                                 v-model="editForm.summary"
                                                 rows="2"
@@ -525,7 +540,7 @@ function decodeLabel(html) {
                                         </div>
 
                                         <div>
-                                            <label class="block text-xs font-medium text-dark-300 mb-1">Content</label>
+                                            <label class="block text-xs font-medium text-dark-300 mb-1">{{ t('admin.aINews.fields.content') }}</label>
                                             <textarea
                                                 v-model="editForm.content"
                                                 rows="6"
@@ -535,7 +550,7 @@ function decodeLabel(html) {
 
                                         <!-- Tags -->
                                         <div>
-                                            <label class="block text-xs font-medium text-dark-300 mb-1">Tags</label>
+                                            <label class="block text-xs font-medium text-dark-300 mb-1">{{ t('admin.aINews.fields.tags') }}</label>
                                             <div class="flex flex-wrap gap-2 mb-2">
                                                 <span
                                                     v-for="(tag, index) in editForm.tags"
@@ -543,7 +558,7 @@ function decodeLabel(html) {
                                                     class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary-500/10 text-primary-400 text-xs font-medium border border-primary-500/20"
                                                 >
                                                     {{ tag }}
-                                                    <button @click="removeTag(index)" class="hover:text-red-400 transition-colors">
+                                                    <button type="button" @click="removeTag(index)" :aria-label="t('admin.aINews.actions.removeTag', { tag })" :title="t('admin.aINews.actions.removeTag', { tag })" class="hover:text-red-400 transition-colors">
                                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                                                         </svg>
@@ -554,7 +569,7 @@ function decodeLabel(html) {
                                                 <input
                                                     v-model="tagInput"
                                                     type="text"
-                                                    placeholder="Add tag..."
+                                                    :placeholder="t('admin.aINews.fields.addTagPlaceholder')"
                                                     class="flex-1 bg-dark-800/50 border border-dark-600 rounded-xl px-4 py-2 text-white text-sm placeholder-dark-400 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-all duration-200"
                                                     @keydown.enter.prevent="addTag"
                                                 />
@@ -563,7 +578,7 @@ function decodeLabel(html) {
                                                     @click="addTag"
                                                     class="px-3 py-2 rounded-xl bg-dark-700 text-dark-300 hover:text-white hover:bg-dark-600 transition-colors text-sm"
                                                 >
-                                                    Add
+                                                    {{ t('admin.aINews.actions.add') }}
                                                 </button>
                                             </div>
                                         </div>
@@ -573,14 +588,14 @@ function decodeLabel(html) {
                                                 @click="cancelEdit"
                                                 class="px-4 py-2 rounded-xl text-sm font-medium text-dark-300 hover:text-white hover:bg-white/5 transition-colors"
                                             >
-                                                Cancel
+                                                {{ t('admin.aINews.actions.cancel') }}
                                             </button>
                                             <button
                                                 @click="saveEdit(article.id)"
                                                 :disabled="editForm.processing"
                                                 class="px-4 py-2 rounded-xl text-sm font-medium bg-primary-500 text-white hover:bg-primary-600 transition-colors disabled:opacity-50"
                                             >
-                                                {{ editForm.processing ? 'Saving...' : 'Save Changes' }}
+                                                {{ editForm.processing ? t('admin.aINews.actions.saving') : t('admin.aINews.actions.saveChanges') }}
                                             </button>
                                         </div>
                                     </div>
@@ -596,7 +611,7 @@ function decodeLabel(html) {
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
                                             </svg>
                                             <span class="text-sm text-white">
-                                                Are you sure you want to delete "<span class="font-medium">{{ article.title }}</span>"?
+                                                {{ t('admin.aINews.delete.before') }}"<span class="font-medium">{{ article.title }}</span>"{{ t('admin.aINews.delete.after') }}
                                             </span>
                                         </div>
                                         <div class="flex items-center gap-3">
@@ -604,13 +619,13 @@ function decodeLabel(html) {
                                                 @click="cancelDelete"
                                                 class="px-4 py-2 rounded-xl text-sm font-medium text-dark-300 hover:text-white hover:bg-white/5 transition-colors"
                                             >
-                                                Cancel
+                                                {{ t('admin.aINews.actions.cancel') }}
                                             </button>
                                             <button
                                                 @click="deleteArticle(article.id)"
                                                 class="px-4 py-2 rounded-xl text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
                                             >
-                                                Delete
+                                                {{ t('admin.aINews.actions.delete') }}
                                             </button>
                                         </div>
                                     </div>
@@ -631,12 +646,12 @@ function decodeLabel(html) {
                         :class="link.active
                             ? 'bg-primary-500 text-white'
                             : 'text-dark-400 hover:text-white hover:bg-white/5'"
-                        v-text="decodeLabel(link.label)"
+                        v-text="pageLabel(link.label)"
                     ></button>
                     <span
                         v-else
                         class="px-3 py-1.5 text-sm text-dark-600"
-                        v-text="decodeLabel(link.label)"
+                        v-text="pageLabel(link.label)"
                     ></span>
                 </template>
             </div>
@@ -680,11 +695,12 @@ function decodeLabel(html) {
                                         class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border capitalize"
                                         :class="getStatusColor(previewArticle.status)"
                                     >
-                                        {{ previewArticle.status }}
+                                        {{ getStatusLabel(previewArticle.status) }}
                                     </span>
                                 </div>
                                 <button
                                     @click="closePreview"
+                                    :aria-label="t('admin.aINews.actions.close')"
                                     class="p-1 rounded-lg text-dark-400 hover:text-white hover:bg-white/5 transition-colors"
                                 >
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -719,9 +735,9 @@ function decodeLabel(html) {
                                 <!-- Meta -->
                                 <div class="mt-4 flex items-center gap-4 text-xs text-dark-500">
                                     <span>{{ getLanguageLabel(previewArticle.language_code) }}</span>
-                                    <span>{{ previewArticle.views }} views</span>
+                                    <span>{{ t('admin.aINews.preview.views', { n: previewArticle.views }) }}</span>
                                     <span>{{ formatDate(previewArticle.created_at) }}</span>
-                                    <span v-if="previewArticle.ai_model">Model: {{ previewArticle.ai_model }}</span>
+                                    <span v-if="previewArticle.ai_model">{{ t('admin.aINews.preview.model', { model: previewArticle.ai_model }) }}</span>
                                 </div>
                             </div>
 
@@ -731,13 +747,13 @@ function decodeLabel(html) {
                                     @click="startEdit(previewArticle); closePreview()"
                                     class="px-4 py-2 rounded-xl text-sm font-medium text-dark-300 hover:text-white hover:bg-white/5 transition-colors"
                                 >
-                                    Edit
+                                    {{ t('admin.aINews.actions.edit') }}
                                 </button>
                                 <button
                                     @click="togglePublish(previewArticle); closePreview()"
                                     class="px-4 py-2 rounded-xl text-sm font-medium bg-primary-500 text-white hover:bg-primary-600 transition-colors"
                                 >
-                                    {{ previewArticle.status === 'published' ? 'Unpublish' : 'Publish' }}
+                                    {{ previewArticle.status === 'published' ? t('admin.aINews.actions.unpublish') : t('admin.aINews.actions.publish') }}
                                 </button>
                             </div>
                         </div>

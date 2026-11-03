@@ -19,6 +19,9 @@
 
 import { ref, computed } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     launch: { type: Object, default: () => ({}) },
@@ -78,7 +81,7 @@ function saveRoundEnd(clear = false) {
 
 function fmtDate(iso) {
     if (!iso) return '—';
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(locale.value === 'th' ? 'th-TH' : 'en-US', {
         year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 }
@@ -90,10 +93,10 @@ function fmtDate(iso) {
         <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
             <div>
                 <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                    <span>🚦</span> เปิดรอบขาย
+                    <span>🚦</span> {{ t('admin.saleLaunchPanel.title') }}
                 </h3>
                 <p class="text-xs text-gray-400 mt-1">
-                    เฟสแรกเริ่มนับจากวันที่กดเปิด ไม่ใช่วันที่ตั้งไว้ล่วงหน้า
+                    {{ t('admin.saleLaunchPanel.subtitle') }}
                 </p>
             </div>
 
@@ -105,12 +108,12 @@ function fmtDate(iso) {
                         ? 'bg-blue-500/15 text-blue-400'
                         : 'bg-yellow-500/15 text-yellow-400'"
             >
-                {{ launchedAt ? 'เปิดขายแล้ว' : readiness.ready ? 'พร้อมเปิดขาย' : `ยังไม่พร้อม (${passedCount}/${checks.length})` }}
+                {{ launchedAt ? t('admin.saleLaunchPanel.badge.launched') : readiness.ready ? t('admin.saleLaunchPanel.badge.ready') : t('admin.saleLaunchPanel.badge.notReady', { passed: passedCount, total: checks.length }) }}
             </div>
         </div>
 
         <p v-if="launchedAt" class="text-xs text-gray-400 mb-4">
-            เปิดขายครั้งแรกเมื่อ {{ fmtDate(launchedAt) }} — กดเปิดอีกครั้งจะเป็นการตั้งวันใหม่ทับของเดิม
+            {{ t('admin.saleLaunchPanel.launchedAt', { date: fmtDate(launchedAt) }) }}
         </p>
 
         <!-- รายการความพร้อม -->
@@ -135,29 +138,28 @@ function fmtDate(iso) {
         <!-- วันจบรอบ — ล็อกไว้ = แบบขั้นบันได -->
         <div class="mb-5 p-3 rounded-lg bg-white/[0.03] border border-white/10">
             <div class="flex flex-wrap items-center gap-2">
-                <label class="text-sm font-medium text-gray-200">วันจบรอบขาย</label>
+                <label class="text-sm font-medium text-gray-200">{{ t('admin.saleLaunchPanel.roundEnd.label') }}</label>
                 <template v-if="canManage">
                     <input v-model="roundForm.round_ends_at" type="date" class="trading-input text-xs py-1.5" />
                     <button
                         class="px-3 py-1.5 text-xs rounded-lg bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 disabled:opacity-40"
                         :disabled="roundForm.processing || !roundForm.round_ends_at"
                         @click="saveRoundEnd(false)"
-                    >บันทึก</button>
+                    >{{ t('admin.saleLaunchPanel.roundEnd.save') }}</button>
                     <button
                         v-if="launch.round_ends_at"
                         class="px-3 py-1.5 text-xs rounded-lg text-gray-400 hover:text-white"
                         :disabled="roundForm.processing"
                         @click="saveRoundEnd(true)"
-                    >ยกเลิกวันจบ</button>
+                    >{{ t('admin.saleLaunchPanel.roundEnd.clear') }}</button>
                 </template>
             </div>
             <p class="text-xs text-gray-400 mt-1.5">
                 <template v-if="tiered">
-                    ล็อกไว้ {{ fmtDate(launch.round_ends_at) }} — ทุกเฟสเปิดช่วงเดียวกันถึงวันนี้
-                    ราคาขยับขึ้นเมื่อขั้นก่อนหน้าขายหมด (เปิดช้าแค่ไหนก็จบวันนี้)
+                    {{ t('admin.saleLaunchPanel.roundEnd.locked', { date: fmtDate(launch.round_ends_at) }) }}
                 </template>
                 <template v-else>
-                    ไม่ได้ล็อก — เฟสต่อกันตามเวลา ยาวเฟสละ duration_days
+                    {{ t('admin.saleLaunchPanel.roundEnd.unlocked') }}
                 </template>
             </p>
             <p v-if="roundForm.errors.round_ends_at" class="text-xs text-red-400 mt-1">{{ roundForm.errors.round_ends_at }}</p>
@@ -167,32 +169,32 @@ function fmtDate(iso) {
         <!-- ตารางที่จะได้ถ้ากดเปิดวันนี้ -->
         <div v-if="preview.length" class="mb-5">
             <div class="text-sm font-semibold text-white mb-2">
-                ตารางที่จะได้ถ้าเปิดวันนี้{{ tiered ? ' (ขั้นบันได — เปิดทีละขั้นตามลำดับ)' : '' }}
+                {{ t('admin.saleLaunchPanel.preview.title') }}{{ tiered ? t('admin.saleLaunchPanel.preview.tieredSuffix') : '' }}
             </div>
             <div class="overflow-x-auto rounded-lg border border-white/10">
                 <table class="w-full text-xs">
                     <thead class="bg-white/5 text-gray-400">
                         <tr>
-                            <th class="text-left px-3 py-2">เฟส</th>
-                            <th class="text-right px-3 py-2">ราคา</th>
-                            <th class="text-right px-3 py-2">ยาว</th>
-                            <th class="text-left px-3 py-2">เริ่ม</th>
-                            <th class="text-left px-3 py-2">สิ้นสุด</th>
-                            <th class="text-left px-3 py-2">สถานะ</th>
+                            <th class="text-left px-3 py-2">{{ t('admin.saleLaunchPanel.preview.colPhase') }}</th>
+                            <th class="text-right px-3 py-2">{{ t('admin.saleLaunchPanel.preview.colPrice') }}</th>
+                            <th class="text-right px-3 py-2">{{ t('admin.saleLaunchPanel.preview.colLength') }}</th>
+                            <th class="text-left px-3 py-2">{{ t('admin.saleLaunchPanel.preview.colStart') }}</th>
+                            <th class="text-left px-3 py-2">{{ t('admin.saleLaunchPanel.preview.colEnd') }}</th>
+                            <th class="text-left px-3 py-2">{{ t('admin.saleLaunchPanel.preview.colStatus') }}</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/5">
                         <tr v-for="row in preview" :key="row.order">
                             <td class="px-3 py-2 text-white">{{ row.order }}. {{ row.name }}</td>
                             <td class="px-3 py-2 text-right text-gray-300">${{ row.price_usd }}</td>
-                            <td class="px-3 py-2 text-right text-gray-300">{{ row.days }} วัน</td>
+                            <td class="px-3 py-2 text-right text-gray-300">{{ t('admin.saleLaunchPanel.preview.days', { n: row.days }) }}</td>
                             <td class="px-3 py-2 text-gray-300">{{ fmtDate(row.starts_at) }}</td>
                             <td class="px-3 py-2 text-gray-300">{{ fmtDate(row.ends_at) }}</td>
                             <td class="px-3 py-2">
                                 <span
                                     class="px-2 py-0.5 rounded-full"
                                     :class="row.status === 'active' ? 'bg-green-500/15 text-green-400' : 'bg-gray-500/15 text-gray-400'"
-                                >{{ row.status === 'active' ? 'เปิดขาย' : (tiered ? 'รอขั้นก่อนหน้าหมด' : 'รอคิว') }}</span>
+                                >{{ row.status === 'active' ? t('admin.saleLaunchPanel.preview.statusActive') : (tiered ? t('admin.saleLaunchPanel.preview.statusWaitingTier') : t('admin.saleLaunchPanel.preview.statusQueued')) }}</span>
                             </td>
                         </tr>
                     </tbody>
@@ -200,28 +202,28 @@ function fmtDate(iso) {
             </div>
 
             <p v-for="s in skipped" :key="s.name" class="text-xs text-yellow-400/80 mt-2">
-                ข้าม "{{ s.name }}" — {{ s.reason }} (ไม่เลื่อนวันของเฟสที่มีคนซื้อไปแล้ว)
+                {{ t('admin.saleLaunchPanel.preview.skipped', { name: s.name, reason: s.reason }) }}
             </p>
         </div>
 
         <p v-else class="text-xs text-gray-400 mb-5">
-            ยังไม่มีเฟสที่ตั้งวันใหม่ได้ — สร้างเฟสก่อน หรือทุกเฟสขายหมดแล้ว
+            {{ t('admin.saleLaunchPanel.preview.empty') }}
         </p>
 
         <!-- ปุ่มลงมือ -->
         <p v-if="!canManage" class="pt-4 border-t border-white/10 text-xs text-amber-300">
-            เปิดรอบขายคือเริ่มรับเงินจริง สั่งได้เฉพาะ Super Admin
+            {{ t('admin.saleLaunchPanel.superAdminOnly') }}
         </p>
         <div v-else class="flex flex-wrap items-center gap-3 pt-4 border-t border-white/10">
             <div class="flex items-center gap-2">
-                <label class="text-xs text-gray-400">เริ่มวันที่</label>
+                <label class="text-xs text-gray-400">{{ t('admin.saleLaunchPanel.startAt') }}</label>
                 <input
                     v-model="form.start_at"
                     type="datetime-local"
                     class="trading-input text-xs py-1.5"
-                    :placeholder="'เว้นว่าง = เดี๋ยวนี้'"
+                    :placeholder="t('admin.saleLaunchPanel.startAtHint')"
                 />
-                <span class="text-xs text-gray-500">เว้นว่าง = เดี๋ยวนี้</span>
+                <span class="text-xs text-gray-500">{{ t('admin.saleLaunchPanel.startAtHint') }}</span>
             </div>
 
             <button
@@ -229,7 +231,7 @@ function fmtDate(iso) {
                 :disabled="form.processing || !preview.length || !readiness.ready"
                 @click="submitLaunch(false)"
             >
-                {{ form.processing ? 'กำลังเปิด…' : 'เปิดรอบขาย' }}
+                {{ form.processing ? t('admin.saleLaunchPanel.launching') : t('admin.saleLaunchPanel.launch') }}
             </button>
 
             <!--
@@ -242,19 +244,19 @@ function fmtDate(iso) {
                     class="px-4 py-2 text-sm rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10"
                     @click="confirmingForce = true"
                 >
-                    เปิดทั้งที่ยังไม่พร้อม
+                    {{ t('admin.saleLaunchPanel.force.button') }}
                 </button>
                 <div v-else class="flex items-center gap-2">
-                    <span class="text-xs text-red-400">แน่ใจนะ? ระบบจะรับเงินได้ทั้งที่ยังขาด: {{ (readiness.blocking || []).join(' · ') }}</span>
+                    <span class="text-xs text-red-400">{{ t('admin.saleLaunchPanel.force.areYouSure', { missing: (readiness.blocking || []).join(' · ') }) }}</span>
                     <button
                         class="px-3 py-1.5 text-xs rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30"
                         :disabled="form.processing"
                         @click="submitLaunch(true)"
-                    >ยืนยันเปิด</button>
+                    >{{ t('admin.saleLaunchPanel.force.confirm') }}</button>
                     <button
                         class="px-3 py-1.5 text-xs rounded-lg text-gray-400 hover:text-white"
                         @click="confirmingForce = false"
-                    >ยกเลิก</button>
+                    >{{ t('common.cancel') }}</button>
                 </div>
             </template>
         </div>
@@ -265,6 +267,7 @@ function fmtDate(iso) {
                 type="button"
                 role="switch"
                 :aria-checked="!!launch.armed"
+                :aria-label="t('admin.saleLaunchPanel.auto.title')"
                 :disabled="!canManage"
                 class="relative w-11 h-6 rounded-full transition-colors shrink-0 mt-0.5 disabled:cursor-not-allowed"
                 :class="launch.armed ? 'bg-green-500/70' : 'bg-white/15'"
@@ -276,10 +279,9 @@ function fmtDate(iso) {
                 />
             </button>
             <div class="text-xs">
-                <div class="text-gray-200 font-medium">เปิดขายอัตโนมัติเมื่อระบบพร้อม</div>
+                <div class="text-gray-200 font-medium">{{ t('admin.saleLaunchPanel.auto.title') }}</div>
                 <p class="text-gray-400 mt-0.5">
-                    เปิดไว้ = ระบบตรวจทุกชั่วโมง แล้วเริ่มรอบขายเองทันทีที่ผ่านครบทุกข้อ
-                    โดยเฟสแรกเริ่มนับจากชั่วโมงนั้น · เปิดได้ครั้งเดียว ไม่เปิดซ้ำ
+                    {{ t('admin.saleLaunchPanel.auto.hint') }}
                 </p>
             </div>
         </div>

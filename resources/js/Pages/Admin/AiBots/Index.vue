@@ -13,6 +13,10 @@
 import { computed, ref } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
+const dateLocale = computed(() => (locale.value === 'th' ? 'th-TH' : 'en-US'));
 
 const props = defineProps({
     mode: { type: String, default: 'demo' },
@@ -41,14 +45,14 @@ const pnlClass = (n) => (Number(n ?? 0) >= 0 ? 'text-trading-green' : 'text-trad
 const shortWallet = (a) => (a ? a.slice(0, 6) + '…' + a.slice(-4) : '—');
 
 const ago = (seconds) => {
-    if (seconds === null || seconds === undefined) return 'ยังไม่เคยเดิน';
-    if (seconds < 60) return `${Math.floor(seconds)} วินาทีที่แล้ว`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)} นาทีที่แล้ว`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)} ชั่วโมงที่แล้ว`;
-    return `${Math.floor(seconds / 86400)} วันที่แล้ว`;
+    if (seconds === null || seconds === undefined) return t('admin.aiBots.ago.never');
+    if (seconds < 60) return t('admin.aiBots.ago.seconds', { n: Math.floor(seconds) });
+    if (seconds < 3600) return t('admin.aiBots.ago.minutes', { n: Math.floor(seconds / 60) });
+    if (seconds < 86400) return t('admin.aiBots.ago.hours', { n: Math.floor(seconds / 3600) });
+    return t('admin.aiBots.ago.days', { n: Math.floor(seconds / 86400) });
 };
 
-const timeOf = (iso) => (iso ? new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
+const timeOf = (iso) => (iso ? new Date(iso).toLocaleTimeString(dateLocale.value, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—');
 
 /*
  * ไฟสถานะการเต้นของบอท — เกณฑ์ต่างกันตามวิธีเดิน
@@ -58,13 +62,13 @@ const timeOf = (iso) => (iso ? new Date(iso).toLocaleTimeString('th-TH', { hour:
  * เอาเกณฑ์เดียวมาตัดสินทั้งสองแบบจะได้ไฟแดงเต็มหน้าจนไม่มีใครดู
  */
 const heartbeat = (bot) => {
-    if (bot.banned) return { dot: 'bg-red-500', text: 'text-red-400', label: 'ถูกระงับ' };
-    if (bot.status !== 'running') return { dot: 'bg-gray-500', text: 'text-gray-400', label: 'ไม่ได้เดิน' };
-    if (bot.silent_seconds === null) return { dot: 'bg-amber-400', text: 'text-amber-400', label: 'ยังไม่เคยเดิน' };
+    if (bot.banned) return { dot: 'bg-red-500', text: 'text-red-400', label: 'admin.aiBots.heartbeat.banned' };
+    if (bot.status !== 'running') return { dot: 'bg-gray-500', text: 'text-gray-400', label: 'admin.aiBots.heartbeat.notRunning' };
+    if (bot.silent_seconds === null) return { dot: 'bg-amber-400', text: 'text-amber-400', label: 'admin.aiBots.heartbeat.never' };
 
     const limit = bot.execution === 'cloud' ? 300 : 3600;
-    if (bot.silent_seconds <= limit) return { dot: 'bg-trading-green', text: 'text-trading-green', label: 'ปกติ' };
-    return { dot: 'bg-red-500', text: 'text-red-400', label: 'เงียบผิดปกติ' };
+    if (bot.silent_seconds <= limit) return { dot: 'bg-trading-green', text: 'text-trading-green', label: 'admin.aiBots.heartbeat.ok' };
+    return { dot: 'bg-red-500', text: 'text-red-400', label: 'admin.aiBots.heartbeat.silent' };
 };
 
 const actionChip = (action) => ({
@@ -75,7 +79,21 @@ const actionChip = (action) => ({
     stopped: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
 }[action] || 'bg-white/5 text-gray-400 border-white/10');
 
-const actionLabel = (action) => ({ buy: 'ซื้อ', sell: 'ขาย', hold: 'ถือ', error: 'ผิดพลาด', stopped: 'หยุด' }[action] || action);
+const ACTIONS = ['buy', 'sell', 'hold', 'error', 'stopped'];
+const actionLabel = (action) => (ACTIONS.includes(action) ? t(`admin.aiBots.actions.${action}`) : action);
+
+const RISKS = ['calm', 'elevated', 'high', 'extreme'];
+const riskLabel = (level) => (RISKS.includes(level) ? t(`admin.aiBots.risk.${level}`) : level);
+
+// ชื่อกลยุทธ์ — เซิร์ฟเวอร์ส่งมาแค่ name_th จึงแปลจากรหัสกลยุทธ์ ถ้าไม่รู้จักรหัสค่อยใช้ชื่อไทยจากเซิร์ฟเวอร์
+const strategyName = (s) => {
+    const key = `admin.aiBots.strategyNames.${s.code}`;
+    const v = t(key);
+    return v === key ? (s.name_th || s.code) : v;
+};
+
+const planName = (bot) =>
+    (locale.value === 'th' ? bot.plan_name_th || bot.plan : bot.plan || bot.plan_name_th) || '—';
 
 const riskChip = (level) => ({
     calm: 'text-trading-green',
@@ -88,10 +106,10 @@ const riskChip = (level) => ({
 
 const donut = computed(() => {
     const slices = [
-        { key: 'buy', label: 'ซื้อ', value: props.summary.buys_24h, color: '#00C853' },
-        { key: 'sell', label: 'ขาย', value: props.summary.sells_24h, color: '#FF1744' },
-        { key: 'hold', label: 'ถือ', value: props.summary.holds_24h, color: '#64748b' },
-        { key: 'error', label: 'ผิดพลาด', value: props.summary.errors_24h, color: '#f59e0b' },
+        { key: 'buy', label: t('admin.aiBots.actions.buy'), value: props.summary.buys_24h, color: '#00C853' },
+        { key: 'sell', label: t('admin.aiBots.actions.sell'), value: props.summary.sells_24h, color: '#FF1744' },
+        { key: 'hold', label: t('admin.aiBots.actions.hold'), value: props.summary.holds_24h, color: '#64748b' },
+        { key: 'error', label: t('admin.aiBots.actions.error'), value: props.summary.errors_24h, color: '#f59e0b' },
     ].filter((s) => s.value > 0);
 
     const total = slices.reduce((a, s) => a + s.value, 0);
@@ -176,32 +194,32 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
 </script>
 
 <template>
-    <Head title="ศูนย์เฝ้าดูบอทเทรด" />
+    <Head :title="t('admin.aiBots.title')" />
 
-    <AdminLayout title="ศูนย์เฝ้าดูบอทเทรด">
+    <AdminLayout :title="t('admin.aiBots.title')">
         <!-- ───────────── หัวเรื่อง + สลับโหมด ───────────── -->
         <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
             <div>
-                <h2 class="text-xl font-bold text-white">บอทเทรดทั้งหมดในระบบ</h2>
+                <h2 class="text-xl font-bold text-white">{{ t('admin.aiBots.header.heading') }}</h2>
                 <p class="text-sm text-gray-400 mt-0.5">
-                    ทั้งบอทที่เดินบนคลาวด์และบอทของแพลนฟรีที่เดินในเบราว์เซอร์ของผู้ใช้
+                    {{ t('admin.aiBots.header.subtitle') }}
                 </p>
             </div>
 
             <div class="flex items-center gap-2">
                 <div class="flex bg-dark-800/60 rounded-xl p-1 border border-white/10">
                     <button
-                        v-for="m in [{ key: 'demo', label: 'โหมดทดลอง' }, { key: 'live', label: 'เงินจริง' }]"
+                        v-for="m in [{ key: 'demo', label: 'admin.aiBots.mode.demo' }, { key: 'live', label: 'admin.aiBots.mode.live' }]"
                         :key="m.key"
                         @click="switchMode(m.key)"
                         class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
                         :class="mode === m.key ? 'bg-primary-500/20 text-primary-300' : 'text-gray-400 hover:text-white'"
-                    >{{ m.label }}</button>
+                    >{{ t(m.label) }}</button>
                 </div>
                 <button
                     @click="router.reload({ preserveScroll: true })"
                     class="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:text-white hover:bg-white/10 transition-all"
-                    title="ดึงข้อมูลใหม่"
+                    :title="t('admin.aiBots.refresh')"
                 >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -213,13 +231,13 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
         <!-- ───────────── แถบตัวเลขสำคัญ ───────────── -->
         <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
             <div class="bg-gradient-to-br from-primary-500/10 to-white/[0.02] backdrop-blur-xl border border-primary-500/20 rounded-2xl p-4">
-                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">เงินทุนตั้งต้น</p>
+                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">{{ t('admin.aiBots.stats.capital') }}</p>
                 <p class="text-2xl font-bold text-white tabular-nums">${{ compact(summary.capital) }}</p>
-                <p class="text-[11px] text-gray-500 mt-1">พอร์ตทดลองรวมทุกกลยุทธ์</p>
+                <p class="text-[11px] text-gray-500 mt-1">{{ t('admin.aiBots.stats.capitalHint') }}</p>
             </div>
 
             <div class="bg-gradient-to-br from-white/5 to-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl p-4">
-                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">มูลค่าตอนนี้</p>
+                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">{{ t('admin.aiBots.stats.equity') }}</p>
                 <p class="text-2xl font-bold text-white tabular-nums">${{ compact(summary.equity) }}</p>
                 <p class="text-[11px] mt-1 tabular-nums" :class="pnlClass(summary.net_pnl)">
                     {{ signed(summary.net_pnl) }} ({{ signed(summary.net_pnl_pct) }}%)
@@ -227,41 +245,41 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
             </div>
 
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
-                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">กำไรที่ปิดแล้ว</p>
+                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">{{ t('admin.aiBots.stats.realized') }}</p>
                 <p class="text-2xl font-bold tabular-nums" :class="pnlClass(summary.realized_pnl)">
                     {{ signed(summary.realized_pnl) }}
                 </p>
                 <p class="text-[11px] text-gray-500 mt-1">
-                    ปิด {{ summary.closed_trades }} ไม้
-                    <span v-if="summary.win_rate !== null"> · ชนะ {{ summary.win_rate }}%</span>
+                    {{ t('admin.aiBots.stats.closedTrades', { n: summary.closed_trades }) }}
+                    <span v-if="summary.win_rate !== null"> · {{ t('admin.aiBots.stats.winRate', { n: summary.win_rate }) }}</span>
                 </p>
             </div>
 
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
-                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">ไม้ที่ถืออยู่</p>
+                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">{{ t('admin.aiBots.stats.openPositions') }}</p>
                 <p class="text-2xl font-bold text-white tabular-nums">{{ summary.open_positions }}</p>
                 <p class="text-[11px] mt-1 tabular-nums" :class="pnlClass(summary.unrealized_pnl)">
-                    มูลค่า ${{ compact(summary.open_value) }} · {{ signed(summary.unrealized_pnl) }}
+                    {{ t('admin.aiBots.stats.openValue', { value: compact(summary.open_value) }) }} · {{ signed(summary.unrealized_pnl) }}
                 </p>
             </div>
 
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4">
-                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">บอทที่เดินอยู่</p>
+                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">{{ t('admin.aiBots.stats.botsRunning') }}</p>
                 <p class="text-2xl font-bold text-white tabular-nums">
                     {{ summary.bots_running }}<span class="text-base text-gray-500">/{{ summary.bots_total }}</span>
                 </p>
                 <p class="text-[11px] text-gray-500 mt-1">
-                    คลาวด์ {{ summary.cloud }} · เบราว์เซอร์ {{ summary.browser }} · {{ summary.wallets }} กระเป๋า
+                    {{ t('admin.aiBots.stats.botsBreakdown', { cloud: summary.cloud, browser: summary.browser, wallets: summary.wallets }) }}
                 </p>
             </div>
 
             <div class="backdrop-blur-xl border rounded-2xl p-4"
                 :class="summary.bots_banned > 0 ? 'bg-red-500/10 border-red-500/25' : 'bg-white/5 border-white/10'">
-                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">ถูกระงับ</p>
+                <p class="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">{{ t('admin.aiBots.stats.banned') }}</p>
                 <p class="text-2xl font-bold tabular-nums" :class="summary.bots_banned > 0 ? 'text-red-400' : 'text-white'">
                     {{ summary.bots_banned }}
                 </p>
-                <p class="text-[11px] text-gray-500 mt-1">รอบคิด 24 ชม. {{ compact(summary.ticks_24h) }}</p>
+                <p class="text-[11px] text-gray-500 mt-1">{{ t('admin.aiBots.stats.ticks24h', { n: compact(summary.ticks_24h) }) }}</p>
             </div>
         </div>
 
@@ -269,8 +287,8 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
             <!-- โดนัท -->
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                <p class="text-sm font-medium text-white mb-1">การตัดสินใจ 24 ชั่วโมง</p>
-                <p class="text-[11px] text-gray-500 mb-4">นับทุกครั้งที่บอทคิด ไม่ใช่เฉพาะตอนลงมือ</p>
+                <p class="text-sm font-medium text-white mb-1">{{ t('admin.aiBots.donut.title') }}</p>
+                <p class="text-[11px] text-gray-500 mb-4">{{ t('admin.aiBots.donut.hint') }}</p>
 
                 <div class="flex items-center justify-center mb-4">
                     <div class="relative w-36 h-36">
@@ -289,7 +307,7 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
                             />
                         </svg>
                         <div class="absolute inset-0 flex flex-col items-center justify-center">
-                            <span class="text-[11px] text-gray-400">รอบคิด</span>
+                            <span class="text-[11px] text-gray-400">{{ t('admin.aiBots.donut.center') }}</span>
                             <span class="text-2xl font-bold text-white tabular-nums">{{ compact(donut.total) }}</span>
                         </div>
                     </div>
@@ -304,7 +322,7 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
                         <span class="text-white font-mono text-xs tabular-nums">{{ seg.value }} ({{ seg.pct }}%)</span>
                     </div>
                     <p v-if="!donut.slices.length" class="text-center py-6 text-gray-500 text-sm">
-                        ยังไม่มีการตัดสินใจใน 24 ชั่วโมงที่ผ่านมา
+                        {{ t('admin.aiBots.donut.empty') }}
                     </p>
                 </div>
             </div>
@@ -312,15 +330,15 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
             <!-- แท่งซ้อนรายชั่วโมง -->
             <div class="lg:col-span-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
                 <div class="flex items-center justify-between mb-1">
-                    <p class="text-sm font-medium text-white">จังหวะการทำงานรายชั่วโมง</p>
+                    <p class="text-sm font-medium text-white">{{ t('admin.aiBots.hourly.title') }}</p>
                     <div class="flex items-center gap-3 text-[11px]">
-                        <span class="flex items-center gap-1.5 text-gray-400"><span class="w-2.5 h-2.5 rounded-sm bg-trading-green/80"></span>ซื้อ</span>
-                        <span class="flex items-center gap-1.5 text-gray-400"><span class="w-2.5 h-2.5 rounded-sm bg-trading-red/80"></span>ขาย</span>
-                        <span class="flex items-center gap-1.5 text-gray-400"><span class="w-2.5 h-2.5 rounded-sm bg-slate-500/70"></span>ถือ</span>
-                        <span class="flex items-center gap-1.5 text-gray-400"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500/80"></span>ผิดพลาด</span>
+                        <span class="flex items-center gap-1.5 text-gray-400"><span class="w-2.5 h-2.5 rounded-sm bg-trading-green/80"></span>{{ t('admin.aiBots.actions.buy') }}</span>
+                        <span class="flex items-center gap-1.5 text-gray-400"><span class="w-2.5 h-2.5 rounded-sm bg-trading-red/80"></span>{{ t('admin.aiBots.actions.sell') }}</span>
+                        <span class="flex items-center gap-1.5 text-gray-400"><span class="w-2.5 h-2.5 rounded-sm bg-slate-500/70"></span>{{ t('admin.aiBots.actions.hold') }}</span>
+                        <span class="flex items-center gap-1.5 text-gray-400"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500/80"></span>{{ t('admin.aiBots.actions.error') }}</span>
                     </div>
                 </div>
-                <p class="text-[11px] text-gray-500 mb-4">ช่องที่ว่างคือชั่วโมงที่ไม่มีบอทตัวไหนคิดเลย</p>
+                <p class="text-[11px] text-gray-500 mb-4">{{ t('admin.aiBots.hourly.hint') }}</p>
 
                 <div class="relative h-52">
                     <div class="absolute left-0 top-0 bottom-6 w-10 flex flex-col justify-between text-right pr-2">
@@ -349,12 +367,12 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
 
                             <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-20 pointer-events-none">
                                 <div class="bg-dark-800 border border-white/10 rounded-lg p-2.5 text-xs whitespace-nowrap shadow-xl">
-                                    <p class="text-white font-medium mb-1">{{ h.label }} น.</p>
-                                    <p class="text-trading-green">ซื้อ {{ h.buy }}</p>
-                                    <p class="text-trading-red">ขาย {{ h.sell }}</p>
-                                    <p class="text-gray-400">ถือ {{ h.hold }}</p>
-                                    <p v-if="h.error" class="text-amber-400">ผิดพลาด {{ h.error }}</p>
-                                    <p class="text-white font-semibold border-t border-white/10 pt-1 mt-1">รวม {{ h.total }}</p>
+                                    <p class="text-white font-medium mb-1">{{ t('admin.aiBots.hourly.hourLabel', { h: h.label }) }}</p>
+                                    <p class="text-trading-green">{{ t('admin.aiBots.actions.buy') }} {{ h.buy }}</p>
+                                    <p class="text-trading-red">{{ t('admin.aiBots.actions.sell') }} {{ h.sell }}</p>
+                                    <p class="text-gray-400">{{ t('admin.aiBots.actions.hold') }} {{ h.hold }}</p>
+                                    <p v-if="h.error" class="text-amber-400">{{ t('admin.aiBots.actions.error') }} {{ h.error }}</p>
+                                    <p class="text-white font-semibold border-t border-white/10 pt-1 mt-1">{{ t('admin.aiBots.hourly.total', { n: h.total }) }}</p>
                                 </div>
                             </div>
                         </div>
@@ -372,8 +390,8 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
         <!-- ───────────── การ์ดผลงานรายกลยุทธ์ ───────────── -->
         <div class="mb-6">
             <div class="flex items-baseline gap-3 mb-3">
-                <h3 class="text-lg font-semibold text-white">ผลงานรายกลยุทธ์</h3>
-                <p class="text-[11px] text-gray-500">พอร์ตทดลองแยกกันคนละก้อน จึงเทียบกันได้ตรงๆ</p>
+                <h3 class="text-lg font-semibold text-white">{{ t('admin.aiBots.strategies.title') }}</h3>
+                <p class="text-[11px] text-gray-500">{{ t('admin.aiBots.strategies.hint') }}</p>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -385,12 +403,12 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
                 >
                     <div class="flex items-start justify-between mb-3">
                         <div class="min-w-0">
-                            <p class="text-sm font-semibold text-white truncate">{{ s.name_th }}</p>
+                            <p class="text-sm font-semibold text-white truncate">{{ strategyName(s) }}</p>
                             <p class="text-[11px] text-gray-500 font-mono">{{ s.code }}</p>
                         </div>
                         <span class="shrink-0 px-2 py-0.5 rounded-md text-[10px] font-medium border"
                             :class="s.running > 0 ? 'bg-trading-green/10 text-trading-green border-trading-green/25' : 'bg-white/5 text-gray-500 border-white/10'">
-                            {{ s.running }}/{{ s.bots }} เดิน
+                            {{ t('admin.aiBots.strategies.running', { running: s.running, bots: s.bots }) }}
                         </span>
                     </div>
 
@@ -414,27 +432,27 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
                             />
                         </svg>
                         <div v-else class="h-full flex items-center justify-center text-[10px] text-gray-600 border border-dashed border-white/5 rounded-lg">
-                            ยังไม่มีไม้ที่ปิดแล้ว
+                            {{ t('admin.aiBots.strategies.noClosed') }}
                         </div>
                     </div>
 
                     <div class="grid grid-cols-2 gap-2 text-[11px]">
                         <div>
-                            <p class="text-gray-500">เงินทุน</p>
+                            <p class="text-gray-500">{{ t('admin.aiBots.strategies.capital') }}</p>
                             <p class="text-white font-mono tabular-nums">${{ compact(s.capital) }}</p>
                         </div>
                         <div>
-                            <p class="text-gray-500">มูลค่าตอนนี้</p>
+                            <p class="text-gray-500">{{ t('admin.aiBots.stats.equity') }}</p>
                             <p class="font-mono tabular-nums" :class="pnlClass(s.equity - s.capital)">
                                 ${{ compact(s.equity) }}
                             </p>
                         </div>
                         <div>
-                            <p class="text-gray-500">ส่วนต่าง</p>
+                            <p class="text-gray-500">{{ t('admin.aiBots.strategies.diff') }}</p>
                             <p class="font-mono tabular-nums" :class="pnlClass(s.pnl_pct)">{{ signed(s.pnl_pct) }}%</p>
                         </div>
                         <div>
-                            <p class="text-gray-500">ปิดไม้ / ชนะ</p>
+                            <p class="text-gray-500">{{ t('admin.aiBots.strategies.closedWin') }}</p>
                             <p class="text-white font-mono tabular-nums">
                                 {{ s.closed }}<span v-if="s.win_rate !== null" class="text-gray-500"> · {{ s.win_rate }}%</span>
                             </p>
@@ -442,7 +460,7 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
                     </div>
 
                     <p v-if="s.top_hold_reason" class="mt-3 pt-2 border-t border-white/5 text-[10px] text-gray-500 line-clamp-2">
-                        ถือบ่อยสุดเพราะ: {{ s.top_hold_reason }}
+                        {{ t('admin.aiBots.strategies.topHold', { reason: s.top_hold_reason }) }}
                     </p>
                 </div>
             </div>
@@ -451,17 +469,17 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
         <!-- ───────────── ตารางบอททุกตัว ───────────── -->
         <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden mb-6">
             <div class="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-white/10">
-                <h3 class="text-lg font-semibold text-white">บอททุกตัว ({{ filteredBots.length }})</h3>
+                <h3 class="text-lg font-semibold text-white">{{ t('admin.aiBots.table.title', { n: filteredBots.length }) }}</h3>
 
                 <div class="flex flex-wrap items-center gap-2">
                     <select v-model="executionFilter" class="bg-dark-800/60 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-gray-200">
-                        <option value="all">ทุกวิธีเดิน</option>
-                        <option value="cloud">คลาวด์</option>
-                        <option value="browser">เบราว์เซอร์ (ฟรี)</option>
+                        <option value="all">{{ t('admin.aiBots.table.allExecution') }}</option>
+                        <option value="cloud">{{ t('admin.aiBots.exec.cloud') }}</option>
+                        <option value="browser">{{ t('admin.aiBots.table.browserFree') }}</option>
                     </select>
                     <select v-model="strategyFilter" class="bg-dark-800/60 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-gray-200">
-                        <option value="all">ทุกกลยุทธ์</option>
-                        <option v-for="s in strategies" :key="s.code" :value="s.code">{{ s.name_th }}</option>
+                        <option value="all">{{ t('admin.aiBots.table.allStrategies') }}</option>
+                        <option v-for="s in strategies" :key="s.code" :value="s.code">{{ strategyName(s) }}</option>
                     </select>
                 </div>
             </div>
@@ -470,13 +488,13 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
                 <table class="w-full text-sm">
                     <thead class="bg-white/[0.03] text-[11px] uppercase tracking-wider text-gray-400">
                         <tr>
-                            <th class="text-left font-medium px-4 py-3">บอท</th>
-                            <th class="text-left font-medium px-4 py-3">เจ้าของ</th>
-                            <th class="text-left font-medium px-4 py-3">วิธีเดิน</th>
-                            <th class="text-left font-medium px-4 py-3">สถานะ</th>
-                            <th class="text-right font-medium px-4 py-3">ไม้ที่ถือ</th>
-                            <th class="text-left font-medium px-4 py-3">คิดล่าสุด</th>
-                            <th class="text-right font-medium px-4 py-3">สั่งการ</th>
+                            <th class="text-left font-medium px-4 py-3">{{ t('admin.aiBots.table.colBot') }}</th>
+                            <th class="text-left font-medium px-4 py-3">{{ t('admin.aiBots.table.colOwner') }}</th>
+                            <th class="text-left font-medium px-4 py-3">{{ t('admin.aiBots.table.colExecution') }}</th>
+                            <th class="text-left font-medium px-4 py-3">{{ t('admin.aiBots.table.colStatus') }}</th>
+                            <th class="text-right font-medium px-4 py-3">{{ t('admin.aiBots.table.colPosition') }}</th>
+                            <th class="text-left font-medium px-4 py-3">{{ t('admin.aiBots.table.colLastThink') }}</th>
+                            <th class="text-right font-medium px-4 py-3">{{ t('admin.aiBots.table.colActions') }}</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/5">
@@ -489,20 +507,20 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
                             </td>
                             <td class="px-4 py-3">
                                 <p class="text-gray-300 font-mono text-xs">{{ shortWallet(bot.wallet) }}</p>
-                                <p class="text-[11px] text-gray-500">{{ bot.plan_name_th || bot.plan || '—' }}</p>
+                                <p class="text-[11px] text-gray-500">{{ planName(bot) }}</p>
                             </td>
                             <td class="px-4 py-3">
                                 <span class="px-2 py-0.5 rounded-md text-[10px] font-medium border"
                                     :class="bot.execution === 'cloud'
                                         ? 'bg-primary-500/10 text-primary-300 border-primary-500/25'
                                         : 'bg-amber-500/10 text-amber-300 border-amber-500/25'">
-                                    {{ bot.execution === 'cloud' ? 'คลาวด์' : 'เบราว์เซอร์' }}
+                                    {{ bot.execution === 'cloud' ? t('admin.aiBots.exec.cloud') : t('admin.aiBots.exec.browser') }}
                                 </span>
                             </td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
                                     <span class="w-2 h-2 rounded-full" :class="heartbeat(bot).dot"></span>
-                                    <span class="text-xs" :class="heartbeat(bot).text">{{ heartbeat(bot).label }}</span>
+                                    <span class="text-xs" :class="heartbeat(bot).text">{{ t(heartbeat(bot).label) }}</span>
                                 </div>
                                 <p class="text-[11px] text-gray-500">{{ ago(bot.silent_seconds) }}</p>
                                 <p v-if="bot.banned" class="text-[10px] text-red-400 mt-0.5 max-w-[200px]">{{ bot.banned_reason }}</p>
@@ -514,13 +532,13 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
                                         {{ signed(bot.position.pnl) }} ({{ signed(bot.position.pnl_pct) }}%)
                                     </p>
                                 </template>
-                                <span v-else class="text-gray-600 text-xs">ไม่ได้ถือ</span>
+                                <span v-else class="text-gray-600 text-xs">{{ t('admin.aiBots.table.notHolding') }}</span>
                             </td>
                             <td class="px-4 py-3">
                                 <p class="text-gray-300 text-xs max-w-[220px] truncate" :title="bot.last_reason">
                                     {{ bot.last_reason || '—' }}
                                 </p>
-                                <p class="text-[11px] text-gray-500">รอบคิด 24 ชม. {{ bot.ticks_24h }}</p>
+                                <p class="text-[11px] text-gray-500">{{ t('admin.aiBots.stats.ticks24h', { n: bot.ticks_24h }) }}</p>
                             </td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center justify-end gap-1.5">
@@ -529,35 +547,35 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
                                         @click="act(bot, 'pause')"
                                         :disabled="busy === bot.id"
                                         class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/25 hover:bg-amber-500/20 disabled:opacity-40 transition-all"
-                                    >หยุด</button>
+                                    >{{ t('admin.aiBots.buttons.pause') }}</button>
 
                                     <button
                                         v-else-if="!bot.banned"
                                         @click="act(bot, 'resume')"
                                         :disabled="busy === bot.id"
                                         class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-trading-green/10 text-trading-green border border-trading-green/25 hover:bg-trading-green/20 disabled:opacity-40 transition-all"
-                                    >เดินต่อ</button>
+                                    >{{ t('admin.aiBots.buttons.resume') }}</button>
 
                                     <button
                                         v-if="!bot.banned"
                                         @click="openBan(bot)"
                                         :disabled="busy === bot.id"
                                         class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-red-500/10 text-red-400 border border-red-500/25 hover:bg-red-500/20 disabled:opacity-40 transition-all"
-                                    >ระงับ</button>
+                                    >{{ t('admin.aiBots.buttons.ban') }}</button>
 
                                     <button
                                         v-else
                                         @click="act(bot, 'unban')"
                                         :disabled="busy === bot.id"
                                         class="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-white/5 text-gray-300 border border-white/15 hover:bg-white/10 disabled:opacity-40 transition-all"
-                                    >ปลดระงับ</button>
+                                    >{{ t('admin.aiBots.buttons.unban') }}</button>
                                 </div>
                             </td>
                         </tr>
 
                         <tr v-if="!filteredBots.length">
                             <td colspan="7" class="px-4 py-10 text-center text-gray-500 text-sm">
-                                ยังไม่มีบอทที่ตรงกับตัวกรองนี้
+                                {{ t('admin.aiBots.table.empty') }}
                             </td>
                         </tr>
                     </tbody>
@@ -570,38 +588,38 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
             <!-- การวางไม้ -->
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
                 <div class="px-4 py-3 border-b border-white/10">
-                    <h3 class="text-base font-semibold text-white">การวางไม้ล่าสุด</h3>
-                    <p class="text-[11px] text-gray-500">ทุกไม้ที่บอทเปิดและปิดจริง</p>
+                    <h3 class="text-base font-semibold text-white">{{ t('admin.aiBots.feed.tradesTitle') }}</h3>
+                    <p class="text-[11px] text-gray-500">{{ t('admin.aiBots.feed.tradesHint') }}</p>
                 </div>
 
                 <div class="max-h-[26rem] overflow-y-auto divide-y divide-white/5">
-                    <div v-for="t in trades" :key="t.id" class="px-4 py-2.5 hover:bg-white/[0.03] transition-colors">
+                    <div v-for="tr in trades" :key="tr.id" class="px-4 py-2.5 hover:bg-white/[0.03] transition-colors">
                         <div class="flex items-center justify-between gap-3">
                             <div class="flex items-center gap-2 min-w-0">
                                 <span class="px-1.5 py-0.5 rounded text-[10px] font-bold border shrink-0"
-                                    :class="t.side === 'buy' ? 'bg-trading-green/15 text-trading-green border-trading-green/30' : 'bg-trading-red/15 text-trading-red border-trading-red/30'">
-                                    {{ t.side === 'buy' ? 'ซื้อ' : 'ขาย' }}
+                                    :class="tr.side === 'buy' ? 'bg-trading-green/15 text-trading-green border-trading-green/30' : 'bg-trading-red/15 text-trading-red border-trading-red/30'">
+                                    {{ tr.side === 'buy' ? t('admin.aiBots.actions.buy') : t('admin.aiBots.actions.sell') }}
                                 </span>
-                                <span class="text-white text-xs font-medium truncate">{{ t.pair }}</span>
-                                <span class="text-[11px] text-gray-500 font-mono shrink-0">{{ t.strategy }}</span>
+                                <span class="text-white text-xs font-medium truncate">{{ tr.pair }}</span>
+                                <span class="text-[11px] text-gray-500 font-mono shrink-0">{{ tr.strategy }}</span>
                             </div>
                             <div class="text-right shrink-0">
-                                <p class="text-white text-xs font-mono tabular-nums">${{ money(t.value) }}</p>
-                                <p v-if="t.realized_pnl !== null" class="text-[11px] font-mono tabular-nums" :class="pnlClass(t.realized_pnl)">
-                                    {{ signed(t.realized_pnl) }}
+                                <p class="text-white text-xs font-mono tabular-nums">${{ money(tr.value) }}</p>
+                                <p v-if="tr.realized_pnl !== null" class="text-[11px] font-mono tabular-nums" :class="pnlClass(tr.realized_pnl)">
+                                    {{ signed(tr.realized_pnl) }}
                                 </p>
                             </div>
                         </div>
                         <div class="flex items-center justify-between gap-2 mt-1">
-                            <p class="text-[11px] text-gray-500 truncate">{{ t.reason }}</p>
+                            <p class="text-[11px] text-gray-500 truncate">{{ tr.reason }}</p>
                             <p class="text-[10px] text-gray-600 font-mono shrink-0">
-                                #{{ t.bot_id }} · {{ timeOf(t.at) }}
+                                #{{ tr.bot_id }} · {{ timeOf(tr.at) }}
                             </p>
                         </div>
                     </div>
 
                     <p v-if="!trades.length" class="px-4 py-10 text-center text-gray-500 text-sm">
-                        ยังไม่มีไม้ที่วางเลย
+                        {{ t('admin.aiBots.feed.tradesEmpty') }}
                     </p>
                 </div>
             </div>
@@ -609,8 +627,8 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
             <!-- การตัดสินใจ -->
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
                 <div class="px-4 py-3 border-b border-white/10">
-                    <h3 class="text-base font-semibold text-white">การตัดสินใจล่าสุด</h3>
-                    <p class="text-[11px] text-gray-500">รวมรอบที่ตัดสินใจ "ไม่ทำอะไร" ด้วย พร้อมเหตุผล</p>
+                    <h3 class="text-base font-semibold text-white">{{ t('admin.aiBots.feed.decisionsTitle') }}</h3>
+                    <p class="text-[11px] text-gray-500">{{ t('admin.aiBots.feed.decisionsHint') }}</p>
                 </div>
 
                 <div class="max-h-[26rem] overflow-y-auto divide-y divide-white/5">
@@ -621,18 +639,18 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
                                     {{ actionLabel(d.action) }}
                                 </span>
                                 <span class="text-gray-300 text-xs font-mono truncate">{{ d.strategy }}</span>
-                                <span class="text-[10px] shrink-0" :class="riskChip(d.risk_level)">● {{ d.risk_level }}</span>
+                                <span class="text-[10px] shrink-0" :class="riskChip(d.risk_level)">● {{ riskLabel(d.risk_level) }}</span>
                             </div>
                             <p class="text-[10px] text-gray-600 font-mono shrink-0">{{ timeOf(d.at) }}</p>
                         </div>
                         <p class="text-[11px] text-gray-400 mt-1">{{ d.reason }}</p>
                         <p v-if="d.budget" class="text-[10px] text-gray-600 font-mono mt-0.5">
-                            งบไม้นี้ ${{ money(d.budget) }} · ราคา {{ money(d.price, 2) }}
+                            {{ t('admin.aiBots.feed.budget', { budget: money(d.budget), price: money(d.price, 2) }) }}
                         </p>
                     </div>
 
                     <p v-if="!decisions.length" class="px-4 py-10 text-center text-gray-500 text-sm">
-                        ยังไม่มีการตัดสินใจ
+                        {{ t('admin.aiBots.feed.decisionsEmpty') }}
                     </p>
                 </div>
             </div>
@@ -641,36 +659,36 @@ const switchMode = (mode) => router.get('/admin/ai-bots', { mode }, { preserveSc
         <!-- ───────────── กล่องระบุเหตุผลก่อนระงับ ───────────── -->
         <div v-if="banTarget" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" @click.self="banTarget = null">
             <div class="w-full max-w-md bg-dark-800 border border-red-500/25 rounded-2xl p-6 shadow-2xl">
-                <h3 class="text-lg font-bold text-white mb-1">ระงับบอท #{{ banTarget.id }}</h3>
+                <h3 class="text-lg font-bold text-white mb-1">{{ t('admin.aiBots.ban.title', { id: banTarget.id }) }}</h3>
                 <p class="text-sm text-gray-400 mb-4">
                     {{ banTarget.name }} · {{ shortWallet(banTarget.wallet) }}
                 </p>
 
                 <p class="text-xs text-gray-400 mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
-                    บอทจะหยุดทันทีทั้งฝั่งคลาวด์และฝั่งเบราว์เซอร์ และ<span class="text-white font-medium">เจ้าของกดเริ่มใหม่เองไม่ได้</span>
-                    จนกว่าทีมงานจะปลดระงับ — เหตุผลที่กรอกจะแสดงให้เจ้าของเห็น
+                    {{ t('admin.aiBots.ban.warnBefore') }}<span class="text-white font-medium">{{ t('admin.aiBots.ban.warnStrong') }}</span>
+                    {{ t('admin.aiBots.ban.warnAfter') }}
                 </p>
 
-                <label class="block text-xs font-medium text-gray-300 mb-1.5">เหตุผล (บังคับกรอก)</label>
+                <label class="block text-xs font-medium text-gray-300 mb-1.5">{{ t('admin.aiBots.ban.reasonLabel') }}</label>
                 <input
                     v-model="banReason"
                     type="text"
                     maxlength="255"
-                    placeholder="เช่น ตั้งค่าเสี่ยงเกินเพดาน / ต้องสงสัยว่าปั่นราคา"
+                    :placeholder="t('admin.aiBots.ban.placeholder')"
                     class="w-full bg-dark-900/60 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-red-500/50"
                     @keyup.enter="submitBan"
                 />
 
                 <div class="flex justify-end gap-2 mt-5">
                     <button @click="banTarget = null" class="px-4 py-2 rounded-xl text-sm text-gray-300 bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
-                        ยกเลิก
+                        {{ t('admin.aiBots.ban.cancel') }}
                     </button>
                     <button
                         @click="submitBan"
                         :disabled="!banReason.trim() || busy === banTarget.id"
                         class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-red-500/80 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                     >
-                        ระงับบอทตัวนี้
+                        {{ t('admin.aiBots.ban.submit') }}
                     </button>
                 </div>
             </div>

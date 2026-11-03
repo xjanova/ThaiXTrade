@@ -23,6 +23,14 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import MasterNodeIndex from '@/Pages/MasterNode/Index.vue';
 import { useWalletStore } from '@/Stores/walletStore';
+import { t } from '@/Composables/useTranslation';
+
+/** ข้อความแปลที่มีพารามิเตอร์ที่เทสต์ไม่รู้ค่า (เช่น ที่อยู่ย่อ) → regex ที่ยึดส่วนคงที่ของข้อความ */
+function tpl(key, params = {}) {
+    const escaped = t(key, params).replace(/[.*+?^${}()|[\]\\]/g, (c) => `\\${c}`);
+    return new RegExp(`^${escaped.replace(/\\\{\w+\\\}/g, '.+?')}$`);
+}
+
 
 // Head/Link ของ Inertia ต้องมี app instance จริง — ไม่เกี่ยวกับสิ่งที่ทดสอบ
 vi.mock('@inertiajs/vue3', () => ({
@@ -240,7 +248,7 @@ describe('MasterNode — การซื้อโหนด', () => {
         await connect();
 
         const light = vm.tierCards.find(t => t.short === 'Light');
-        expect(vm.blockReason(light)).toMatch(/ที่อยู่โหนด/);
+        expect(vm.blockReason(light)).toBe(t('page.masterNode.block.endpointInvalid'));
 
         vm.endpoint = EP;
         await wrapper.vm.$nextTick();
@@ -258,7 +266,7 @@ describe('MasterNode — การซื้อโหนด', () => {
 
         const guardian = vm.tierCards.find(t => t.short === 'Guardian');
         expect(guardian.isFull).toBe(true);
-        expect(vm.blockReason(guardian)).toMatch(/เต็ม/);
+        expect(vm.blockReason(guardian)).toBe(t('page.masterNode.block.tierFull', { active: guardian.activeNodes, max: guardian.maxNodes }));
     });
 
     it('ปิดปุ่ม Validator เมื่อยังไม่ผูกสัญญา KYC', async () => {
@@ -269,7 +277,7 @@ describe('MasterNode — การซื้อโหนด', () => {
         await wrapper.vm.$nextTick();
 
         const validator = vm.tierCards.find(t => t.short === 'Validator');
-        expect(vm.blockReason(validator)).toMatch(/KYC/);
+        expect(vm.blockReason(validator)).toBe(t('page.masterNode.revert.kycNotConfigured'));
     });
 
     it('ปิดปุ่มทุกชั้นเมื่อสัญญายังไม่ deploy', async () => {
@@ -280,7 +288,7 @@ describe('MasterNode — การซื้อโหนด', () => {
         await wrapper.vm.$nextTick();
 
         for (const tier of vm.tierCards) {
-            expect(vm.blockReason(tier)).toMatch(/ยังไม่ได้ติดตั้ง/);
+            expect(vm.blockReason(tier)).toBe(t('page.masterNode.block.notDeployed'));
         }
     });
 
@@ -305,7 +313,7 @@ describe('MasterNode — การซื้อโหนด', () => {
 
         const light = vm.tierCards.find(t => t.short === 'Light');
         expect(light.canAfford).toBe(false);
-        expect(vm.blockReason(light)).toMatch(/ต้องมีอีก 1 TPIX/);
+        expect(vm.blockReason(light)).toBe(t('page.masterNode.block.needMore', { amount: '1' }));
     });
 
     it('ยังไม่รู้ยอด = ยังไม่ให้กด (ไม่ใช่ถือว่ายอดเป็น 0 หรือพอ)', async () => {
@@ -316,7 +324,7 @@ describe('MasterNode — การซื้อโหนด', () => {
 
         const light = vm.tierCards.find(t => t.short === 'Light');
         expect(vm.tpixBalanceWei).toBeNull();
-        expect(vm.blockReason(light)).toMatch(/ยอด TPIX/);
+        expect([t('page.masterNode.block.loadingBalance'), t('page.masterNode.block.balanceError')]).toContain(vm.blockReason(light));
     });
 });
 
@@ -326,14 +334,14 @@ describe('MasterNode — เพดาน APR', () => {
         const wrapper = mountPage({ stats: { ...FUNDED_STATS } });
         const light = wrapper.vm.tierCards.find(t => t.short === 'Light');
 
-        expect(light.apyBadge).toBe('สูงสุด 6% ต่อปี');
+        expect(light.apyBadge).toBe(t('page.masterNode.tierCard.apyMax', { v: '6%' }));
         expect(light.apyNote).toBe('');
         expect(light.projectedAprBps).toBe(550);
         expect(light.projectedTone).toBe('good');
 
         await connect();
-        expect(wrapper.text()).toContain('สูงสุด 6% ต่อปี');
-        expect(wrapper.text()).toContain('5.5% ต่อปี');
+        expect(wrapper.text()).toContain(t('page.masterNode.tierCard.apyMax', { v: '6%' }));
+        expect(wrapper.text()).toContain(t('page.masterNode.tierCard.perYear', { v: '5.5%' }));
         // ช่วงตัวเลขที่เคยเขียนมือไว้ต้องไม่โผล่เมื่ออ่านเชนได้แล้ว
         expect(wrapper.text()).not.toContain('4-6%');
     });
@@ -343,8 +351,8 @@ describe('MasterNode — เพดาน APR', () => {
         const vm = mountPage({ registryLive: false, tiers: configTiers }).vm;
         const light = vm.tierCards.find(t => t.short === 'Light');
 
-        expect(light.apyBadge).toBe('สูงสุด 6% ต่อปี');
-        expect(light.apyNote).toMatch(/ยังไม่ได้อ่านจากเชน/);
+        expect(light.apyBadge).toBe(t('page.masterNode.tierCard.apyMax', { v: '6%' }));
+        expect(light.apyNote).toBe(t('page.masterNode.tierCard.apyNoteDefault'));
         expect(light.projectedAprBps).toBeNull();
     });
 
@@ -353,8 +361,8 @@ describe('MasterNode — เพดาน APR', () => {
         const vm = mountPage({ tiers: bare }).vm;
         const light = vm.tierCards.find(t => t.short === 'Light');
 
-        expect(light.apyBadge).toBe('4-6% ต่อปี');
-        expect(light.apyNote).toMatch(/ประมาณการ/);
+        expect(light.apyBadge).toBe(t('page.masterNode.tierCard.perYear', { v: '4-6%' }));
+        expect(light.apyNote).toBe(t('page.masterNode.tierCard.apyNoteEstimate'));
     });
 
     it('หัวหน้าเว็บโชว์เพดานสูงสุดจากเชน ไม่ใช่ 20% ที่เขียนตายตัว', () => {
@@ -370,8 +378,8 @@ describe('MasterNode — เพดาน APR', () => {
         await connect();
 
         const text = wrapper.find('[data-test="reward-explainer"]').text();
-        expect(text).toContain('เท่ากันทุกโหนด');
-        expect(text).toContain('เพดาน');
+        expect(text).toContain(t('page.masterNode.share.s1'));
+        expect(text).toContain(t('page.masterNode.share.s2'));
         expect(text).toContain('6%');
         expect(text).toContain('uptime');
     });
@@ -389,12 +397,12 @@ describe('MasterNode — พูลรางวัลยังไม่ถูก�
 
         const banner = wrapper.find('[data-test="pool-unfunded"]');
         expect(banner.exists()).toBe(true);
-        expect(banner.text()).toContain('จ่ายได้ 0 TPIX');
-        expect(banner.text()).toContain('ไม่ใช่ผลตอบแทนที่รับประกัน');
+        // เนื้อความบอก "จ่ายได้ 0 TPIX" + "ไม่ใช่ผลตอบแทนที่รับประกัน"
+        expect(banner.text()).toContain(t('page.masterNode.poolUnfunded.body'));
 
         // หัวหน้าเว็บ: แทนที่ "สูงสุดต่อปี 20%" ด้วยสถานะพูล
-        expect(wrapper.find('[data-test="hero-pool-unfunded"]').text()).toContain('ยังไม่เติมเงิน');
-        expect(wrapper.text()).not.toContain('สูงสุดต่อปี');
+        expect(wrapper.find('[data-test="hero-pool-unfunded"]').text()).toContain(t('page.masterNode.hero.notFunded'));
+        expect(wrapper.text()).not.toContain(t('page.masterNode.hero.aprCap'));
     });
 
     it('พูลว่าง → คาดการณ์ถ้าเข้าตอนนี้ = จ่ายได้ 0 ไม่ใช่เลข %', async () => {
@@ -404,10 +412,10 @@ describe('MasterNode — พูลรางวัลยังไม่ถูก�
         const light = wrapper.vm.tierCards.find(t => t.short === 'Light');
         expect(light.projectedAprBps).toBe(550); // ค่าจากสัญญายังเก็บไว้
         expect(light.projectedTone).toBe('warn');
-        expect(light.projectedText).toContain('จ่ายได้ 0');
+        expect(light.projectedText).toBe(t('page.masterNode.tierCard.projectedUnfunded'));
 
         const projections = wrapper.findAll('[data-test="tier-projection"]').map(n => n.text());
-        expect(projections.some(t => t.includes('5.5% ต่อปี'))).toBe(false);
+        expect(projections.some(p => p.includes(t('page.masterNode.tierCard.perYear', { v: '5.5%' })))).toBe(false);
     });
 
     it('stats อ่านเชนไม่ได้ → "—" ไม่ใช่ "0 โหนด" และไม่ประกาศว่าพูลว่าง', () => {
@@ -434,9 +442,9 @@ describe('MasterNode — พูลรางวัลยังไม่ถูก�
         await wrapper.vm.$nextTick();
 
         expect(wrapper.find('[data-test="registry-unknown"]').exists()).toBe(true);
-        expect(wrapper.text()).not.toContain('ระบบรอติดตั้งสัญญาบนเชน');
+        expect(wrapper.text()).not.toContain(t('ui.awaitingDeployNotice.buy.title'));
         for (const tier of vm.tierCards) {
-            expect(vm.blockReason(tier)).toMatch(/อ่านสถานะสัญญาจากเชนไม่ได้/);
+            expect(vm.blockReason(tier)).toBe(t('page.masterNode.block.registryUnknown'));
         }
     });
 
@@ -458,7 +466,7 @@ describe('MasterNode — ปิดรับลงทะเบียน', () => {
         await wrapper.vm.$nextTick();
 
         for (const tier of vm.tierCards) {
-            expect(vm.blockReason(tier)).toMatch(/ปิดรับลงทะเบียน/);
+            expect(vm.blockReason(tier)).toBe(t('page.masterNode.block.paused'));
         }
     });
 
@@ -483,7 +491,7 @@ describe('MasterNode — ปิดรับลงทะเบียน', () => {
 
         const banner = wrapper.find('[data-test="registration-paused"]');
         expect(banner.exists()).toBe(true);
-        expect(banner.text()).toMatch(/ถอนเงินต้นได้/);
+        expect(banner.text()).toContain(t('page.masterNode.paused.body'));
     });
 });
 
@@ -491,25 +499,25 @@ describe('MasterNode — แปลง error ของเชนเป็นภา
     it('แปลง revert reason ของสัญญาเป็นข้อความที่อ่านรู้เรื่อง', () => {
         const vm = mountPage().vm;
 
-        expect(vm.humanError({ reason: 'Still locked' })).toMatch(/ยังไม่พ้นระยะล็อก/);
-        expect(vm.humanError({ shortMessage: "reverted with reason string 'Tier full'" })).toMatch(/เต็มโควตา/);
-        expect(vm.humanError({ message: 'execution reverted: Insufficient stake' })).toMatch(/น้อยกว่าขั้นต่ำ/);
-        expect(vm.humanError({ message: 'execution reverted: KYC not approved' })).toMatch(/KYC/);
+        expect(vm.humanError({ reason: 'Still locked' })).toBe(t('page.masterNode.revert.stillLocked'));
+        expect(vm.humanError({ shortMessage: "reverted with reason string 'Tier full'" })).toBe(t('page.masterNode.revert.tierFull'));
+        expect(vm.humanError({ message: 'execution reverted: Insufficient stake' })).toBe(t('page.masterNode.revert.insufficientStake'));
+        expect(vm.humanError({ message: 'execution reverted: KYC not approved' })).toBe(t('page.masterNode.revert.kycNotApproved'));
     });
 
     it('แปลง revert ใหม่ของ NodeRegistryV2 (ปิดรับ / ต้องวางเท่าขั้นต่ำพอดี)', () => {
         const vm = mountPage().vm;
 
-        expect(vm.humanError({ reason: 'Registration paused' })).toMatch(/ปิดรับลงทะเบียน/);
-        expect(vm.humanError({ message: 'execution reverted: Stake must equal tier minimum' })).toMatch(/เท่ากับขั้นต่ำ/);
+        expect(vm.humanError({ reason: 'Registration paused' })).toBe(t('page.masterNode.revert.registrationPaused'));
+        expect(vm.humanError({ message: 'execution reverted: Stake must equal tier minimum' })).toBe(t('page.masterNode.revert.stakeMustEqual'));
     });
 
     it('ผู้ใช้กดยกเลิกในกระเป๋า ไม่ใช่ error ที่ต้องขู่', () => {
         const vm = mountPage().vm;
 
-        expect(vm.humanError({ code: 'ACTION_REJECTED' })).toMatch(/ยกเลิก/);
-        expect(vm.humanError({ message: 'user rejected action' })).toMatch(/ยกเลิก/);
-        expect(vm.humanError({ info: { error: { code: 4001 } } })).toMatch(/ยกเลิก/);
+        expect(vm.humanError({ code: 'ACTION_REJECTED' })).toBe(t('page.masterNode.err.userRejected'));
+        expect(vm.humanError({ message: 'user rejected action' })).toBe(t('page.masterNode.err.userRejected'));
+        expect(vm.humanError({ info: { error: { code: 4001 } } })).toBe(t('page.masterNode.err.userRejected'));
     });
 
     it('ไม่โยนก้อน JSON ของ ethers ขึ้นจอ', () => {
@@ -633,7 +641,7 @@ describe('MasterNode — ส่งธุรกรรม', () => {
         await settle();
 
         expect(chain.registerNode).not.toHaveBeenCalled();
-        expect(vm.flowNotice).toMatch(/สลับกระเป๋า/);
+        expect(vm.flowNotice).toMatch(tpl('page.masterNode.err.walletSwitched'));
         expect(vm.flowNotice).toContain('0x1111');
         expect(vm.stakeTxHash).toBe('');
         expect(vm.isStaking).toBe(false);
@@ -647,7 +655,7 @@ describe('MasterNode — ส่งธุรกรรม', () => {
         await vm.stakeAndRegister(light);
 
         expect(chain.registerNode).not.toHaveBeenCalled();
-        expect(vm.flowNotice).toMatch(/สลับกระเป๋า/);
+        expect(vm.flowNotice).toMatch(tpl('page.masterNode.err.walletSwitched'));
     });
 
     it('สลับกระเป๋าระหว่างรอเชนยืนยัน → ไม่แปะผลให้กระเป๋าใหม่', async () => {
@@ -666,7 +674,8 @@ describe('MasterNode — ส่งธุรกรรม', () => {
         await settle();
 
         expect(vm.stakeTxHash, 'การ์ด "ลงทะเบียนเรียบร้อย" ต้องไม่โผล่บนกระเป๋าใหม่').toBe('');
-        expect(vm.flowNotice).toMatch(/0x1111.*สำเร็จบนเชนแล้ว/);
+        expect(vm.flowNotice).toMatch(tpl('page.masterNode.notice.confirmedOtherWallet', { label: t('page.masterNode.tx.stake') }));
+        expect(vm.flowNotice).toContain('0x1111');
     });
 
     it('ผลอ่านที่มาช้าของกระเป๋าเดิมไม่เขียนทับกระเป๋าใหม่', async () => {
@@ -696,7 +705,7 @@ describe('MasterNode — ส่งธุรกรรม', () => {
 
         await vm.stakeAndRegister(light);
 
-        expect(vm.stakeError).toMatch(/ยกเลิก/);
+        expect(vm.stakeError).toBe(t('page.masterNode.err.userRejected'));
         expect(vm.isStaking).toBe(false);
         expect(vm.pendingTx).toBeNull();
         expect(vm.busy).toBe(false);
@@ -714,7 +723,7 @@ describe('MasterNode — ส่งธุรกรรม', () => {
         expect(vm.isStaking).toBe(false);
         const card = wrapper.find('[data-test="pending-tx"]');
         expect(card.exists()).toBe(true);
-        expect(card.text()).toContain('รอการยืนยัน');
+        expect(card.text()).toContain(t('page.masterNode.pending.awaiting'));
         expect(card.text()).toContain('0xslow');
 
         // ระหว่างยังไม่รู้ผล ห้ามส่งรายการใหม่ซ้อน
@@ -740,7 +749,7 @@ describe('MasterNode — ส่งธุรกรรม', () => {
         await vm.stakeAndRegister(light);
 
         expect(vm.pendingTx).toBeNull();
-        expect(vm.stakeError).toMatch(/เต็มโควตา/);
+        expect(vm.stakeError).toContain(t('page.masterNode.revert.tierFull'));
     });
 
     it('ขั้นต่ำบนเชนเปลี่ยนระหว่างเปิดหน้าค้าง → โหลดชั้นใหม่ให้เอง', async () => {
@@ -750,7 +759,7 @@ describe('MasterNode — ส่งธุรกรรม', () => {
 
         await vm.stakeAndRegister(light);
 
-        expect(vm.stakeError).toMatch(/เท่ากับขั้นต่ำ/);
+        expect(vm.stakeError).toContain(t('page.masterNode.revert.stakeMustEqual'));
         expect(global.fetch).toHaveBeenCalledWith('/api/v1/masternode/tiers');
         expect(chain.registerNode).not.toHaveBeenCalled();
     });
@@ -766,13 +775,13 @@ describe('MasterNode — อ่านเชนไม่ได้', () => {
         expect(vm.chainReadError).toBe(true);
         const card = wrapper.find('[data-test="chain-read-error"]');
         expect(card.exists()).toBe(true);
-        expect(card.text()).toContain('อ่านข้อมูลจากเชนไม่ได้');
+        expect(card.text()).toContain(t('page.masterNode.chainError.title'));
 
         vm.tpixBalanceWei = tpix(50_000);
         vm.endpoint = EP;
         await wrapper.vm.$nextTick();
         const light = vm.tierCards.find(t => t.short === 'Light');
-        expect(vm.blockReason(light)).toMatch(/อ่านข้อมูลจากเชนไม่ได้/);
+        expect(vm.blockReason(light)).toBe(t('page.masterNode.block.chainReadError'));
 
         // เชนกลับมา → กดลองใหม่แล้วหายเอง
         chain.readError = null;
@@ -819,7 +828,7 @@ describe('MasterNode — สถานะโหนดที่ซื้อไป�
         await wrapper.vm.$nextTick();
 
         expect(vm.canRegister).toBe(false);
-        expect(vm.blockReason(vm.tierCards[0])).toMatch(/มีโหนดที่ทำงานอยู่แล้ว/);
+        expect(vm.blockReason(vm.tierCards[0])).toBe(t('page.masterNode.block.hasActiveNode'));
     });
 
     it('มีรางวัลค้างอยู่ = ต้องเคลมก่อนลงทะเบียนใหม่', async () => {
@@ -831,7 +840,7 @@ describe('MasterNode — สถานะโหนดที่ซื้อไป�
         await wrapper.vm.$nextTick();
 
         expect(vm.canRegister).toBe(true);
-        expect(vm.blockReason(vm.tierCards[2])).toMatch(/รับรางวัลค้าง/);
+        expect(vm.blockReason(vm.tierCards[2])).toBe(t('page.masterNode.block.claimPendingFirst'));
     });
 
     it('ซ่อนการ์ดโหนดหลังปิดโหนดเสร็จ ไม่ค้างการ์ดเปล่า', async () => {
@@ -866,7 +875,7 @@ describe('MasterNode — สถานะโหนดที่ซื้อไป�
         vm.endpoint = EP;
         await wrapper.vm.$nextTick();
 
-        expect(vm.blockReason(vm.tierCards[2])).toMatch(/ถอนเงินต้นที่เหลือ/);
+        expect(vm.blockReason(vm.tierCards[2])).toBe(t('page.masterNode.block.withdrawRemainingFirst'));
     });
 
     it('เตือนเมื่อพูลรางวัลยังไม่ถูกเติมเงิน', async () => {
@@ -888,13 +897,14 @@ describe('MasterNode — สถานะโหนดที่ซื้อไป�
 
         const vm = wrapper.vm;
         expect(vm.myNode.pending).toBe(3);
-        const claimBtn = wrapper.findAll('button').find(b => b.text().includes('รับรางวัล'));
+        const claimBtn = wrapper.findAll('button').find(b => b.text().includes(t('page.masterNode.reward.claim')));
         expect(claimBtn.attributes('disabled')).toBeDefined();
-        expect(wrapper.text()).toContain('ไม่หาย');
+        // pending > claimable → บรรทัดใต้ยอดบอกว่าส่วนที่เหลือไม่หาย
+        expect(wrapper.text()).toContain(t('page.masterNode.reward.partialPool'));
 
         await vm.claimRewards();
         expect(chain.claimRewards).not.toHaveBeenCalled();
-        expect(vm.claimMessage).toMatch(/ไม่หาย/);
+        expect(vm.claimMessage).toBe(t('page.masterNode.err.poolEmpty'));
     });
 
     it('โชว์สัญญาณชีพล่าสุดจากโปรแกรม PC — อ่านไม่ได้ก็ซ่อนเงียบ ๆ', async () => {
@@ -907,8 +917,8 @@ describe('MasterNode — สถานะโหนดที่ซื้อไป�
 
         const line = wrapper.find('[data-test="heartbeat"]');
         expect(line.exists()).toBe(true);
-        expect(line.text()).toContain('ส่งสัญญาณล่าสุด');
-        expect(line.text()).toContain('ทีมงาน');
+        expect(line.text()).toContain(t('page.masterNode.heartbeat.last', { time: wrapper.vm.heartbeatText }));
+        expect(line.text()).toContain(t('page.masterNode.heartbeat.uptimeNote'));
 
         const failing = mountPage();
         global.fetch = vi.fn(() => Promise.reject(new Error('offline')));

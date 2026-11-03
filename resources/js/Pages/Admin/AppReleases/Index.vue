@@ -9,6 +9,9 @@
 import { ref, computed } from 'vue';
 import { router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     releases: { type: Array, default: () => [] },
@@ -66,7 +69,7 @@ const setActive = (tag, app) => {
 // เลิกล็อกรุ่น กลับไปใช้ตัวล่าสุดที่ไฟล์ครบเสมอ
 // เดิมหน้านี้ล็อกได้อย่างเดียว ปลดไม่ได้ ล็อกครั้งเดียวแล้วค้างตลอดไป
 const setAuto = (app, label) => {
-    if (!confirm(`ให้ ${label} ใช้รุ่นล่าสุดอัตโนมัติ เลิกล็อกที่รุ่นเดิม?`)) return;
+    if (!confirm(t('admin.appReleases.confirmAuto', { label }))) return;
     router.post('/admin/app-releases/set-active', { tag: 'auto', app }, { preserveScroll: true });
 };
 
@@ -89,7 +92,7 @@ const formatSize = (mb) => (!mb ? '-' : `${mb} MB`);
 
 const formatDate = (dateStr) => {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('th-TH', {
+    return new Date(dateStr).toLocaleDateString(locale.value === 'th' ? 'th-TH' : 'en-US', {
         year: 'numeric', month: 'short', day: 'numeric',
         hour: '2-digit', minute: '2-digit',
     });
@@ -114,14 +117,24 @@ const filterCounts = computed(() => ({
 
 const typeBadge = (release) => {
     const badges = {
-        wallet: { label: 'Wallet', color: 'bg-purple-500/20 text-purple-400' },
-        mobile: { label: 'Mobile', color: 'bg-blue-500/20 text-blue-400' },
-        desktop: { label: 'Desktop', color: 'bg-amber-500/20 text-amber-400' },
-        chain: { label: 'Chain', color: 'bg-cyan-500/20 text-cyan-400' },
-        web: { label: 'Web', color: 'bg-green-500/20 text-green-400' },
+        wallet: { label: 'admin.appReleases.type.wallet', color: 'bg-purple-500/20 text-purple-400' },
+        mobile: { label: 'admin.appReleases.type.mobile', color: 'bg-blue-500/20 text-blue-400' },
+        desktop: { label: 'admin.appReleases.type.desktop', color: 'bg-amber-500/20 text-amber-400' },
+        chain: { label: 'admin.appReleases.type.chain', color: 'bg-cyan-500/20 text-cyan-400' },
+        web: { label: 'admin.appReleases.type.web', color: 'bg-green-500/20 text-green-400' },
     };
     return badges[release.type] || badges.web;
 };
+
+// แท็บกรอง — computed เพื่อให้ป้ายเปลี่ยนตามภาษาทันที
+const filterTabs = computed(() => [
+    { key: 'all', label: t('common.all') },
+    { key: 'mobile', label: 'TPIX TRADE' },
+    { key: 'wallet', label: 'TPIX Wallet' },
+    { key: 'desktop', label: 'Master Node' },
+    { key: 'chain', label: t('admin.appReleases.type.chain') },
+    { key: 'apk', label: t('admin.appReleases.withApk') },
+]);
 </script>
 
 <template>
@@ -130,14 +143,14 @@ const typeBadge = (release) => {
             <!-- Header -->
             <div class="flex items-center justify-between">
                 <div>
-                    <h1 class="text-2xl font-bold text-white">App Releases</h1>
-                    <p class="text-dark-400 text-sm mt-1">Manage mobile app releases from GitHub</p>
+                    <h1 class="text-2xl font-bold text-white">{{ t('admin.appReleases.title') }}</h1>
+                    <p class="text-dark-400 text-sm mt-1">{{ t('admin.appReleases.subtitle') }}</p>
                 </div>
                 <button @click="refresh" class="btn-primary flex items-center gap-2">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
-                    Refresh from GitHub
+                    {{ t('admin.appReleases.refresh') }}
                 </button>
             </div>
 
@@ -148,7 +161,7 @@ const typeBadge = (release) => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div>
-                        <p class="text-red-400 text-sm font-medium">GitHub API Error</p>
+                        <p class="text-red-400 text-sm font-medium">{{ t('admin.appReleases.apiError') }}</p>
                         <p class="text-red-400/80 text-sm mt-1">{{ error }}</p>
                     </div>
                 </div>
@@ -161,8 +174,8 @@ const typeBadge = (release) => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                     <div>
-                        <p class="text-yellow-400 text-sm font-medium">GITHUB_TOKEN ไม่ได้ตั้งค่า</p>
-                        <p class="text-yellow-400/80 text-sm mt-1">เพิ่ม <code class="bg-yellow-500/20 px-1 rounded">GITHUB_TOKEN=ghp_xxx</code> ใน <code class="bg-yellow-500/20 px-1 rounded">.env</code> บน server</p>
+                        <p class="text-yellow-400 text-sm font-medium">{{ t('admin.appReleases.tokenMissing.title') }}</p>
+                        <p class="text-yellow-400/80 text-sm mt-1">{{ t('admin.appReleases.tokenMissing.add') }} <code class="bg-yellow-500/20 px-1 rounded">GITHUB_TOKEN=ghp_xxx</code> {{ t('admin.appReleases.tokenMissing.in') }} <code class="bg-yellow-500/20 px-1 rounded">.env</code> {{ t('admin.appReleases.tokenMissing.onServer') }}</p>
                     </div>
                 </div>
             </div>
@@ -173,35 +186,35 @@ const typeBadge = (release) => {
                     <svg class="w-5 h-5 text-trading-green flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
                     </svg>
-                    <span class="text-trading-green text-sm font-semibold">Active Versions for Download Page</span>
+                    <span class="text-trading-green text-sm font-semibold">{{ t('admin.appReleases.activeVersions') }}</span>
                 </div>
                 <div class="flex flex-wrap gap-3 ml-7">
                     <div class="flex items-center gap-1.5">
                         <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400">TPIX TRADE</span>
                         <span class="text-white text-xs font-mono">{{ activeTags?.trade || '—' }}</span>
                         <span v-if="activeVersions?.trade" class="text-dark-500 text-xs">(v{{ activeVersions.trade }})</span>
-                        <span v-if="!activeTags?.trade" class="text-trading-green text-[10px]">อัตโนมัติ</span>
+                        <span v-if="!activeTags?.trade" class="text-trading-green text-[10px]">{{ t('admin.appReleases.auto') }}</span>
                         <button v-else type="button" @click="setAuto('trade', 'TPIX TRADE')"
                                 class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-dark-300 hover:bg-white/10 hover:text-white"
-                                title="เลิกล็อก กลับไปใช้รุ่นล่าสุดอัตโนมัติ">ปลดล็อก</button>
+                                :title="t('admin.appReleases.unlockTitle')">{{ t('admin.appReleases.unlock') }}</button>
                     </div>
                     <div class="flex items-center gap-1.5">
                         <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-400">Wallet</span>
                         <span class="text-white text-xs font-mono">{{ activeTags?.wallet || '—' }}</span>
                         <span v-if="activeVersions?.wallet" class="text-dark-500 text-xs">(v{{ activeVersions.wallet }})</span>
-                        <span v-if="!activeTags?.wallet" class="text-trading-green text-[10px]">อัตโนมัติ</span>
+                        <span v-if="!activeTags?.wallet" class="text-trading-green text-[10px]">{{ t('admin.appReleases.auto') }}</span>
                         <button v-else type="button" @click="setAuto('wallet', 'Wallet')"
                                 class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-dark-300 hover:bg-white/10 hover:text-white"
-                                title="เลิกล็อก กลับไปใช้รุ่นล่าสุดอัตโนมัติ">ปลดล็อก</button>
+                                :title="t('admin.appReleases.unlockTitle')">{{ t('admin.appReleases.unlock') }}</button>
                     </div>
                     <div class="flex items-center gap-1.5">
                         <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400">Master Node</span>
                         <span class="text-white text-xs font-mono">{{ activeTags?.masternode || '—' }}</span>
                         <span v-if="activeVersions?.masternode" class="text-dark-500 text-xs">(v{{ activeVersions.masternode }})</span>
-                        <span v-if="!activeTags?.masternode" class="text-trading-green text-[10px]">อัตโนมัติ</span>
+                        <span v-if="!activeTags?.masternode" class="text-trading-green text-[10px]">{{ t('admin.appReleases.auto') }}</span>
                         <button v-else type="button" @click="setAuto('masternode', 'Master Node')"
                                 class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-dark-300 hover:bg-white/10 hover:text-white"
-                                title="เลิกล็อก กลับไปใช้รุ่นล่าสุดอัตโนมัติ">ปลดล็อก</button>
+                                :title="t('admin.appReleases.unlockTitle')">{{ t('admin.appReleases.unlock') }}</button>
                     </div>
                 </div>
             </div>
@@ -210,14 +223,14 @@ const typeBadge = (release) => {
             <div v-if="latestDownloadable.length" class="glass-card p-5 border border-primary-500/10">
                 <h3 class="text-sm font-semibold text-primary-400 mb-4 flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                    Latest Downloadable Releases (APK/EXE)
+                    {{ t('admin.appReleases.latestDownloadable') }}
                 </h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                     <div v-for="r in latestDownloadable" :key="r.id"
                         :class="['p-3 rounded-xl border transition-all', isActiveRelease(r) ? 'bg-trading-green/10 border-trading-green/30' : 'bg-white/5 border-white/5 hover:border-white/20']">
                         <div class="flex items-center gap-2 mb-2">
-                            <span :class="['px-1.5 py-0.5 rounded text-[10px] font-bold', typeBadge(r).color]">{{ typeBadge(r).label }}</span>
-                            <span v-if="isActiveRelease(r)" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-trading-green/20 text-trading-green">Active: {{ isActiveRelease(r) }}</span>
+                            <span :class="['px-1.5 py-0.5 rounded text-[10px] font-bold', typeBadge(r).color]">{{ t(typeBadge(r).label) }}</span>
+                            <span v-if="isActiveRelease(r)" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-trading-green/20 text-trading-green">{{ t('admin.appReleases.activeFor', { app: isActiveRelease(r) }) }}</span>
                         </div>
                         <p class="text-white font-semibold text-sm">{{ r.name }}</p>
                         <p class="text-dark-500 text-xs font-mono">{{ r.tag }}</p>
@@ -237,7 +250,7 @@ const typeBadge = (release) => {
                                 })" :key="app.key"
                                     @click="setActive(r.tag, app.key)"
                                     :class="['px-1.5 py-0.5 rounded text-[9px] font-medium transition', app.color]"
-                                    :title="'Set as active ' + app.label">
+                                    :title="t('admin.appReleases.setActiveTitle', { app: app.label })">
                                     {{ app.label }}
                                 </button>
                             </div>
@@ -249,7 +262,7 @@ const typeBadge = (release) => {
             <!-- Stats Cards -->
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
-                    <p class="text-dark-400 text-sm">Total</p>
+                    <p class="text-dark-400 text-sm">{{ t('admin.appReleases.stats.total') }}</p>
                     <p class="text-2xl font-bold text-white mt-1">{{ releases.length }}</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur-xl border border-blue-500/10 rounded-xl p-4">
@@ -265,26 +278,19 @@ const typeBadge = (release) => {
                     <p class="text-2xl font-bold text-amber-400 mt-1">{{ filterCounts.desktop }}</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur-xl border border-green-500/10 rounded-xl p-4">
-                    <p class="text-dark-400 text-sm">With APK</p>
+                    <p class="text-dark-400 text-sm">{{ t('admin.appReleases.withApk') }}</p>
                     <p class="text-2xl font-bold text-trading-green mt-1">{{ filterCounts.apk }}</p>
                 </div>
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4">
-                    <p class="text-dark-400 text-sm">Downloads</p>
-                    <p class="text-2xl font-bold text-accent-400 mt-1">{{ releases.reduce((sum, r) => sum + (r.apk_downloads || 0), 0).toLocaleString() }}</p>
+                    <p class="text-dark-400 text-sm">{{ t('admin.appReleases.stats.downloads') }}</p>
+                    <p class="text-2xl font-bold text-accent-400 mt-1">{{ releases.reduce((sum, r) => sum + (r.apk_downloads || 0), 0).toLocaleString(locale === 'th' ? 'th-TH' : 'en-US') }}</p>
                 </div>
             </div>
 
             <!-- Filter Tabs -->
             <div class="flex items-center gap-2 flex-wrap">
                 <button
-                    v-for="f in [
-                        { key: 'all', label: 'All' },
-                        { key: 'mobile', label: 'TPIX TRADE' },
-                        { key: 'wallet', label: 'TPIX Wallet' },
-                        { key: 'desktop', label: 'Master Node' },
-                        { key: 'chain', label: 'Chain' },
-                        { key: 'apk', label: 'With APK' },
-                    ]"
+                    v-for="f in filterTabs"
                     :key="f.key"
                     @click="setFilter(f.key)"
                     :class="[
@@ -305,21 +311,21 @@ const typeBadge = (release) => {
                     <svg class="w-16 h-16 text-dark-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    <p class="text-dark-400">No releases found</p>
-                    <p class="text-dark-500 text-sm mt-1">Check GitHub token configuration or click Refresh</p>
+                    <p class="text-dark-400">{{ t('admin.appReleases.empty.title') }}</p>
+                    <p class="text-dark-500 text-sm mt-1">{{ t('admin.appReleases.empty.hint') }}</p>
                 </div>
 
                 <div v-else class="overflow-x-auto">
                 <table class="w-full">
                     <thead>
                         <tr class="border-b border-white/5">
-                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">Release</th>
-                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase hidden sm:table-cell">Type</th>
+                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">{{ t('admin.appReleases.table.release') }}</th>
+                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase hidden sm:table-cell">{{ t('admin.appReleases.table.type') }}</th>
                             <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase hidden lg:table-cell">APK</th>
-                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase hidden md:table-cell">Downloads</th>
-                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase hidden md:table-cell">Published</th>
-                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">Status</th>
-                            <th class="text-center px-6 py-3 text-xs font-medium text-dark-400 uppercase">Action</th>
+                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase hidden md:table-cell">{{ t('admin.appReleases.stats.downloads') }}</th>
+                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase hidden md:table-cell">{{ t('admin.appReleases.table.published') }}</th>
+                            <th class="text-left px-6 py-3 text-xs font-medium text-dark-400 uppercase">{{ t('common.status') }}</th>
+                            <th class="text-center px-6 py-3 text-xs font-medium text-dark-400 uppercase">{{ t('admin.appReleases.table.action') }}</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/5">
@@ -332,14 +338,14 @@ const typeBadge = (release) => {
                                         <p class="text-dark-500 text-xs font-mono mt-0.5">{{ release.tag }}</p>
                                     </div>
                                     <span v-if="isActiveRelease(release)" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-trading-green/20 text-trading-green">
-                                        Active
+                                        {{ t('admin.appReleases.active') }}
                                     </span>
                                 </div>
                             </td>
                             <td class="px-6 py-4 hidden sm:table-cell">
                                 <div class="flex items-center gap-1.5 flex-wrap">
                                     <span :class="['inline-flex px-2 py-0.5 rounded-full text-xs font-medium', typeBadge(release).color]">
-                                        {{ typeBadge(release).label }}
+                                        {{ t(typeBadge(release).label) }}
                                     </span>
                                     <span class="text-[10px] text-dark-500 font-mono">{{ release.repo }}</span>
                                 </div>
@@ -353,15 +359,15 @@ const typeBadge = (release) => {
                                 <span v-else class="text-dark-500 text-sm">-</span>
                             </td>
                             <td class="px-6 py-4 hidden md:table-cell">
-                                <span class="text-white text-sm">{{ release.apk_downloads?.toLocaleString() || '-' }}</span>
+                                <span class="text-white text-sm">{{ release.apk_downloads?.toLocaleString(locale === 'th' ? 'th-TH' : 'en-US') || '-' }}</span>
                             </td>
                             <td class="px-6 py-4 hidden md:table-cell">
                                 <span class="text-dark-300 text-sm">{{ formatDate(release.published_at) }}</span>
                             </td>
                             <td class="px-6 py-4">
-                                <span v-if="release.is_draft" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">Draft</span>
-                                <span v-else-if="release.is_prerelease" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400">Pre-release</span>
-                                <span v-else class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400">Published</span>
+                                <span v-if="release.is_draft" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">{{ t('admin.appReleases.status.draft') }}</span>
+                                <span v-else-if="release.is_prerelease" class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/20 text-orange-400">{{ t('admin.appReleases.status.prerelease') }}</span>
+                                <span v-else class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400">{{ t('admin.appReleases.status.published') }}</span>
                             </td>
                             <td class="px-6 py-4">
                                 <div class="flex items-center justify-center gap-1 flex-wrap">
@@ -378,7 +384,7 @@ const typeBadge = (release) => {
                                             {{ (app.key === 'trade' && release.tag === activeTags?.trade) || (app.key === 'wallet' && release.tag === activeTags?.wallet) || (app.key === 'masternode' && release.tag === activeTags?.masternode) ? '✓ ' : '' }}{{ app.label }}
                                         </button>
                                     </template>
-                                    <span v-else class="text-dark-600 text-xs">No assets</span>
+                                    <span v-else class="text-dark-600 text-xs">{{ t('admin.appReleases.noAssets') }}</span>
                                 </div>
                             </td>
                         </tr>
@@ -389,8 +395,7 @@ const typeBadge = (release) => {
                 <!-- Pagination -->
                 <div v-if="totalPages > 1" class="flex items-center justify-between px-6 py-4 border-t border-white/5">
                     <p class="text-dark-500 text-sm">
-                        Showing {{ (currentPage - 1) * perPage + 1 }}–{{ Math.min(currentPage * perPage, filteredReleases.length) }}
-                        of {{ filteredReleases.length }} releases
+                        {{ t('admin.appReleases.pagination', { from: (currentPage - 1) * perPage + 1, to: Math.min(currentPage * perPage, filteredReleases.length), total: filteredReleases.length }) }}
                     </p>
                     <div class="flex items-center gap-1">
                         <button
@@ -431,8 +436,8 @@ const typeBadge = (release) => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div class="text-sm text-dark-300">
-                        <p>Click <strong class="text-white">Set Active</strong> to choose which release appears on the <strong class="text-white">Download page</strong> and is used for <strong class="text-white">in-app updates</strong>.</p>
-                        <p class="mt-1">If no release is set as active, the latest mobile release with APK is used automatically.</p>
+                        <p>{{ t('admin.appReleases.info.p1a') }} <strong class="text-white">{{ t('admin.appReleases.info.setActive') }}</strong> {{ t('admin.appReleases.info.p1b') }} <strong class="text-white">{{ t('admin.appReleases.info.downloadPage') }}</strong> {{ t('admin.appReleases.info.p1c') }} <strong class="text-white">{{ t('admin.appReleases.info.inAppUpdates') }}</strong></p>
+                        <p class="mt-1">{{ t('admin.appReleases.info.p2') }}</p>
                     </div>
                 </div>
             </div>

@@ -24,6 +24,10 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { isMobile } from '@/utils/mobileWallet';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
+const dateLocale = computed(() => (locale.value === 'th' ? 'th-TH' : 'en-US'));
 
 const props = defineProps({
     submission: { type: Object, default: null },
@@ -45,11 +49,11 @@ const kycError = computed(() => page.props.errors?.kyc || '');
 // ─── สถานะปัจจุบัน ────────────────────────────────────────────────────────
 
 const STATUS_META = {
-    pending: { label: 'กำลังตรวจสอบ', cls: 'status-pending', icon: '⏳' },
-    approved: { label: 'ยืนยันตัวตนแล้ว', cls: 'status-approved', icon: '✓' },
-    rejected: { label: 'ไม่ผ่านการตรวจ', cls: 'status-rejected', icon: '✕' },
-    cancelled: { label: 'ยกเลิกแล้ว', cls: 'status-neutral', icon: '—' },
-    expired: { label: 'หมดอายุ', cls: 'status-neutral', icon: '—' },
+    pending: { labelKey: 'page.kyc.status.pending', cls: 'status-pending', icon: '⏳' },
+    approved: { labelKey: 'page.kyc.status.approved', cls: 'status-approved', icon: '✓' },
+    rejected: { labelKey: 'page.kyc.status.rejected', cls: 'status-rejected', icon: '✕' },
+    cancelled: { labelKey: 'page.kyc.status.cancelled', cls: 'status-neutral', icon: '—' },
+    expired: { labelKey: 'page.kyc.status.expired', cls: 'status-neutral', icon: '—' },
 };
 
 const currentStatus = computed(() => {
@@ -64,7 +68,7 @@ const isThaipromptSubmission = computed(() => props.submission?.source === 'thai
 // ใบที่ส่งเอกสารไว้ก่อนหน้านี้ยังรอตรวจได้ — ยกเลิกเองได้ (ทีมงานยังตรวจใบเดิมให้ตามปกติ)
 const cancelSubmission = () => {
     if (!props.submission) return;
-    if (!confirm('ยกเลิกคำขอนี้? เอกสารที่ส่งไปแล้วจะไม่ถูกตรวจ')) return;
+    if (!confirm(t('page.kyc.confirm.cancel'))) return;
 
     router.post(`/kyc/${props.submission.uuid}/cancel`, {}, { preserveScroll: true });
 };
@@ -72,7 +76,11 @@ const cancelSubmission = () => {
 // ─── ฟีเจอร์ที่ปลดล็อกได้ ─────────────────────────────────────────────────
 
 const gatedFeatures = computed(() => props.features.filter((f) => f.enabled));
-const featureLabel = (f) => f.label_th || f.label_en || f.key;
+const featureLabel = (f) => (locale.value === 'th'
+    ? f.label_th || f.label_en || f.key
+    : f.label_en || f.label_th || f.key);
+// ฝั่งเซิร์ฟเวอร์มีคำอธิบายภาษาไทยอย่างเดียวตอนนี้ — มี desc_en เมื่อไหร่ใช้ได้ทันที
+const featureDesc = (f) => (locale.value === 'th' ? f.desc_th : f.desc_en || f.desc_th);
 
 // ─── ไปทำในแอป ────────────────────────────────────────────────────────────
 
@@ -161,7 +169,7 @@ const showDeletionForm = ref(false);
 const deletionForm = useForm({ reason: '' });
 
 const requestDeletion = () => {
-    if (!confirm('ยืนยันขอลบข้อมูลยืนยันตัวตนทั้งหมด?\n\nเมื่อทีมงานดำเนินการแล้ว เอกสารและข้อมูลส่วนตัวจะถูกลบถาวร เอากลับมาไม่ได้ และสิทธิที่ได้จากการยืนยันตัวตนจะหายไปด้วย')) {
+    if (!confirm(t('page.kyc.confirm.deletion'))) {
         return;
     }
 
@@ -176,7 +184,7 @@ const requestDeletion = () => {
 
 const formatDate = (iso) => {
     if (!iso) return '—';
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(dateLocale.value, {
         dateStyle: 'medium',
         timeStyle: 'short',
     });
@@ -184,16 +192,13 @@ const formatDate = (iso) => {
 </script>
 
 <template>
-    <Head title="ยืนยันตัวตน" />
+    <Head :title="t('page.kyc.headTitle')" />
 
     <AppLayout>
         <div class="kyc-page">
             <header class="kyc-header">
-                <h1>ยืนยันตัวตน</h1>
-                <p>
-                    ยืนยันตัวตนทำในแอป TPIX TRADE — ใช้บัญชี Thaiprompt ที่ยืนยันแล้วผ่านทันที
-                    ไม่ต้องส่งเอกสาร ทำครั้งเดียว ใช้ได้ทั้งในแอปและบนเว็บ
-                </p>
+                <h1>{{ t('page.kyc.header.title') }}</h1>
+                <p>{{ t('page.kyc.header.desc') }}</p>
             </header>
 
             <div v-if="page.props.flash?.success" class="alert alert-success">
@@ -208,32 +213,31 @@ const formatDate = (iso) => {
                 <div class="status-head">
                     <span class="status-icon">{{ currentStatus.icon }}</span>
                     <div>
-                        <h2>{{ currentStatus.label }}</h2>
+                        <h2>{{ t(currentStatus.labelKey) }}</h2>
                         <p v-if="isThaipromptSubmission" class="status-sub">
-                            ยืนยันผ่านบัญชี Thaiprompt · บันทึกเมื่อ {{ formatDate(submission.reviewed_at || submission.submitted_at) }}
+                            {{ t('page.kyc.status.viaThaiprompt', { date: formatDate(submission.reviewed_at || submission.submitted_at) }) }}
                         </p>
                         <p v-else class="status-sub">
-                            ยื่นเมื่อ {{ formatDate(submission.submitted_at) }}
+                            {{ t('page.kyc.status.submittedAt', { date: formatDate(submission.submitted_at) }) }}
                             <template v-if="submission.reviewed_at">
-                                · ตรวจเมื่อ {{ formatDate(submission.reviewed_at) }}
+                                · {{ t('page.kyc.status.reviewedAt', { date: formatDate(submission.reviewed_at) }) }}
                             </template>
                         </p>
                     </div>
                 </div>
 
                 <p v-if="isPending" class="status-note">
-                    ทีมงานตรวจเอกสารด้วยตัวเอง โดยปกติใช้เวลา 1–3 วันทำการ
-                    — ไม่อยากรอ? ยืนยันด้วย Thaiprompt ในแอป TPIX TRADE ได้ทันที
+                    {{ t('page.kyc.status.pendingNote') }}
                 </p>
 
                 <div v-if="submission.reject_reason" class="reject-box">
-                    <strong>เหตุผลที่ไม่ผ่าน</strong>
+                    <strong>{{ t('page.kyc.reject.title') }}</strong>
                     <p>{{ submission.reject_reason }}</p>
-                    <p class="reject-hint">ยืนยันตัวตนใหม่ได้ในแอป TPIX TRADE ตามขั้นตอนด้านล่าง</p>
+                    <p class="reject-hint">{{ t('page.kyc.reject.hint') }}</p>
                 </div>
 
                 <button v-if="isPending" class="btn-ghost" @click="cancelSubmission">
-                    ยกเลิกคำขอ
+                    {{ t('page.kyc.cancelRequest') }}
                 </button>
             </section>
 
@@ -242,38 +246,39 @@ const formatDate = (iso) => {
                 <div class="app-head">
                     <BrandLogo variant="icon" class="app-logo" alt="" />
                     <div>
-                        <h2 class="section-title app-title">ยืนยันตัวตนในแอป TPIX TRADE</h2>
-                        <p class="app-sub">หน้าเว็บยืนยันตัวตนไม่ได้ · ใช้เวลาไม่กี่นาทีในแอป</p>
+                        <h2 class="section-title app-title">{{ t('page.kyc.app.title') }}</h2>
+                        <p class="app-sub">{{ t('page.kyc.app.sub') }}</p>
                     </div>
                 </div>
 
                 <ol class="app-steps">
-                    <li>ติดตั้งแอป <strong>TPIX TRADE</strong> (Android)</li>
+                    <li>{{ t('page.kyc.app.step1Before') }} <strong>TPIX TRADE</strong> {{ t('page.kyc.app.step1After') }}</li>
                     <li>
-                        เชื่อม<strong>กระเป๋าใบเดียวกับที่ใช้บนเว็บนี้</strong>
+                        {{ t('page.kyc.app.step2Before') }} <strong>{{ t('page.kyc.app.step2Strong') }}</strong>
                         <span v-if="walletShort" class="wallet-chip">{{ walletShort }}</span>
                     </li>
                     <li>
-                        เปิดเมนู <strong>ยืนยันตัวตน</strong> แล้วกด <strong>ยืนยันด้วย Thaiprompt</strong>
-                        — เคยยืนยันกับ Thaiprompt แล้ว ผ่านทันที ไม่ต้องยืนยันซ้ำ
+                        {{ t('page.kyc.app.step3Open') }} <strong>{{ t('page.kyc.app.step3Menu') }}</strong>
+                        {{ t('page.kyc.app.step3Tap') }} <strong>{{ t('page.kyc.app.step3Button') }}</strong>
+                        {{ t('page.kyc.app.step3Note') }}
                     </li>
-                    <li>กลับมาที่หน้านี้ — สิทธิ์บนเว็บปลดล็อกตามให้เอง</li>
+                    <li>{{ t('page.kyc.app.step4') }}</li>
                 </ol>
 
                 <div class="app-actions">
                     <template v-if="mobile">
                         <a :href="app.deep_link" class="btn-primary app-open" data-test="kyc-open-app">
-                            เปิดแอป TPIX TRADE
+                            {{ t('page.kyc.app.openApp') }}
                         </a>
-                        <Link :href="app.download_url" class="btn-ghost">ยังไม่มีแอป? ดาวน์โหลด</Link>
+                        <Link :href="app.download_url" class="btn-ghost">{{ t('page.kyc.app.noApp') }}</Link>
                     </template>
 
                     <template v-else>
                         <div v-if="downloadQr" class="app-qr">
-                            <img :src="downloadQr" alt="QR ดาวน์โหลดแอป TPIX TRADE" width="168" height="168" />
-                            <span>สแกนด้วยมือถือเพื่อดาวน์โหลดแอป</span>
+                            <img :src="downloadQr" :alt="t('page.kyc.app.qrAlt')" width="168" height="168" />
+                            <span>{{ t('page.kyc.app.qrScan') }}</span>
                         </div>
-                        <Link :href="app.download_url" class="btn-ghost">หน้าดาวน์โหลดแอป</Link>
+                        <Link :href="app.download_url" class="btn-ghost">{{ t('page.kyc.app.downloadPage') }}</Link>
                     </template>
 
                     <button
@@ -284,25 +289,22 @@ const formatDate = (iso) => {
                         data-test="kyc-recheck"
                         @click="recheck"
                     >
-                        {{ checking ? 'กำลังตรวจ…' : 'ทำในแอปแล้ว — ตรวจสอบสถานะ' }}
+                        {{ checking ? t('page.kyc.app.checking') : t('page.kyc.app.recheck') }}
                     </button>
                 </div>
 
                 <!-- ยังไม่รู้ว่าเป็นใคร — ผลยืนยันผูกกับบัญชีของกระเป๋า ต้องเชื่อม+เซ็นก่อนถึงจะเห็นผล -->
                 <div v-if="!signedIn" class="guest-note">
-                    <p>
-                        ยืนยันในแอปแล้ว? เชื่อมกระเป๋าใบเดียวกันบนเว็บแล้วกดเซ็นยืนยัน (ไม่เสียค่าแก๊ส)
-                        เพื่อดูสถานะและใช้สิทธิ์บนเว็บ
-                    </p>
+                    <p>{{ t('page.kyc.guest.note') }}</p>
                     <button type="button" class="btn-ghost" :disabled="signing" data-test="kyc-connect-wallet" @click="connectWallet">
-                        {{ signing ? 'รอเซ็นในกระเป๋า…' : (walletStore.isConnected ? 'เซ็นยืนยันกระเป๋า' : 'เชื่อมกระเป๋า') }}
+                        {{ signing ? t('page.kyc.guest.waitingSign') : (walletStore.isConnected ? t('page.kyc.guest.signWallet') : t('page.kyc.guest.connectWallet')) }}
                     </button>
                 </div>
             </section>
 
             <!-- ── ปลดล็อกอะไรบ้าง ───────────────────────────────────────── -->
             <section v-if="gatedFeatures.length" class="glass-card">
-                <h2 class="section-title">ยืนยันตัวตนแล้วใช้อะไรได้</h2>
+                <h2 class="section-title">{{ t('page.kyc.features.title') }}</h2>
                 <ul class="feature-list">
                     <li v-for="f in gatedFeatures" :key="f.key" class="feature-item">
                         <span
@@ -313,25 +315,24 @@ const formatDate = (iso) => {
                         </span>
                         <div>
                             <strong>{{ featureLabel(f) }}</strong>
-                            <span v-if="f.desc_th" class="feature-desc">{{ f.desc_th }}</span>
-                            <span v-if="f.level === 'enhanced'" class="badge-level">ต้องระดับเพิ่มเติม</span>
+                            <span v-if="featureDesc(f)" class="feature-desc">{{ featureDesc(f) }}</span>
+                            <span v-if="f.level === 'enhanced'" class="badge-level">{{ t('page.kyc.features.enhanced') }}</span>
                         </div>
                     </li>
                 </ul>
             </section>
 
             <p v-else-if="!submission" class="glass-card muted-note">
-                ตอนนี้ยังไม่มีบริการไหนที่บังคับให้ยืนยันตัวตน
-                คุณยืนยันล่วงหน้าในแอปไว้ได้ เผื่อมีการเปิดใช้ในภายหลัง
+                {{ t('page.kyc.features.none') }}
             </p>
 
             <!-- ── ประวัติการยื่น ─────────────────────────────────────────── -->
             <section v-if="history.length > 1" class="glass-card">
-                <h2 class="section-title">ประวัติการยื่น</h2>
+                <h2 class="section-title">{{ t('page.kyc.history.title') }}</h2>
                 <ul class="history-list">
                     <li v-for="h in history" :key="h.uuid" class="history-row">
                         <span class="history-status" :class="STATUS_META[h.status]?.cls">
-                            {{ STATUS_META[h.status]?.label ?? h.status }}
+                            {{ STATUS_META[h.status] ? t(STATUS_META[h.status].labelKey) : h.status }}
                         </span>
                         <span class="history-date">{{ formatDate(h.submitted_at) }}</span>
                         <span v-if="h.reject_reason" class="history-reason">{{ h.reject_reason }}</span>
@@ -341,46 +342,41 @@ const formatDate = (iso) => {
 
             <!-- ── สิทธิตาม PDPA ──────────────────────────────────────────── -->
             <section v-if="submission" class="glass-card pdpa-card">
-                <h2 class="section-title">สิทธิของคุณเหนือข้อมูลนี้</h2>
-                <p class="pdpa-intro">
-                    ตาม พ.ร.บ. คุ้มครองข้อมูลส่วนบุคคล คุณเป็นเจ้าของข้อมูลเหล่านี้
-                    ไม่ใช่เรา — ขอดูหรือขอลบได้ตลอดเวลา
-                </p>
+                <h2 class="section-title">{{ t('page.kyc.pdpa.title') }}</h2>
+                <p class="pdpa-intro">{{ t('page.kyc.pdpa.intro') }}</p>
 
                 <div class="pdpa-actions">
                     <a href="/kyc/export" class="btn-ghost">
-                        ขอสำเนาข้อมูลของฉัน
-                        <span class="btn-sub">ดาวน์โหลดไฟล์ พร้อมรายชื่อทีมงานที่เคยเปิดดูเอกสาร</span>
+                        {{ t('page.kyc.pdpa.export') }}
+                        <span class="btn-sub">{{ t('page.kyc.pdpa.exportSub') }}</span>
                     </a>
 
                     <div v-if="deletionRequest" class="deletion-pending">
-                        <strong>ส่งคำขอลบข้อมูลแล้ว</strong>
-                        <span>ยื่นเมื่อ {{ formatDate(deletionRequest.requested_at) }} · รอทีมงานดำเนินการ</span>
+                        <strong>{{ t('page.kyc.pdpa.deletionSent') }}</strong>
+                        <span>{{ t('page.kyc.pdpa.deletionSentAt', { date: formatDate(deletionRequest.requested_at) }) }}</span>
                     </div>
 
                     <template v-else>
                         <button v-if="!showDeletionForm" class="btn-danger-ghost" @click="showDeletionForm = true">
-                            ขอลบข้อมูลของฉัน
+                            {{ t('page.kyc.pdpa.requestDeletion') }}
                         </button>
 
                         <div v-else class="deletion-form">
-                            <label>เหตุผล (ไม่บังคับ)</label>
+                            <label>{{ t('page.kyc.pdpa.reason') }}</label>
                             <textarea
                                 v-model="deletionForm.reason"
                                 rows="2"
                                 class="trading-input"
-                                placeholder="เช่น ไม่ประสงค์ใช้บริการต่อ"
+                                :placeholder="t('page.kyc.pdpa.reasonPlaceholder')"
                             ></textarea>
                             <p class="deletion-warn">
-                                เมื่อลบแล้วเอกสารและข้อมูลส่วนตัวจะหายถาวร
-                                และสิทธิที่ได้จากการยืนยันตัวตนจะถูกยกเลิกไปด้วย
-                                หากต้องการใช้บริการที่ต้องยืนยันตัวตนอีกครั้ง ต้องยืนยันใหม่ในแอป
+                                {{ t('page.kyc.pdpa.warn') }}
                             </p>
                             <div class="deletion-buttons">
                                 <button class="btn-danger-ghost" :disabled="deletionForm.processing" @click="requestDeletion">
-                                    {{ deletionForm.processing ? 'กำลังส่ง…' : 'ยืนยันขอลบ' }}
+                                    {{ deletionForm.processing ? t('page.kyc.pdpa.sending') : t('page.kyc.pdpa.confirmDeletion') }}
                                 </button>
-                                <button class="btn-ghost" @click="showDeletionForm = false">ยกเลิก</button>
+                                <button class="btn-ghost" @click="showDeletionForm = false">{{ t('common.cancel') }}</button>
                             </div>
                         </div>
                     </template>

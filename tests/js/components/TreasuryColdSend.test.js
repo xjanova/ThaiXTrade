@@ -8,7 +8,7 @@
  *
  * Developed by Xman Studio
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 
 const h = vi.hoisted(() => ({
@@ -40,6 +40,11 @@ vi.mock('ethers', async (importOriginal) => {
 
 import ColdSendModal from '@/Components/Admin/Treasury/ColdSendModal.vue';
 import Modal from '@/Components/Admin/Modal.vue';
+import { t, setLocale } from '@/Composables/useTranslation';
+
+const NS = 'admin.treasuryColdSendModal.';
+const REVIEW = () => t(NS + 'actions.review');
+const SIGN = () => t(NS + 'actions.sign');
 
 const WALLET = {
     key: 'liquidity',
@@ -84,7 +89,7 @@ async function fill(wrapper, { to = TO, amount = '210', file = BUNDLE, password 
 }
 
 async function reviewAndTick(wrapper) {
-    await button(wrapper, 'ตรวจรายการ').trigger('click');
+    await button(wrapper, REVIEW()).trigger('click');
     await wrapper.find('input[type="checkbox"]').setValue(true);
 }
 
@@ -99,36 +104,36 @@ beforeEach(() => {
 describe('ColdSendModal — before signing', () => {
     it('keeps "review" disabled until every field is valid', async () => {
         const wrapper = mountModal();
-        expect(button(wrapper, 'ตรวจรายการ').attributes('disabled')).toBeDefined();
+        expect(button(wrapper, REVIEW()).attributes('disabled')).toBeDefined();
 
         await fill(wrapper);
-        expect(button(wrapper, 'ตรวจรายการ').attributes('disabled')).toBeUndefined();
-        expect(wrapper.text()).toContain('พบ keystore ของกระเป๋านี้');
+        expect(button(wrapper, REVIEW()).attributes('disabled')).toBeUndefined();
+        expect(wrapper.text()).toContain(t(NS + 'form.keystoreFound', { file: 'master-wallet.keystores.json' }));
     });
 
     it('flags a recipient whose checksum is wrong (one typo)', async () => {
         const wrapper = mountModal();
         await fill(wrapper, { to: '0xD2EAB07809921fcB36c7AB72D7B5D8D2C12A67d7' });
-        expect(wrapper.text()).toContain('ที่อยู่ปลายทางไม่ถูกต้อง');
-        expect(button(wrapper, 'ตรวจรายการ').attributes('disabled')).toBeDefined();
+        expect(wrapper.text()).toContain(t(NS + 'problems.invalidRecipient'));
+        expect(button(wrapper, REVIEW()).attributes('disabled')).toBeDefined();
     });
 
     it('refuses more than the wallet holds, and sending to itself', async () => {
         const wrapper = mountModal();
         await fill(wrapper, { amount: '1000.000001' });
-        expect(wrapper.text()).toContain('จำนวนเกินยอดในกระเป๋า');
+        expect(wrapper.text()).toContain(t(NS + 'problems.exceedsBalance'));
 
         await wrapper.find('input[inputmode="decimal"]').setValue('1');
         await wrapper.find('input[placeholder="0x…"]').setValue(WALLET.address);
-        expect(wrapper.text()).toContain('ปลายทางเป็นกระเป๋าเดียวกับต้นทาง');
-        expect(button(wrapper, 'ตรวจรายการ').attributes('disabled')).toBeDefined();
+        expect(wrapper.text()).toContain(t(NS + 'problems.sameWallet'));
+        expect(button(wrapper, REVIEW()).attributes('disabled')).toBeDefined();
     });
 
     it('rejects a keystore that belongs to another wallet', async () => {
         const wrapper = mountModal();
         await fill(wrapper, { file: JSON.stringify(keystoreOf(OTHER)) });
-        expect(wrapper.text()).toContain('ไม่ใช่ของกระเป๋านี้');
-        expect(button(wrapper, 'ตรวจรายการ').attributes('disabled')).toBeDefined();
+        expect(wrapper.text()).toContain(t('util.treasuryColdWallet.errors.wrongWallet', { address: OTHER.toLowerCase() }));
+        expect(button(wrapper, REVIEW()).attributes('disabled')).toBeDefined();
     });
 
     it('does not wipe the form when the page refreshes balances (new object, same wallet)', async () => {
@@ -136,7 +141,7 @@ describe('ColdSendModal — before signing', () => {
         await fill(wrapper);
         await wrapper.setProps({ wallet: { ...WALLET } });
         expect(wrapper.find('input[placeholder="0x…"]').element.value).toBe(TO);
-        expect(button(wrapper, 'ตรวจรายการ').attributes('disabled')).toBeUndefined();
+        expect(button(wrapper, REVIEW()).attributes('disabled')).toBeUndefined();
     });
 });
 
@@ -144,11 +149,11 @@ describe('ColdSendModal — signing', () => {
     it('needs the tick, then sends exactly once even when clicked twice', async () => {
         const wrapper = mountModal();
         await fill(wrapper);
-        await button(wrapper, 'ตรวจรายการ').trigger('click');
-        expect(button(wrapper, 'เซ็นและส่ง').attributes('disabled')).toBeDefined();
+        await button(wrapper, REVIEW()).trigger('click');
+        expect(button(wrapper, SIGN()).attributes('disabled')).toBeDefined();
 
         await wrapper.find('input[type="checkbox"]').setValue(true);
-        const send = button(wrapper, 'เซ็นและส่ง');
+        const send = button(wrapper, SIGN());
         await send.trigger('click');
         await send.trigger('click');
         await flushPromises();
@@ -162,21 +167,24 @@ describe('ColdSendModal — signing', () => {
         expect(tx.gasLimit).toBe(21000n);
 
         expect(wrapper.text()).toContain('0xfeed');
-        expect(wrapper.text()).toContain('ยืนยันแล้วในบล็อก #42');
+        expect(wrapper.text()).toContain(t(NS + 'status.confirmed', { block: 42 }));
         expect(wrapper.emitted('sent')).toEqual([['0xfeed']]);
     });
 
+    afterEach(() => setLocale('en'));
+
     it('wrong password: Thai error, back to the form, nothing sent, password cleared', async () => {
+        setLocale('th');
         h.decrypt = vi.fn(async () => { throw new Error('incorrect password'); });
         const wrapper = mountModal();
         await fill(wrapper);
         await reviewAndTick(wrapper);
-        await button(wrapper, 'เซ็นและส่ง').trigger('click');
+        await button(wrapper, SIGN()).trigger('click');
         await flushPromises();
 
         expect(h.sendTx).not.toHaveBeenCalled();
-        expect(wrapper.text()).toContain('รหัสผ่าน keystore ไม่ถูกต้อง');
-        expect(button(wrapper, 'ตรวจรายการ')).toBeTruthy();
+        expect(wrapper.text()).toContain(t('util.treasuryColdWallet.errors.wrongPassword'));
+        expect(button(wrapper, REVIEW())).toBeTruthy();
         expect(wrapper.find('input[type="password"]').element.value).toBe('');
     });
 
@@ -185,11 +193,11 @@ describe('ColdSendModal — signing', () => {
         const wrapper = mountModal();
         await fill(wrapper);
         await reviewAndTick(wrapper);
-        await button(wrapper, 'เซ็นและส่ง').trigger('click');
+        await button(wrapper, SIGN()).trigger('click');
         await flushPromises();
 
         expect(h.sendTx).not.toHaveBeenCalled();
-        expect(wrapper.text()).toContain('ไม่ใช่ของกระเป๋านี้');
+        expect(wrapper.text()).toContain(t(NS + 'errors.keyMismatch'));
     });
 
     it('stops when the RPC is not chain 4289 or the live balance is short', async () => {
@@ -197,20 +205,20 @@ describe('ColdSendModal — signing', () => {
         let wrapper = mountModal();
         await fill(wrapper);
         await reviewAndTick(wrapper);
-        await button(wrapper, 'เซ็นและส่ง').trigger('click');
+        await button(wrapper, SIGN()).trigger('click');
         await flushPromises();
         expect(h.sendTx).not.toHaveBeenCalled();
-        expect(wrapper.text()).toContain('ไม่ใช่ 4289');
+        expect(wrapper.text()).toContain(t(NS + 'errors.wrongChain', { got: 1, expected: 4289 }));
 
         h.chainId = '0x10c1';
         h.balance = 1n;
         wrapper = mountModal();
         await fill(wrapper);
         await reviewAndTick(wrapper);
-        await button(wrapper, 'เซ็นและส่ง').trigger('click');
+        await button(wrapper, SIGN()).trigger('click');
         await flushPromises();
         expect(h.sendTx).not.toHaveBeenCalled();
-        expect(wrapper.text()).toContain('ยอดในกระเป๋าไม่พอ');
+        expect(wrapper.text()).toContain(t('util.treasuryColdWallet.errors.insufficientFunds'));
     });
 
     it('cannot be closed while it is signing', async () => {
@@ -219,7 +227,7 @@ describe('ColdSendModal — signing', () => {
         const wrapper = mountModal();
         await fill(wrapper);
         await reviewAndTick(wrapper);
-        await button(wrapper, 'เซ็นและส่ง').trigger('click');
+        await button(wrapper, SIGN()).trigger('click');
 
         expect(wrapper.findComponent(Modal).props('closeable')).toBe(false);
 

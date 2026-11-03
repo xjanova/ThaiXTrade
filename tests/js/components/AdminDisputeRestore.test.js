@@ -27,8 +27,9 @@ vi.mock('@/Layouts/AdminLayout.vue', () => ({ default: { template: '<div><slot /
 vi.mock('@/Components/Admin/SaleLaunchPanel.vue', () => ({ default: { template: '<div />' } }));
 
 import TokenSalesIndex from '@/Pages/Admin/TokenSales/Index.vue';
+import { t } from '@/Composables/useTranslation';
 
-const RESTORE_LABEL = 'กู้ออเดอร์';
+const RESTORE_LABEL = t('admin.tokenSales.disputes.restore');
 
 const order = (overrides = {}) => ({
     id: 9,
@@ -57,7 +58,7 @@ describe('Admin/TokenSales/Index — กู้ออเดอร์หลัง 
     });
 
     it('ไม่มีกล่องเมื่อไม่มีออเดอร์รอตัดสิน', () => {
-        expect(open([]).text()).not.toContain('ร้านถือเงินอยู่');
+        expect(open([]).text()).not.toContain(t('admin.tokenSales.disputes.title'));
     });
 
     it('เห็นกล่องได้จากแท็บแรกโดยไม่ต้องเปิดแท็บรายการ', () => {

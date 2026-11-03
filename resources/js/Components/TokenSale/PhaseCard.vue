@@ -6,6 +6,9 @@
  */
 import { computed } from 'vue';
 import { isPhaseOpen, phaseDisplayStatus } from '@/utils/salePhase';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     /** ข้อมูล phase */
@@ -39,8 +42,22 @@ const statusColor = computed(() => {
     }
 });
 
-// label สำหรับ status
-const statusLabel = computed(() => displayStatus.value.label);
+// label สำหรับ status — salePhase คืนป้ายภาษาอังกฤษตายตัว แปลงเป็นคีย์ตรงนี้
+// (คีย์ 'completed' ใช้ร่วมกันหลายป้าย จึงแยกตามข้อความป้าย ไม่ใช่ตาม key)
+const STATUS_LABEL_KEYS = {
+    'Sold Out': 'soldOut',
+    'Active Now': 'activeNow',
+    'Coming Soon': 'comingSoon',
+    'Closed': 'closed',
+    'Next Tier': 'nextTier',
+    'Completed': 'completed',
+    'Cancelled': 'cancelled',
+};
+const statusLabel = computed(() => {
+    const label = displayStatus.value.label;
+    const key = STATUS_LABEL_KEYS[label];
+    return key ? t(`ui.tokenSalePhaseCard.status.${key}`) : label;
+});
 
 /*
  * เลือกเฟสนี้เพื่อซื้อได้ไหม — ต้องใช้ด่านเดียวกับสโตร์และเซิร์ฟเวอร์
@@ -78,15 +95,15 @@ function formatNumber(n) {
 
         <!-- ราคา -->
         <div class="mb-4">
-            <span class="text-sm text-gray-400">Price per TPIX</span>
+            <span class="text-sm text-gray-400">{{ t('ui.tokenSalePhaseCard.pricePerTpix') }}</span>
             <p class="text-2xl font-bold text-primary-400">${{ phase.price_usd }}</p>
         </div>
 
         <!-- Progress bar ของ phase -->
         <div class="mb-4">
             <div class="flex justify-between text-xs text-gray-400 mb-1">
-                <span>{{ formatNumber(phase.sold) }} sold</span>
-                <span>{{ formatNumber(phase.allocation) }} total</span>
+                <span>{{ t('ui.tokenSalePhaseCard.sold', { n: formatNumber(phase.sold) }) }}</span>
+                <span>{{ t('ui.tokenSalePhaseCard.total', { n: formatNumber(phase.allocation) }) }}</span>
             </div>
             <div class="w-full h-2 rounded-full bg-white/5">
                 <div
@@ -102,31 +119,31 @@ function formatNumber(n) {
         <div class="space-y-2 text-sm">
             <!-- Min/Max -->
             <div class="flex justify-between">
-                <span class="text-gray-400">Min Purchase</span>
+                <span class="text-gray-400">{{ t('ui.tokenSalePhaseCard.minPurchase') }}</span>
                 <span class="text-white font-medium">{{ formatNumber(phase.min_purchase) }} TPIX</span>
             </div>
             <div class="flex justify-between">
-                <span class="text-gray-400">Max Purchase</span>
+                <span class="text-gray-400">{{ t('ui.tokenSalePhaseCard.maxPurchase') }}</span>
                 <span class="text-white font-medium">{{ formatNumber(phase.max_purchase) }} TPIX</span>
             </div>
 
             <!-- Vesting -->
             <div class="flex justify-between">
-                <span class="text-gray-400">TGE Unlock</span>
+                <span class="text-gray-400">{{ t('ui.tokenSalePhaseCard.tgeUnlock') }}</span>
                 <span class="text-trading-green font-medium">{{ phase.vesting_tge_percent }}%</span>
             </div>
             <div v-if="phase.vesting_cliff_days > 0" class="flex justify-between">
-                <span class="text-gray-400">Cliff Period</span>
-                <span class="text-white font-medium">{{ phase.vesting_cliff_days }} days</span>
+                <span class="text-gray-400">{{ t('ui.tokenSalePhaseCard.cliffPeriod') }}</span>
+                <span class="text-white font-medium">{{ t('ui.tokenSalePhaseCard.days', { n: phase.vesting_cliff_days }) }}</span>
             </div>
             <div class="flex justify-between">
-                <span class="text-gray-400">Vesting</span>
-                <span class="text-white font-medium">{{ phase.vesting_duration_days }} days</span>
+                <span class="text-gray-400">{{ t('ui.tokenSalePhaseCard.vesting') }}</span>
+                <span class="text-white font-medium">{{ t('ui.tokenSalePhaseCard.days', { n: phase.vesting_duration_days }) }}</span>
             </div>
 
             <!-- Remaining -->
             <div class="flex justify-between pt-2 border-t border-white/5">
-                <span class="text-gray-400">Remaining</span>
+                <span class="text-gray-400">{{ t('ui.tokenSalePhaseCard.remaining') }}</span>
                 <span class="text-primary-400 font-bold">{{ formatNumber(phase.remaining) }} TPIX</span>
             </div>
         </div>
@@ -138,7 +155,7 @@ function formatNumber(n) {
             :class="{ 'opacity-80': selected }"
             @click.stop="emit('select', phase.id)"
         >
-            {{ selected ? 'Selected' : 'Select Phase' }}
+            {{ selected ? t('ui.tokenSalePhaseCard.selected') : t('ui.tokenSalePhaseCard.selectPhase') }}
         </button>
     </div>
 </template>

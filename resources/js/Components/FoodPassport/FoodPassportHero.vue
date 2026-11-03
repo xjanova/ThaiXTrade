@@ -2,6 +2,10 @@
 /**
  * FoodPassport Hero — Banner section พร้อมสถิติ
  */
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
+
 defineProps({
     stats: { type: Object, default: () => ({}) },
 });
@@ -23,7 +27,7 @@ defineProps({
                 <div class="flex-1 text-center lg:text-left">
                     <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 mb-4">
                         <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
-                        <span class="text-green-400 text-xs font-medium">Powered by TPIX Chain + IoT</span>
+                        <span class="text-green-400 text-xs font-medium">{{ t('ui.foodPassportFoodPassportHero.badge') }}</span>
                     </div>
 
                     <h1 class="text-3xl lg:text-5xl font-bold text-white mb-4">
@@ -31,11 +35,10 @@ defineProps({
                     </h1>
 
                     <p class="text-dark-300 text-lg mb-2">
-                        ตรวจสอบที่มาอาหารบน Blockchain
+                        {{ t('ui.foodPassportFoodPassportHero.subtitle') }}
                     </p>
                     <p class="text-dark-500 text-sm max-w-lg">
-                        ติดตามเส้นทางอาหารตั้งแต่ฟาร์มถึงมือคุณ ด้วย IoT sensors + NFT ใบรับรอง
-                        บน TPIX Chain — โปร่งใส ปลอดภัย แก้ไขไม่ได้
+                        {{ t('ui.foodPassportFoodPassportHero.description') }}
                     </p>
                 </div>
 
@@ -65,7 +68,7 @@ defineProps({
                         <div class="absolute inset-0 flex items-center justify-center">
                             <div class="text-center">
                                 <p class="text-4xl">🛡️</p>
-                                <p class="text-white text-xs font-bold mt-1">Verified</p>
+                                <p class="text-white text-xs font-bold mt-1">{{ t('ui.foodPassportFoodPassportHero.verified') }}</p>
                             </div>
                         </div>
                     </div>

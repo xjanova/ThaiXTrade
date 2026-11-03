@@ -12,7 +12,7 @@ import { useTranslation } from '@/Composables/useTranslation';
 import LanguageSwitcher from '@/Components/Navigation/LanguageSwitcher.vue';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
-const { t } = useTranslation();
+const { t, locale } = useTranslation();
 
 defineProps({
     title: String,
@@ -81,7 +81,6 @@ const resolvingAlertId = ref(null);
 
 const criticalAlerts = computed(() => systemAlerts.value.filter(a => a.severity === 'critical'));
 const topAlert = computed(() => criticalAlerts.value[0] || systemAlerts.value[0] || null);
-const isThai = computed(() => t('common.all') === 'ทั้งหมด');
 
 const fetchSystemAlerts = async () => {
     try {
@@ -112,7 +111,7 @@ const resolveAlert = (id) => {
 const alertTime = (a) => {
     if (!a?.last_seen_at) return '';
     const d = new Date(a.last_seen_at);
-    return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return isNaN(d) ? '' : d.toLocaleTimeString(locale.value === 'th' ? 'th-TH' : 'en-US', { hour: '2-digit', minute: '2-digit' });
 };
 
 onMounted(() => {
@@ -137,48 +136,48 @@ const navigationSections = computed(() => [
     {
         title: null,
         items: [
-            { name: t('common.all') === 'ทั้งหมด' ? 'แดชบอร์ด' : 'Dashboard', href: '/admin', icon: 'dashboard' },
+            { name: t('layout.adminLayout.nav.dashboard'), href: '/admin', icon: 'dashboard' },
         ],
     },
     {
-        title: t('common.all') === 'ทั้งหมด' ? 'สมาชิก' : 'Members',
+        title: t('layout.adminLayout.sections.members'),
         items: [
-            { name: t('common.all') === 'ทั้งหมด' ? 'จัดการสมาชิก' : 'Members', href: '/admin/members', icon: 'members' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'จัดการ Wallet' : 'Wallets', href: '/admin/wallets', icon: 'wallet' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'ยืนยันตัวตน (KYC)' : 'KYC Review', href: '/admin/kyc', icon: 'members' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'คำขอลบข้อมูล' : 'Data Deletion', href: '/admin/kyc/deletions', icon: 'audit' },
+            { name: t('layout.adminLayout.nav.members'), href: '/admin/members', icon: 'members' },
+            { name: t('layout.adminLayout.nav.wallets'), href: '/admin/wallets', icon: 'wallet' },
+            { name: t('layout.adminLayout.nav.kycReview'), href: '/admin/kyc', icon: 'members' },
+            { name: t('layout.adminLayout.nav.dataDeletion'), href: '/admin/kyc/deletions', icon: 'audit' },
         ],
     },
     {
-        title: t('common.all') === 'ทั้งหมด' ? 'การเทรด' : 'Trading',
+        title: t('layout.adminLayout.sections.trading'),
         items: [
-            { name: 'Chains', href: '/admin/chains', icon: 'chain' },
-            { name: 'Tokens', href: '/admin/tokens', icon: 'token' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'คู่เทรด' : 'Trading Pairs', href: '/admin/trading-pairs', icon: 'pair' },
+            { name: t('layout.adminLayout.nav.chains'), href: '/admin/chains', icon: 'chain' },
+            { name: t('layout.adminLayout.nav.tokens'), href: '/admin/tokens', icon: 'token' },
+            { name: t('layout.adminLayout.nav.tradingPairs'), href: '/admin/trading-pairs', icon: 'pair' },
             /*
              * ศูนย์เฝ้าดูบอทเทรด — เห็นบอททุกตัวของทุกกระเป๋า ทั้งคลาวด์และแพลนฟรี
              * อยู่หมวดการเทรดเพราะเป็นการเฝ้าดูการวางไม้ ไม่ใช่การตั้งค่าระบบ
              */
-            { name: t('common.all') === 'ทั้งหมด' ? 'บอทเทรด (AI)' : 'AI Bots', href: '/admin/ai-bots', icon: 'dashboard' },
+            { name: t('layout.adminLayout.nav.aiBots'), href: '/admin/ai-bots', icon: 'dashboard' },
         ],
     },
     {
-        title: t('common.all') === 'ทั้งหมด' ? 'การเงิน' : 'Finance',
+        title: t('layout.adminLayout.sections.finance'),
         items: [
-            { name: t('common.all') === 'ทั้งหมด' ? 'ชั้นคลัง' : 'Treasury', href: '/admin/treasury', icon: 'wallet' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'คิวจ่ายเงิน' : 'Payout Queue', href: '/admin/treasury/payouts', icon: 'transaction' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'Whitelist ปลายทาง' : 'Payout Whitelist', href: '/admin/treasury/whitelist', icon: 'wallet' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'สมุดบัญชีคลัง' : 'Treasury Ledger', href: '/admin/treasury/ledger', icon: 'transaction' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'กองทุนพยุงราคา' : 'Stability Reserve', href: '/admin/stabilizer', icon: 'swap' },
+            { name: t('layout.adminLayout.nav.treasury'), href: '/admin/treasury', icon: 'wallet' },
+            { name: t('layout.adminLayout.nav.payoutQueue'), href: '/admin/treasury/payouts', icon: 'transaction' },
+            { name: t('layout.adminLayout.nav.payoutWhitelist'), href: '/admin/treasury/whitelist', icon: 'wallet' },
+            { name: t('layout.adminLayout.nav.treasuryLedger'), href: '/admin/treasury/ledger', icon: 'transaction' },
+            { name: t('layout.adminLayout.nav.stabilityReserve'), href: '/admin/stabilizer', icon: 'swap' },
             // สะพาน USDT หลายเชน → TPIX Chain — ยอดเงินหนุน คิวฝาก/ถอน และรายการรอตรวจ
-            { name: t('common.all') === 'ทั้งหมด' ? 'สะพาน USDT' : 'USDT Bridge', href: '/admin/bridge', icon: 'swap' },
+            { name: t('layout.adminLayout.nav.usdtBridge'), href: '/admin/bridge', icon: 'swap' },
             // สะพาน TPIX ⇄ wTPIX (BSC) — คลังล็อก TPIX · minter บน BSC · คิวสองทิศ
-            { name: t('common.all') === 'ทั้งหมด' ? 'สะพาน TPIX⇄wTPIX' : 'TPIX⇄wTPIX Bridge', href: '/admin/bridge/wtpix', icon: 'swap' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'รายงานการเงิน' : 'Finance Dashboard', href: '/admin/finance', icon: 'transaction' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'ค่าธรรมเนียม' : 'Fees', href: '/admin/fees', icon: 'fee' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'ค่าบริการวางไม้' : 'Order Fees', href: '/admin/trading-fees', icon: 'fee' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'ธุรกรรม' : 'Transactions', href: '/admin/transactions', icon: 'transaction' },
-            { name: 'Swap', href: '/admin/swap', icon: 'swap' },
+            { name: t('layout.adminLayout.nav.wtpixBridge'), href: '/admin/bridge/wtpix', icon: 'swap' },
+            { name: t('layout.adminLayout.nav.financeDashboard'), href: '/admin/finance', icon: 'transaction' },
+            { name: t('layout.adminLayout.nav.fees'), href: '/admin/fees', icon: 'fee' },
+            { name: t('layout.adminLayout.nav.orderFees'), href: '/admin/trading-fees', icon: 'fee' },
+            { name: t('layout.adminLayout.nav.transactions'), href: '/admin/transactions', icon: 'transaction' },
+            { name: t('layout.adminLayout.nav.swap'), href: '/admin/swap', icon: 'swap' },
         ],
     },
     {
@@ -187,7 +186,7 @@ const navigationSections = computed(() => [
             { name: t('nav.tokenSale'), href: '/admin/token-sales', icon: 'tokensale' },
             { name: t('nav.tokenFactory'), href: '/admin/token-factory', icon: 'factory' },
             { name: 'MasterNode', href: '/admin/masternode', icon: 'chain' },
-            { name: 'Validators', href: '/admin/validators', icon: 'chain' },
+            { name: t('layout.adminLayout.nav.validators'), href: '/admin/validators', icon: 'chain' },
             { name: t('nav.carbonCredit'), href: '/admin/carbon-credits', icon: 'carbon' },
             { name: 'FoodPassport', href: '/admin/food-passport', icon: 'food' },
             { name: t('nav.whitepaper'), href: '/whitepaper', icon: 'whitepaper', external: true },
@@ -195,24 +194,24 @@ const navigationSections = computed(() => [
         ],
     },
     {
-        title: t('common.all') === 'ทั้งหมด' ? 'เนื้อหา' : 'Content',
+        title: t('layout.adminLayout.sections.content'),
         items: [
-            { name: t('common.all') === 'ทั้งหมด' ? 'บทความ AI' : 'AI Articles', href: '/admin/content', icon: 'content' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'ภาษา' : 'Languages', href: '/admin/languages', icon: 'language' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'แบนเนอร์' : 'Banners', href: '/admin/banners', icon: 'banner' },
+            { name: t('layout.adminLayout.nav.aiArticles'), href: '/admin/content', icon: 'content' },
+            { name: t('layout.adminLayout.nav.languages'), href: '/admin/languages', icon: 'language' },
+            { name: t('layout.adminLayout.nav.banners'), href: '/admin/banners', icon: 'banner' },
             // บอท Discord ส่งข่าว/วิดีโอ/กฎ/สถานะการขายเข้าเซิร์ฟเวอร์ชุมชน + ตอบ /ถาม
-            { name: t('common.all') === 'ทั้งหมด' ? 'บอท Discord' : 'Discord Bot', href: '/admin/discord', icon: 'notification' },
+            { name: t('layout.adminLayout.nav.discordBot'), href: '/admin/discord', icon: 'notification' },
         ],
     },
     {
-        title: t('common.all') === 'ทั้งหมด' ? 'ซัพพอร์ต' : 'Support',
+        title: t('layout.adminLayout.sections.support'),
         items: [
-            { name: t('common.all') === 'ทั้งหมด' ? 'ตั๋วแจ้งปัญหา' : 'Support Tickets', href: '/admin/support', icon: 'ticket' },
-            { name: 'Audit Logs', href: '/admin/audit-logs', icon: 'audit' },
+            { name: t('layout.adminLayout.nav.supportTickets'), href: '/admin/support', icon: 'ticket' },
+            { name: t('layout.adminLayout.nav.auditLogs'), href: '/admin/audit-logs', icon: 'audit' },
         ],
     },
     {
-        title: t('common.all') === 'ทั้งหมด' ? 'ระบบ' : 'System',
+        title: t('layout.adminLayout.sections.system'),
         items: [
             /*
              * ตั้งค่าเว็บอยู่หมวด "ระบบ" ไม่ใช่ "เนื้อหา"
@@ -223,12 +222,12 @@ const navigationSections = computed(() => [
              *
              * วางไว้บนสุดของหมวดเพราะเป็นหน้าที่เข้าบ่อยที่สุดในกลุ่มนี้
              */
-            { name: t('common.all') === 'ทั้งหมด' ? 'ตั้งค่าเว็บ' : 'Settings', href: '/admin/settings', icon: 'settings' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'ผู้ดูแลระบบ' : 'Admins', href: '/admin/users', icon: 'users' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'การแจ้งเตือน' : 'Notifications', href: '/admin/notifications', icon: 'notification' },
-            { name: t('common.all') === 'ทั้งหมด' ? 'อัพเดทแอพ' : 'App Releases', href: '/admin/app-releases', icon: 'download' },
+            { name: t('layout.adminLayout.nav.settings'), href: '/admin/settings', icon: 'settings' },
+            { name: t('layout.adminLayout.nav.admins'), href: '/admin/users', icon: 'users' },
+            { name: t('layout.adminLayout.nav.notifications'), href: '/admin/notifications', icon: 'notification' },
+            { name: t('layout.adminLayout.nav.appReleases'), href: '/admin/app-releases', icon: 'download' },
             // รายงานบั๊กจากแอปมือถือ/เว็บ/โปรแกรม — เห็นก่อนพังเกิดอะไร ไม่ต้องเดา
-            { name: t('common.all') === 'ทั้งหมด' ? 'รายงานบั๊ก' : 'Bug Reports', href: '/admin/bug-reports', icon: 'audit' },
+            { name: t('layout.adminLayout.nav.bugReports'), href: '/admin/bug-reports', icon: 'audit' },
         ],
     },
 ]);
@@ -298,7 +297,7 @@ onMounted(() => {
                 <!-- พับแถบ (72px) = ตัวย่อ · เปิดเต็ม = ตรา + ตัวอักษรแบบหัวเว็บ -->
                 <template v-if="sidebarOpen">
                     <BrandLogo variant="lockup" class="h-10 w-auto flex-shrink-0" />
-                    <span class="ml-auto self-start text-[10px] font-semibold uppercase tracking-wider text-dark-400 whitespace-nowrap">Admin</span>
+                    <span class="ml-auto self-start text-[10px] font-semibold uppercase tracking-wider text-dark-400 whitespace-nowrap">{{ t('layout.adminLayout.header.adminFallback') }}</span>
                 </template>
                 <BrandLogo v-else variant="icon" class="w-10 h-10 flex-shrink-0" />
             </div>
@@ -449,12 +448,14 @@ onMounted(() => {
             <div class="hidden lg:block px-3 py-3 border-t border-white/5">
                 <button
                     @click="toggleSidebar"
+                    :title="sidebarOpen ? '' : t('layout.adminLayout.sidebar.expand')"
+                    :aria-label="sidebarOpen ? t('layout.adminLayout.sidebar.collapse') : t('layout.adminLayout.sidebar.expand')"
                     class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-dark-400 hover:text-white hover:bg-white/5 transition-colors"
                 >
                     <svg class="w-5 h-5 transition-transform" :class="{ 'rotate-180': !sidebarOpen }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
                     </svg>
-                    <span v-if="sidebarOpen" class="text-sm">Collapse</span>
+                    <span v-if="sidebarOpen" class="text-sm">{{ t('layout.adminLayout.sidebar.collapse') }}</span>
                 </button>
             </div>
         </aside>
@@ -467,6 +468,7 @@ onMounted(() => {
                     <!-- Mobile Menu Button -->
                     <button
                         @click="toggleMobileSidebar"
+                        :aria-label="t('layout.adminLayout.header.openMenu')"
                         class="lg:hidden p-2 rounded-xl text-dark-400 hover:text-white hover:bg-white/5 transition-colors"
                     >
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -490,14 +492,14 @@ onMounted(() => {
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                             </svg>
-                            View Site
+                            {{ t('layout.adminLayout.header.viewSite') }}
                         </a>
 
                         <!-- Notification Bell -->
                         <Link
                             href="/admin/notifications"
                             class="relative p-2 rounded-xl text-dark-400 hover:text-white hover:bg-white/5 transition-colors"
-                            title="Notifications"
+                            :title="t('layout.adminLayout.header.notifications')"
                         >
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -517,15 +519,15 @@ onMounted(() => {
                         <!-- Admin Info -->
                         <div class="flex items-center gap-3">
                             <div class="text-right hidden sm:block">
-                                <p class="text-sm font-medium text-white">{{ admin?.name || 'Admin' }}</p>
-                                <p class="text-xs text-dark-400">{{ admin?.role || 'Administrator' }}</p>
+                                <p class="text-sm font-medium text-white">{{ admin?.name || t('layout.adminLayout.header.adminFallback') }}</p>
+                                <p class="text-xs text-dark-400">{{ admin?.role || t('layout.adminLayout.header.administrator') }}</p>
                             </div>
 
                             <!-- Avatar (links to profile) -->
                             <Link
                                 href="/admin/profile"
                                 class="w-9 h-9 rounded-full bg-gradient-to-br from-accent-500 via-primary-500 to-warm-500 flex items-center justify-center hover:ring-2 hover:ring-primary-500/50 transition-all"
-                                title="Edit Profile"
+                                :title="t('layout.adminLayout.header.editProfile')"
                             >
                                 <span class="text-white font-semibold text-sm">
                                     {{ (admin?.name || 'A').charAt(0).toUpperCase() }}
@@ -534,14 +536,14 @@ onMounted(() => {
 
                             <!-- Role Badge -->
                             <span class="hidden md:inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-500/10 text-primary-400 border border-primary-500/20">
-                                {{ admin?.role || 'Admin' }}
+                                {{ admin?.role || t('layout.adminLayout.header.adminFallback') }}
                             </span>
 
                             <!-- Logout -->
                             <button
                                 @click="handleLogout"
                                 class="p-2 rounded-xl text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                                title="Logout"
+                                :title="t('layout.adminLayout.header.logout')"
                             >
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -577,7 +579,7 @@ onMounted(() => {
                         <div class="flex-1 min-w-0">
                             <p class="text-sm font-semibold truncate" :class="criticalAlerts.length ? 'text-red-200' : 'text-amber-200'">
                                 <span class="uppercase tracking-wider mr-2 font-bold" :class="criticalAlerts.length ? 'text-red-400' : 'text-amber-400'">
-                                    {{ criticalAlerts.length ? (isThai ? '🔴 เหตุวิกฤต' : '🔴 CRITICAL') : (isThai ? '⚠️ แจ้งเตือน' : '⚠️ WARNING') }}
+                                    {{ criticalAlerts.length ? t('layout.adminLayout.alerts.critical') : t('layout.adminLayout.alerts.warning') }}
                                 </span>
                                 <span class="font-mono text-xs mr-2 opacity-80">[{{ topAlert.node }}]</span>
                                 {{ topAlert.message }}
@@ -585,7 +587,7 @@ onMounted(() => {
                             <p class="text-xs mt-0.5 opacity-70" :class="criticalAlerts.length ? 'text-red-300' : 'text-amber-300'">
                                 {{ alertTime(topAlert) }}
                                 <span v-if="topAlert.occurrences > 1"> · ×{{ topAlert.occurrences }}</span>
-                                <span v-if="systemAlerts.length > 1"> · {{ isThai ? `และอีก ${systemAlerts.length - 1} รายการ` : `+${systemAlerts.length - 1} more` }}</span>
+                                <span v-if="systemAlerts.length > 1"> · {{ t('layout.adminLayout.alerts.more', { n: systemAlerts.length - 1 }) }}</span>
                             </p>
                         </div>
 
@@ -594,7 +596,7 @@ onMounted(() => {
                             @click="alertsExpanded = !alertsExpanded"
                             class="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white/80 hover:text-white hover:bg-white/10 transition-colors"
                         >
-                            {{ alertsExpanded ? (isThai ? 'ย่อ' : 'Collapse') : (isThai ? 'ดูทั้งหมด' : 'Show all') }}
+                            {{ alertsExpanded ? t('layout.adminLayout.alerts.collapse') : t('layout.adminLayout.alerts.showAll') }}
                         </button>
                         <button
                             @click="resolveAlert(topAlert.id)"
@@ -604,7 +606,7 @@ onMounted(() => {
                                 ? 'bg-red-500/20 text-red-200 hover:bg-red-500/40 border border-red-500/40'
                                 : 'bg-amber-500/20 text-amber-200 hover:bg-amber-500/40 border border-amber-500/40'"
                         >
-                            {{ isThai ? 'รับทราบ' : 'Acknowledge' }}
+                            {{ t('layout.adminLayout.alerts.acknowledge') }}
                         </button>
                     </div>
 
@@ -628,7 +630,7 @@ onMounted(() => {
                                 :disabled="resolvingAlertId !== null"
                                 class="flex-shrink-0 px-2 py-1 rounded text-[11px] font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
                             >
-                                {{ isThai ? 'รับทราบ' : 'Ack' }}
+                                {{ t('layout.adminLayout.alerts.ack') }}
                             </button>
                         </div>
                     </div>
@@ -650,7 +652,7 @@ onMounted(() => {
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                         </svg>
                         <p class="text-sm text-green-300 flex-1">{{ flashSuccess }}</p>
-                        <button type="button" class="text-green-400/60 hover:text-green-300" @click="dismissedMessage = flashKey">&times;</button>
+                        <button type="button" class="text-green-400/60 hover:text-green-300" :aria-label="t('common.close')" @click="dismissedMessage = flashKey">&times;</button>
                     </div>
 
                     <div
@@ -664,7 +666,7 @@ onMounted(() => {
                             <p v-if="flashError" class="text-sm text-red-300">{{ flashError }}</p>
                             <p v-for="(msg, i) in pageErrors" :key="i" class="text-sm text-red-300">{{ msg }}</p>
                         </div>
-                        <button type="button" class="text-red-400/60 hover:text-red-300" @click="dismissedMessage = flashKey">&times;</button>
+                        <button type="button" class="text-red-400/60 hover:text-red-300" :aria-label="t('common.close')" @click="dismissedMessage = flashKey">&times;</button>
                     </div>
                 </div>
 

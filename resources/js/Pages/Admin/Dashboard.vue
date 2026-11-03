@@ -10,6 +10,9 @@ import { Head, Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import StatCard from '@/Components/Admin/StatCard.vue';
 import StatusBadge from '@/Components/Admin/StatusBadge.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     stats: {
@@ -57,7 +60,7 @@ const props = defineProps({
 });
 
 const shortWallet = (addr) => {
-    if (!addr) return 'Not Set';
+    if (!addr) return t('admin.dashboard.notSet');
     return addr.substring(0, 6) + '...' + addr.substring(addr.length - 4);
 };
 
@@ -93,6 +96,30 @@ const donutSegments = computed(() => {
     });
 });
 
+// ชื่อแหล่งรายได้: server ส่งมาทั้ง name (EN) และ name_th
+const sourceName = (src) => (locale.value === 'th' ? (src.name_th || src.name) : (src.name || src.name_th));
+
+// ประเภทธุรกรรมเป็น enum จาก server (trade/swap/deposit/withdrawal) — แปลตาม key ถ้าไม่มีคำแปลแสดงค่าดิบ
+const txTypeLabel = (type) => {
+    const k = `admin.dashboard.txType.${type}`;
+    const v = t(k);
+    return v === k ? type : v;
+};
+const formatDateTime = (iso) => {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString(locale.value === 'th' ? 'th-TH' : 'en-US');
+};
+
+// ป้ายวันของกราฟ: server ส่ง label 'M d' เป็นอังกฤษ — จัดรูปแบบจาก date (Y-m-d) ตามภาษาที่ใช้อยู่
+const dayLabel = (day) => {
+    if (!day) return '';
+    const d = day.date ? new Date(`${day.date}T00:00:00`) : null;
+    if (!d || Number.isNaN(d.getTime())) return day.label || '';
+    return d.toLocaleDateString(locale.value === 'th' ? 'th-TH' : 'en-US', { month: 'short', day: 'numeric' });
+};
+
 const formatNum = (n) => {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
     if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
@@ -101,29 +128,29 @@ const formatNum = (n) => {
 </script>
 
 <template>
-    <Head title="Dashboard" />
+    <Head :title="t('admin.dashboard.title')" />
 
-    <AdminLayout title="Dashboard">
+    <AdminLayout :title="t('admin.dashboard.title')">
         <!-- Revenue Wallet Warning -->
         <div v-if="!revenue.wallet_configured" class="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-3">
             <svg class="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
             </svg>
             <div>
-                <h3 class="text-sm font-semibold text-red-400">Revenue Wallets Not Configured</h3>
-                <p class="text-xs text-red-400/70 mt-1">ยังไม่ได้ตั้งกระเป๋ารับรายได้ (TPIX / wTPIX) — รายได้จากทุกช่องทางจะไม่ถูกเก็บ
-                    <Link href="/admin/settings" class="underline hover:text-red-300">Settings &gt; Revenue Wallets</Link>
+                <h3 class="text-sm font-semibold text-red-400">{{ t('admin.dashboard.walletWarning.title') }}</h3>
+                <p class="text-xs text-red-400/70 mt-1">{{ t('admin.dashboard.walletWarning.body') }}
+                    <Link href="/admin/settings" class="underline hover:text-red-300">{{ t('admin.dashboard.walletWarning.link') }}</Link>
                 </p>
             </div>
         </div>
 
         <!-- Primary Stats Row -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-            <StatCard title="Total Volume" :value="stats.totalVolume" icon="chart" :trend="volumeTrend" :trend-up="volumeTrend >= 0" />
-            <StatCard title="Total Transactions" :value="stats.totalTransactions" icon="transaction" :trend="transactionTrend" :trend-up="transactionTrend >= 0" />
-            <StatCard title="Active Chains" :value="stats.activeChains" icon="chain" />
-            <StatCard title="Active Pairs" :value="stats.activePairs" icon="pair" />
-            <StatCard title="Open Tickets" :value="stats.openTickets" icon="ticket" />
+            <StatCard :title="t('admin.dashboard.stats.totalVolume')" :value="stats.totalVolume" icon="chart" :trend="volumeTrend" :trend-up="volumeTrend >= 0" />
+            <StatCard :title="t('admin.dashboard.stats.totalTransactions')" :value="stats.totalTransactions" icon="transaction" :trend="transactionTrend" :trend-up="transactionTrend >= 0" />
+            <StatCard :title="t('admin.dashboard.stats.activeChains')" :value="stats.activeChains" icon="chain" />
+            <StatCard :title="t('admin.dashboard.stats.activePairs')" :value="stats.activePairs" icon="pair" />
+            <StatCard :title="t('admin.dashboard.stats.openTickets')" :value="stats.openTickets" icon="ticket" />
         </div>
 
         <!-- ═══════════════════════════════════════════════════════════ -->
@@ -135,7 +162,7 @@ const formatNum = (n) => {
                     <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
-                    Revenue Analytics
+                    {{ t('admin.dashboard.revenue.title') }}
                 </h2>
                 <!-- Revenue Wallet Badges -->
                 <div class="flex items-center gap-2 flex-wrap">
@@ -148,7 +175,7 @@ const formatNum = (n) => {
                     </template>
                     <div v-else class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20">
                         <span class="w-2 h-2 rounded-full bg-red-400"></span>
-                        <span class="text-xs text-red-400">Wallet Not Set</span>
+                        <span class="text-xs text-red-400">{{ t('admin.dashboard.walletNotSet') }}</span>
                     </div>
                 </div>
             </div>
@@ -156,7 +183,7 @@ const formatNum = (n) => {
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <!-- Total Revenue + Donut Chart -->
                 <div class="bg-gradient-to-br from-white/5 to-white/[0.02] backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                    <p class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Total Revenue</p>
+                    <p class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">{{ t('admin.dashboard.revenue.total') }}</p>
                     <p class="text-3xl font-bold text-white mb-1">{{ formatNum(revenue.total) }}</p>
                     <p class="text-sm text-gray-500 mb-4">TPIX + wTPIX</p>
 
@@ -193,7 +220,7 @@ const formatNum = (n) => {
                             </svg>
                             <!-- Center text -->
                             <div class="absolute inset-0 flex flex-col items-center justify-center">
-                                <span class="text-xs text-gray-400">Sources</span>
+                                <span class="text-xs text-gray-400">{{ t('admin.dashboard.revenue.sources') }}</span>
                                 <span class="text-lg font-bold text-white">{{ revenue.sources.length || 0 }}</span>
                             </div>
                         </div>
@@ -204,7 +231,7 @@ const formatNum = (n) => {
                         <div v-for="src in revenue.sources" :key="src.name" class="flex items-center justify-between text-sm">
                             <div class="flex items-center gap-2">
                                 <span class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: src.color }"></span>
-                                <span class="text-gray-300">{{ src.name_th }}</span>
+                                <span class="text-gray-300">{{ sourceName(src) }}</span>
                             </div>
                             <div class="text-right">
                                 <span class="text-white font-mono text-xs">{{ formatNum(src.amount) }}</span>
@@ -212,7 +239,7 @@ const formatNum = (n) => {
                             </div>
                         </div>
                         <div v-if="!revenue.sources.length" class="text-center py-4 text-gray-500 text-sm">
-                            ยังไม่มีรายได้
+                            {{ t('admin.dashboard.revenue.empty') }}
                         </div>
                     </div>
                 </div>
@@ -220,7 +247,7 @@ const formatNum = (n) => {
                 <!-- Daily Revenue Bar Chart -->
                 <div class="lg:col-span-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
                     <div class="flex items-center justify-between mb-4">
-                        <p class="text-sm font-medium text-white">Daily Revenue Trend</p>
+                        <p class="text-sm font-medium text-white">{{ t('admin.dashboard.revenue.dailyTrend') }}</p>
                         <div class="flex gap-1 bg-dark-800/50 rounded-lg p-0.5">
                             <button
                                 v-for="period in [{ key: '7d', label: '7D' }, { key: '14d', label: '14D' }, { key: '30d', label: '30D' }]"
@@ -266,11 +293,11 @@ const formatNum = (n) => {
                                 <!-- Tooltip -->
                                 <div class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 pointer-events-none">
                                     <div class="bg-dark-800 border border-white/10 rounded-lg p-2 text-xs whitespace-nowrap shadow-xl">
-                                        <p class="text-white font-medium mb-1">{{ day.label }}</p>
-                                        <p v-if="day.trading > 0" class="text-cyan-400">Trading: {{ day.trading }} TPIX</p>
-                                        <p v-if="day.swap > 0" class="text-violet-400">Swap: {{ day.swap }} TPIX</p>
-                                        <p v-if="day.factory > 0" class="text-amber-400">Factory: {{ day.factory }} TPIX</p>
-                                        <p class="text-white font-semibold border-t border-white/10 pt-1 mt-1">Total: {{ day.total }} TPIX</p>
+                                        <p class="text-white font-medium mb-1">{{ dayLabel(day) }}</p>
+                                        <p v-if="day.trading > 0" class="text-cyan-400">{{ t('admin.dashboard.tooltip.trading', { amount: day.trading }) }}</p>
+                                        <p v-if="day.swap > 0" class="text-violet-400">{{ t('admin.dashboard.tooltip.swap', { amount: day.swap }) }}</p>
+                                        <p v-if="day.factory > 0" class="text-amber-400">{{ t('admin.dashboard.tooltip.factory', { amount: day.factory }) }}</p>
+                                        <p class="text-white font-semibold border-t border-white/10 pt-1 mt-1">{{ t('admin.dashboard.tooltip.total', { amount: day.total }) }}</p>
                                     </div>
                                 </div>
                             </div>
@@ -278,22 +305,22 @@ const formatNum = (n) => {
 
                         <!-- X-axis labels -->
                         <div class="absolute left-10 right-0 bottom-0 flex justify-between">
-                            <span class="text-[10px] text-gray-500">{{ filteredDaily[0]?.label }}</span>
-                            <span class="text-[10px] text-gray-500">{{ filteredDaily[Math.floor(filteredDaily.length / 2)]?.label }}</span>
-                            <span class="text-[10px] text-gray-500">{{ filteredDaily[filteredDaily.length - 1]?.label }}</span>
+                            <span class="text-[10px] text-gray-500">{{ dayLabel(filteredDaily[0]) }}</span>
+                            <span class="text-[10px] text-gray-500">{{ dayLabel(filteredDaily[Math.floor(filteredDaily.length / 2)]) }}</span>
+                            <span class="text-[10px] text-gray-500">{{ dayLabel(filteredDaily[filteredDaily.length - 1]) }}</span>
                         </div>
                     </div>
 
                     <!-- Chart Legend -->
                     <div class="flex items-center gap-4 mt-4 pt-3 border-t border-white/5">
                         <div class="flex items-center gap-1.5 text-xs text-gray-400">
-                            <span class="w-2.5 h-2.5 rounded-sm bg-cyan-500/70"></span> Trading
+                            <span class="w-2.5 h-2.5 rounded-sm bg-cyan-500/70"></span> {{ t('admin.dashboard.legend.trading') }}
                         </div>
                         <div class="flex items-center gap-1.5 text-xs text-gray-400">
-                            <span class="w-2.5 h-2.5 rounded-sm bg-violet-500/70"></span> Swap
+                            <span class="w-2.5 h-2.5 rounded-sm bg-violet-500/70"></span> {{ t('admin.dashboard.legend.swap') }}
                         </div>
                         <div class="flex items-center gap-1.5 text-xs text-gray-400">
-                            <span class="w-2.5 h-2.5 rounded-sm bg-amber-500/70"></span> Factory
+                            <span class="w-2.5 h-2.5 rounded-sm bg-amber-500/70"></span> {{ t('admin.dashboard.legend.factory') }}
                         </div>
                     </div>
                 </div>
@@ -303,12 +330,12 @@ const formatNum = (n) => {
         <!-- Revenue Summary Cards -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
-                <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">24h Volume</div>
+                <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{{ t('admin.dashboard.summary.volume24h') }}</div>
                 <div class="text-xl font-bold text-white">{{ stats.volume24h }}</div>
-                <div class="text-xs text-gray-400 mt-1">{{ stats.trades24h }} trades / {{ stats.swaps24h }} swaps</div>
+                <div class="text-xs text-gray-400 mt-1">{{ t('admin.dashboard.summary.tradesSwaps', { trades: stats.trades24h, swaps: stats.swaps24h }) }}</div>
             </div>
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
-                <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Trading Fees</div>
+                <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{{ t('admin.dashboard.summary.tradingFees') }}</div>
                 <div class="text-xl font-bold text-cyan-400">{{ formatNum(revenue.trading_fees) }}</div>
                 <div class="flex items-center gap-2 mt-1">
                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400">TPIX {{ formatNum(revenue.revenue_by_token?.tpix?.trading || 0) }}</span>
@@ -316,7 +343,7 @@ const formatNum = (n) => {
                 </div>
             </div>
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
-                <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Swap Fees</div>
+                <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{{ t('admin.dashboard.summary.swapFees') }}</div>
                 <div class="text-xl font-bold text-violet-400">{{ formatNum(revenue.swap_fees) }}</div>
                 <div class="flex items-center gap-2 mt-1">
                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400">TPIX {{ formatNum(revenue.revenue_by_token?.tpix?.swap || 0) }}</span>
@@ -324,7 +351,7 @@ const formatNum = (n) => {
                 </div>
             </div>
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
-                <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Token Factory</div>
+                <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{{ t('admin.dashboard.summary.tokenFactory') }}</div>
                 <div class="text-xl font-bold text-amber-400">{{ formatNum(revenue.factory_fees) }}</div>
                 <div class="flex items-center gap-2 mt-1">
                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400">TPIX {{ formatNum(revenue.revenue_by_token?.tpix?.factory || 0) }}</span>
@@ -333,7 +360,7 @@ const formatNum = (n) => {
             </div>
             <!-- Per-Token Total -->
             <div class="bg-gradient-to-br from-cyan-500/5 to-amber-500/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
-                <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">By Token</div>
+                <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{{ t('admin.dashboard.summary.byToken') }}</div>
                 <div class="space-y-2">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-1.5">
@@ -357,9 +384,9 @@ const formatNum = (n) => {
             <!-- Recent Transactions -->
             <div class="lg:col-span-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
                 <div class="flex items-center justify-between px-6 py-4 border-b border-white/5">
-                    <h2 class="text-lg font-semibold text-white">Recent Transactions</h2>
+                    <h2 class="text-lg font-semibold text-white">{{ t('admin.dashboard.recent.title') }}</h2>
                     <Link href="/admin/transactions" class="text-sm text-primary-400 hover:text-primary-300 transition-colors">
-                        View All
+                        {{ t('admin.dashboard.recent.viewAll') }}
                     </Link>
                 </div>
 
@@ -367,11 +394,11 @@ const formatNum = (n) => {
                     <table class="w-full">
                         <thead>
                             <tr class="bg-dark-800/30">
-                                <th class="text-left text-xs font-medium text-gray-400 uppercase tracking-wider py-3 px-4">UUID</th>
-                                <th class="text-left text-xs font-medium text-gray-400 uppercase tracking-wider py-3 px-4">Type</th>
-                                <th class="text-left text-xs font-medium text-gray-400 uppercase tracking-wider py-3 px-4">Amount</th>
-                                <th class="text-left text-xs font-medium text-gray-400 uppercase tracking-wider py-3 px-4">Status</th>
-                                <th class="text-left text-xs font-medium text-gray-400 uppercase tracking-wider py-3 px-4">Date</th>
+                                <th class="text-left text-xs font-medium text-gray-400 uppercase tracking-wider py-3 px-4">{{ t('admin.dashboard.recent.table.uuid') }}</th>
+                                <th class="text-left text-xs font-medium text-gray-400 uppercase tracking-wider py-3 px-4">{{ t('admin.dashboard.recent.table.type') }}</th>
+                                <th class="text-left text-xs font-medium text-gray-400 uppercase tracking-wider py-3 px-4">{{ t('admin.dashboard.recent.table.amount') }}</th>
+                                <th class="text-left text-xs font-medium text-gray-400 uppercase tracking-wider py-3 px-4">{{ t('admin.dashboard.recent.table.status') }}</th>
+                                <th class="text-left text-xs font-medium text-gray-400 uppercase tracking-wider py-3 px-4">{{ t('admin.dashboard.recent.table.date') }}</th>
                             </tr>
                         </thead>
                         <tbody v-if="recentTransactions.length > 0">
@@ -381,15 +408,15 @@ const formatNum = (n) => {
                                 class="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
                             >
                                 <td class="py-3 px-4 text-sm font-mono text-gray-300">{{ tx.uuid?.substring(0, 8) }}...</td>
-                                <td class="py-3 px-4 text-sm text-white capitalize">{{ tx.type }}</td>
+                                <td class="py-3 px-4 text-sm text-white capitalize">{{ txTypeLabel(tx.type) }}</td>
                                 <td class="py-3 px-4 text-sm font-mono text-white">{{ tx.amount }}</td>
                                 <td class="py-3 px-4"><StatusBadge :status="tx.status" type="transaction" /></td>
-                                <td class="py-3 px-4 text-sm text-gray-400">{{ tx.created_at }}</td>
+                                <td class="py-3 px-4 text-sm text-gray-400">{{ formatDateTime(tx.created_at) }}</td>
                             </tr>
                         </tbody>
                         <tbody v-else>
                             <tr>
-                                <td colspan="5" class="py-12 text-center text-gray-400 text-sm">No recent transactions</td>
+                                <td colspan="5" class="py-12 text-center text-gray-400 text-sm">{{ t('admin.dashboard.recent.empty') }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -399,7 +426,7 @@ const formatNum = (n) => {
             <!-- Quick Actions -->
             <div class="space-y-4">
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                    <h2 class="text-lg font-semibold text-white mb-4">Quick Actions</h2>
+                    <h2 class="text-lg font-semibold text-white mb-4">{{ t('admin.dashboard.quick.title') }}</h2>
                     <div class="space-y-3">
                         <Link href="/admin/settings" class="flex items-center gap-3 p-3 rounded-xl bg-dark-800/50 hover:bg-dark-800 border border-white/5 hover:border-white/10 transition-all duration-200 group">
                             <div class="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center group-hover:bg-amber-500/20 transition-colors">
@@ -408,8 +435,8 @@ const formatNum = (n) => {
                                 </svg>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-white">Revenue Wallets</p>
-                                <p class="text-xs text-gray-400">ตั้งค่ากระเป๋า TPIX / wTPIX</p>
+                                <p class="text-sm font-medium text-white">{{ t('admin.dashboard.quick.revenueWallets') }}</p>
+                                <p class="text-xs text-gray-400">{{ t('admin.dashboard.quick.revenueWalletsDesc') }}</p>
                             </div>
                         </Link>
 
@@ -420,8 +447,8 @@ const formatNum = (n) => {
                                 </svg>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-white">Token Factory</p>
-                                <p class="text-xs text-gray-400">{{ revenue.factory_stats.pending }} pending</p>
+                                <p class="text-sm font-medium text-white">{{ t('admin.dashboard.quick.tokenFactory') }}</p>
+                                <p class="text-xs text-gray-400">{{ t('admin.dashboard.quick.pending', { n: revenue.factory_stats.pending }) }}</p>
                             </div>
                         </Link>
 
@@ -432,8 +459,8 @@ const formatNum = (n) => {
                                 </svg>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-white">Fee Management</p>
-                                <p class="text-xs text-gray-400">ตั้งค่าอัตราค่าธรรมเนียม</p>
+                                <p class="text-sm font-medium text-white">{{ t('admin.dashboard.quick.feeManagement') }}</p>
+                                <p class="text-xs text-gray-400">{{ t('admin.dashboard.quick.feeManagementDesc') }}</p>
                             </div>
                         </Link>
 
@@ -444,8 +471,8 @@ const formatNum = (n) => {
                                 </svg>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-white">Support Tickets</p>
-                                <p class="text-xs text-gray-400">{{ stats.openTickets }} open</p>
+                                <p class="text-sm font-medium text-white">{{ t('admin.dashboard.quick.supportTickets') }}</p>
+                                <p class="text-xs text-gray-400">{{ t('admin.dashboard.quick.open', { n: stats.openTickets }) }}</p>
                             </div>
                         </Link>
                     </div>
@@ -453,22 +480,22 @@ const formatNum = (n) => {
 
                 <!-- System Info -->
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                    <h2 class="text-lg font-semibold text-white mb-4">System Info</h2>
+                    <h2 class="text-lg font-semibold text-white mb-4">{{ t('admin.dashboard.system.title') }}</h2>
                     <div class="space-y-3 text-sm">
                         <div class="flex justify-between">
-                            <span class="text-gray-400">Platform</span>
+                            <span class="text-gray-400">{{ t('admin.dashboard.system.platform') }}</span>
                             <span class="text-white">TPIX TRADE</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-gray-400">Chain</span>
+                            <span class="text-gray-400">{{ t('admin.dashboard.system.chain') }}</span>
                             <span class="text-white">TPIX (4289)</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-gray-400">Framework</span>
+                            <span class="text-gray-400">{{ t('admin.dashboard.system.framework') }}</span>
                             <span class="text-white">Laravel 11</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-gray-400">Developer</span>
+                            <span class="text-gray-400">{{ t('admin.dashboard.system.developer') }}</span>
                             <span class="text-white">Xman Studio</span>
                         </div>
                     </div>

@@ -8,6 +8,9 @@
 import { ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t, locale } = useTranslation();
 
 const props = defineProps({
     notifications: {
@@ -23,11 +26,12 @@ const props = defineProps({
 const markingAll = ref(false);
 
 const typeIcons = {
-    ticket_new: { color: 'text-blue-400 bg-blue-500/10', label: 'New Ticket' },
-    ticket_reply: { color: 'text-green-400 bg-green-500/10', label: 'Ticket Reply' },
-    ticket_assigned: { color: 'text-yellow-400 bg-yellow-500/10', label: 'Assigned' },
-    system: { color: 'text-purple-400 bg-purple-500/10', label: 'System' },
-    user_report: { color: 'text-red-400 bg-red-500/10', label: 'Report' },
+    // เก็บคีย์คำแปล ไม่ใช่ข้อความ — แปลตอน render จะได้เปลี่ยนภาษาตามทันที
+    ticket_new: { color: 'text-blue-400 bg-blue-500/10', labelKey: 'admin.notifications.type.ticketNew' },
+    ticket_reply: { color: 'text-green-400 bg-green-500/10', labelKey: 'admin.notifications.type.ticketReply' },
+    ticket_assigned: { color: 'text-yellow-400 bg-yellow-500/10', labelKey: 'admin.notifications.type.assigned' },
+    system: { color: 'text-purple-400 bg-purple-500/10', labelKey: 'admin.notifications.type.system' },
+    user_report: { color: 'text-red-400 bg-red-500/10', labelKey: 'admin.notifications.type.report' },
 };
 
 const getTypeInfo = (type) => typeIcons[type] || typeIcons.system;
@@ -38,13 +42,13 @@ const formatTime = (dateStr) => {
     const now = new Date();
     const diff = now - date;
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'Just now';
-    if (mins < 60) return `${mins}m ago`;
+    if (mins < 1) return t('admin.notifications.time.justNow');
+    if (mins < 60) return t('admin.notifications.time.minutesAgo', { n: mins });
     const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
+    if (hours < 24) return t('admin.notifications.time.hoursAgo', { n: hours });
     const days = Math.floor(hours / 24);
-    if (days < 7) return `${days}d ago`;
-    return date.toLocaleDateString();
+    if (days < 7) return t('admin.notifications.time.daysAgo', { n: days });
+    return date.toLocaleDateString(locale.value === 'th' ? 'th-TH' : 'en-US');
 };
 
 const markAsRead = (notification) => {
@@ -81,15 +85,17 @@ function decodeLabel(html) {
 </script>
 
 <template>
-    <Head title="Notifications" />
+    <Head :title="t('admin.notifications.title')" />
 
-    <AdminLayout title="Notifications">
+    <AdminLayout :title="t('admin.notifications.title')">
         <!-- Header -->
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div>
-                <h2 class="text-xl font-semibold text-white">Notifications</h2>
+                <h2 class="text-xl font-semibold text-white">{{ t('admin.notifications.title') }}</h2>
                 <p class="text-sm text-dark-400 mt-1">
-                    {{ unreadCount > 0 ? `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}` : 'All caught up!' }}
+                    {{ unreadCount > 0
+                        ? t(unreadCount > 1 ? 'admin.notifications.unreadMany' : 'admin.notifications.unreadOne', { n: unreadCount })
+                        : t('admin.notifications.allCaughtUp') }}
                 </p>
             </div>
             <button
@@ -98,8 +104,8 @@ function decodeLabel(html) {
                 :disabled="markingAll"
                 class="px-4 py-2 rounded-xl text-sm font-medium text-primary-400 bg-primary-500/10 border border-primary-500/20 hover:bg-primary-500/20 transition-colors disabled:opacity-50"
             >
-                <span v-if="markingAll">Marking...</span>
-                <span v-else>Mark all as read</span>
+                <span v-if="markingAll">{{ t('admin.notifications.marking') }}</span>
+                <span v-else>{{ t('admin.notifications.markAllRead') }}</span>
             </button>
         </div>
 
@@ -151,7 +157,7 @@ function decodeLabel(html) {
                             class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
                             :class="getTypeInfo(notification.type).color"
                         >
-                            {{ getTypeInfo(notification.type).label }}
+                            {{ t(getTypeInfo(notification.type).labelKey) }}
                         </span>
                     </div>
                     <p class="text-sm mt-0.5" :class="notification.read_at ? 'text-dark-500' : 'text-dark-400'">
@@ -172,7 +178,7 @@ function decodeLabel(html) {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
             </div>
-            <p class="text-dark-400 text-sm">No notifications yet</p>
+            <p class="text-dark-400 text-sm">{{ t('admin.notifications.empty') }}</p>
         </div>
 
         <!-- Pagination -->

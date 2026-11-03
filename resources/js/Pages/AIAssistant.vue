@@ -5,7 +5,7 @@
  * ดึงข้อมูลจาก Groq API ผ่าน /api/v1/chatbot
  * Developed by Xman Studio
  */
-import { ref, nextTick } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTranslation } from '@/Composables/useTranslation';
@@ -18,7 +18,8 @@ const isLoading = ref(false);
 const chatContainer = ref(null);
 
 const chatHistory = ref([
-    { role: 'bot', text: t('chatbot.greeting'), time: new Date() },
+    // เก็บ key ไม่ใช่ข้อความ — สลับภาษาแล้วข้อความทักทายเปลี่ยนตาม
+    { role: 'bot', key: 'chatbot.greeting', time: new Date() },
 ]);
 
 function scrollBottom() {
@@ -39,10 +40,10 @@ async function sendMessage() {
         if (data.success) {
             chatHistory.value.push({ role: 'bot', text: data.data.message, time: new Date(), navigation: data.data.navigation });
         } else {
-            chatHistory.value.push({ role: 'bot', text: t('chatbot.error'), time: new Date() });
+            chatHistory.value.push({ role: 'bot', key: 'chatbot.error', time: new Date() });
         }
     } catch {
-        chatHistory.value.push({ role: 'bot', text: t('chatbot.error'), time: new Date() });
+        chatHistory.value.push({ role: 'bot', key: 'chatbot.error', time: new Date() });
     }
     isLoading.value = false;
     scrollBottom();
@@ -52,14 +53,16 @@ function sendQuick(msg) { message.value = msg; sendMessage(); }
 function formatTime(d) { return new Date(d).toLocaleTimeString(locale.value === 'th' ? 'th-TH' : 'en-US', { hour: '2-digit', minute: '2-digit' }); }
 function goTo(url) { router.visit(url); }
 
-const quickActions = [
-    { icon: '🔥', label: t('chatbot.q1'), msg: locale.value === 'th' ? 'TPIX Chain คืออะไร อธิบายละเอียด' : 'What is TPIX Chain in detail' },
-    { icon: '💰', label: t('chatbot.q2'), msg: locale.value === 'th' ? 'ซื้อเหรียญ TPIX ได้อย่างไร' : 'How to buy TPIX tokens' },
-    { icon: '📊', label: t('chatbot.q3'), msg: locale.value === 'th' ? 'สอนวิธีเทรดบน TPIX TRADE' : 'How to trade on TPIX TRADE' },
-    { icon: '🛡️', label: 'Master Node', msg: locale.value === 'th' ? 'Master Node TPIX รับรางวัลเท่าไหร่' : 'TPIX master node reward rates' },
-    { icon: '🌉', label: 'Bridge', msg: locale.value === 'th' ? 'Bridge ข้าม chain ทำอย่างไร' : 'How to bridge across chains' },
-    { icon: '🌱', label: t('chatbot.q4'), msg: locale.value === 'th' ? 'Carbon Credit ทำงานอย่างไร' : 'How does Carbon Credit work' },
-];
+// computed — ป้ายและคำถามเปลี่ยนตามภาษาทันทีที่สลับ
+// ใช้ป้ายของหน้านี้เอง (ไม่มีอีโมจิ) — chatbot.q* มีอีโมจินำหน้าอยู่แล้ว จะซ้ำกับ q.icon
+const quickActions = computed(() => [
+    { id: 'chain', icon: '🔥', label: t('page.aIAssistant.quick.chainLabel'), msg: t('page.aIAssistant.quick.chainMsg') },
+    { id: 'buy', icon: '💰', label: t('page.aIAssistant.quick.buyLabel'), msg: t('page.aIAssistant.quick.buyMsg') },
+    { id: 'trade', icon: '📊', label: t('page.aIAssistant.quick.tradeLabel'), msg: t('page.aIAssistant.quick.tradeMsg') },
+    { id: 'masternode', icon: '🛡️', label: t('page.aIAssistant.quick.masternodeLabel'), msg: t('page.aIAssistant.quick.masternodeMsg') },
+    { id: 'bridge', icon: '🌉', label: t('page.aIAssistant.quick.bridgeLabel'), msg: t('page.aIAssistant.quick.bridgeMsg') },
+    { id: 'carbon', icon: '🌱', label: t('page.aIAssistant.quick.carbonLabel'), msg: t('page.aIAssistant.quick.carbonMsg') },
+]);
 </script>
 
 <template>
@@ -68,7 +71,7 @@ const quickActions = [
         <div class="max-w-5xl mx-auto">
             <div class="text-center mb-6">
                 <h1 class="text-3xl font-bold text-white mb-2">🤖 {{ t('aiAssistant.title') }}</h1>
-                <p class="text-dark-400">{{ locale === 'th' ? 'ถามอะไรก็ได้เกี่ยวกับ TPIX Chain, การเทรด และฟีเจอร์ทั้งหมด' : 'Ask anything about TPIX Chain, trading and all features' }}</p>
+                <p class="text-dark-400">{{ t('page.aIAssistant.subtitle') }}</p>
             </div>
 
             <div class="grid lg:grid-cols-4 gap-6">
@@ -77,7 +80,7 @@ const quickActions = [
                     <div class="glass-card">
                         <h3 class="text-sm font-semibold text-dark-300 mb-3">{{ t('chatbot.trySuggestion') }}</h3>
                         <div class="space-y-2">
-                            <button v-for="q in quickActions" :key="q.label" @click="sendQuick(q.msg)"
+                            <button v-for="q in quickActions" :key="q.id" @click="sendQuick(q.msg)"
                                 class="w-full text-left px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-xs text-dark-300 hover:bg-primary-500/10 hover:border-primary-500/30 transition-all">
                                 <span class="mr-1">{{ q.icon }}</span> {{ q.label }}
                             </button>
@@ -98,9 +101,9 @@ const quickActions = [
                                 </div>
                                 <div v-else class="flex items-center justify-end gap-2 mb-1">
                                     <span class="text-dark-500 text-[10px]">{{ formatTime(msg.time) }}</span>
-                                    <span class="text-primary-300 text-xs font-semibold">{{ locale === 'th' ? 'คุณ' : 'You' }}</span>
+                                    <span class="text-primary-300 text-xs font-semibold">{{ t('page.aIAssistant.you') }}</span>
                                 </div>
-                                <p class="whitespace-pre-wrap text-sm leading-relaxed">{{ msg.text }}</p>
+                                <p class="whitespace-pre-wrap text-sm leading-relaxed">{{ msg.key ? t(msg.key) : msg.text }}</p>
                                 <button v-if="msg.navigation" @click="goTo(msg.navigation)"
                                     class="mt-2 px-3 py-1.5 bg-primary-500/20 text-primary-300 rounded-lg text-xs hover:bg-primary-500/30 transition-colors">
                                     {{ t('chatbot.goToPage') }}
@@ -130,7 +133,7 @@ const quickActions = [
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
                             </button>
                         </form>
-                        <p class="text-dark-600 text-[10px] mt-2 text-center">{{ locale === 'th' ? 'AI อาจให้ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบข้อมูลสำคัญด้วยตัวเอง' : 'AI may provide inaccurate info. Please verify important data yourself.' }}</p>
+                        <p class="text-dark-600 text-[10px] mt-2 text-center">{{ t('page.aIAssistant.disclaimer') }}</p>
                     </div>
                 </div>
             </div>

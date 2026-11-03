@@ -8,7 +8,10 @@ import { ref, computed } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { useAdminPolling } from '@/Composables/useAdminPolling';
+import { useTranslation } from '@/Composables/useTranslation';
 import axios from 'axios';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     stats: { type: Object, default: () => ({}) },
@@ -59,10 +62,10 @@ useAdminPolling(refreshStats, 30000);
 // index = ตัวเลข enum NodeTier บนสัญญา { Guardian=0, Sentinel=1, Light=2, Validator=3 }
 // countKey = คีย์ใน stats ที่ backend นับ activeNodes มาจาก getTierInfo() จริง
 const tiers = [
-    { name: 'Validator', index: 3, countKey: 'validator_nodes', max: 21, stake: '10,000,000 TPIX', reward: '20%', lock: '180 days', color: 'text-red-400', bg: 'bg-red-500/15 border-red-500/30' },
-    { name: 'Guardian', index: 0, countKey: 'guardian_nodes', max: 100, stake: '1,000,000 TPIX', reward: '35%', lock: '90 days', color: 'text-yellow-400', bg: 'bg-yellow-500/15 border-yellow-500/30' },
-    { name: 'Sentinel', index: 1, countKey: 'sentinel_nodes', max: 500, stake: '100,000 TPIX', reward: '30%', lock: '30 days', color: 'text-purple-400', bg: 'bg-purple-500/15 border-purple-500/30' },
-    { name: 'Light', index: 2, countKey: 'light_nodes', max: 0, stake: '10,000 TPIX', reward: '15%', lock: '7 days', color: 'text-cyan-400', bg: 'bg-cyan-500/15 border-cyan-500/30' },
+    { name: 'Validator', index: 3, countKey: 'validator_nodes', max: 21, stake: '10,000,000 TPIX', reward: '20%', lockDays: 180, color: 'text-red-400', bg: 'bg-red-500/15 border-red-500/30' },
+    { name: 'Guardian', index: 0, countKey: 'guardian_nodes', max: 100, stake: '1,000,000 TPIX', reward: '35%', lockDays: 90, color: 'text-yellow-400', bg: 'bg-yellow-500/15 border-yellow-500/30' },
+    { name: 'Sentinel', index: 1, countKey: 'sentinel_nodes', max: 500, stake: '100,000 TPIX', reward: '30%', lockDays: 30, color: 'text-purple-400', bg: 'bg-purple-500/15 border-purple-500/30' },
+    { name: 'Light', index: 2, countKey: 'light_nodes', max: 0, stake: '10,000 TPIX', reward: '15%', lockDays: 7, color: 'text-cyan-400', bg: 'bg-cyan-500/15 border-cyan-500/30' },
 ];
 
 /** bps → "12%" / "6.25%" */
@@ -73,17 +76,17 @@ const fmtBps = (bps) => (bps === null || bps === undefined ? '—' : `${Number((
  * เพดาน APR สำคัญกับแอดมินเพราะเป็นตัวกันพูลรางวัลไม่ให้ถูกโหนดชุดแรกดูดหมด
  */
 const tierRows = computed(() => {
-    const fromChain = new Map((stats.value.tier_info || []).map(t => [Number(t.tier), t]));
-    return tiers.map(t => {
-        const c = fromChain.get(t.index);
-        if (!c) return { ...t, onChain: false, aprCap: null, projectedApr: null, currentApr: null };
+    const fromChain = new Map((stats.value.tier_info || []).map(info => [Number(info.tier), info]));
+    return tiers.map(row => {
+        const c = fromChain.get(row.index);
+        if (!c) return { ...row, onChain: false, aprCap: null, projectedApr: null, currentApr: null };
         return {
-            ...t,
+            ...row,
             onChain: true,
             max: Number(c.max_nodes),
             stake: `${fmt(c.min_stake)} TPIX`,
             reward: `${Number(c.reward_share) / 100}%`,
-            lock: `${c.lock_days} days`,
+            lockDays: c.lock_days,
             aprCap: c.apr_cap_bps,
             projectedApr: c.projected_apr_bps,
             currentApr: c.current_apr_bps,
@@ -93,14 +96,14 @@ const tierRows = computed(() => {
 </script>
 
 <template>
-    <Head title="MasterNode Admin" />
+    <Head :title="t('admin.masterNode.headTitle')" />
     <AdminLayout>
         <div class="space-y-6">
             <!-- Header -->
             <div class="flex items-center justify-between">
                 <div>
-                    <h1 class="text-2xl font-bold text-white">MasterNode Management</h1>
-                    <p class="text-sm text-gray-400 mt-1">TPIX Chain node network monitoring and configuration</p>
+                    <h1 class="text-2xl font-bold text-white">{{ t('admin.masterNode.header.title') }}</h1>
+                    <p class="text-sm text-gray-400 mt-1">{{ t('admin.masterNode.header.subtitle') }}</p>
                 </div>
                 <div class="flex items-center gap-3">
                     <button @click="toggleEnabled" :disabled="isToggling"
@@ -108,11 +111,11 @@ const tierRows = computed(() => {
                             enabled
                                 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/30'
                                 : 'bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30']">
-                        {{ enabled ? 'Enabled' : 'Disabled' }}
+                        {{ enabled ? t('admin.masterNode.enabled') : t('admin.masterNode.disabled') }}
                     </button>
                     <button @click="refreshStats" :disabled="isRefreshing"
                         class="px-4 py-2 text-sm font-medium rounded-xl bg-primary-500/20 text-primary-400 border border-primary-500/30 hover:bg-primary-500/30 transition-all disabled:opacity-50">
-                        {{ isRefreshing ? 'Refreshing...' : 'Refresh' }}
+                        {{ isRefreshing ? t('admin.masterNode.refreshing') : t('admin.masterNode.refresh') }}
                     </button>
                 </div>
             </div>
@@ -123,13 +126,13 @@ const tierRows = computed(() => {
                 <div :class="['w-3 h-3 rounded-full', stats.rpc_connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500']" />
                 <div>
                     <span :class="stats.rpc_connected ? 'text-emerald-400' : 'text-red-400'" class="font-bold text-sm">
-                        {{ stats.rpc_connected ? 'Connected' : 'Disconnected' }}
+                        {{ stats.rpc_connected ? t('admin.masterNode.connection.connected') : t('admin.masterNode.connection.disconnected') }}
                     </span>
                     <span class="text-gray-500 text-xs ml-2">RPC: {{ rpcUrl }}</span>
                 </div>
                 <div class="ml-auto text-xs text-gray-500">
-                    Registry: <span :class="stats.registry_deployed ? 'text-emerald-400' : 'text-yellow-400'">
-                        {{ stats.registry_deployed ? 'Deployed' : 'Not Deployed' }}
+                    {{ t('admin.masterNode.connection.registry') }} <span :class="stats.registry_deployed ? 'text-emerald-400' : 'text-yellow-400'">
+                        {{ stats.registry_deployed ? t('admin.masterNode.connection.deployed') : t('admin.masterNode.connection.notDeployed') }}
                     </span>
                 </div>
             </div>
@@ -148,16 +151,15 @@ const tierRows = computed(() => {
                     <div class="font-bold"
                          :class="stats.registration_paused === true ? 'text-red-400'
                              : stats.registration_paused === false ? 'text-emerald-400' : 'text-gray-400'">
-                        New registrations:
-                        {{ stats.registration_paused === true ? 'PAUSED' : stats.registration_paused === false ? 'Open' : 'Unknown' }}
+                        {{ t('admin.masterNode.registration.label') }}
+                        {{ stats.registration_paused === true ? t('admin.masterNode.registration.paused') : stats.registration_paused === false ? t('admin.masterNode.registration.open') : t('admin.masterNode.registration.unknown') }}
                     </div>
                     <div class="text-gray-400 mt-1">
                         <template v-if="stats.registration_paused === null || stats.registration_paused === undefined">
-                            อ่านค่า registrationPaused() ไม่ได้ — สัญญาที่ deploy อาจเป็นรุ่นก่อนมีสวิตช์นี้ หรือ RPC ล้ม
+                            {{ t('admin.masterNode.registration.unreadable') }}
                         </template>
                         <template v-else>
-                            ปิดได้เฉพาะการลงทะเบียนใหม่ — รับรางวัล/ปิดโหนด/ถอนเงินต้นทำได้เสมอ
-                            · สลับด้วย <code class="font-mono text-gray-300">setRegistrationPaused(bool)</code> จากกระเป๋าเจ้าของสัญญา
+                            {{ t('admin.masterNode.registration.hintBefore') }} <code class="font-mono text-gray-300">setRegistrationPaused(bool)</code> {{ t('admin.masterNode.registration.hintAfter') }}
                         </template>
                     </div>
                 </div>
@@ -170,11 +172,10 @@ const tierRows = computed(() => {
                  class="flex items-start gap-3 p-4 rounded-xl border bg-red-500/5 border-red-500/30">
                 <div class="w-3 h-3 rounded-full bg-red-500 mt-1 shrink-0" />
                 <div class="text-xs">
-                    <div class="text-red-400 font-bold">ที่อยู่สัญญาชี้ไปที่ address ที่ไม่มีโค้ด</div>
+                    <div class="text-red-400 font-bold">{{ t('admin.masterNode.codeMissing.title') }}</div>
                     <div class="text-gray-400 mt-1">
                         <code class="font-mono text-gray-300">{{ registryAddress }}</code> —
-                        eth_getCode คืน 0x แปลว่าสัญญาไม่เคย deploy หรือหายไปตอน regenesis
-                        ต้อง deploy ใหม่แล้วอัปเดต <code class="font-mono">MASTERNODE_REGISTRY_ADDRESS</code> ใน .env
+                        {{ t('admin.masterNode.codeMissing.bodyBefore') }} <code class="font-mono">MASTERNODE_REGISTRY_ADDRESS</code> {{ t('admin.masterNode.codeMissing.bodyAfter') }}
                     </div>
                 </div>
             </div>
@@ -184,11 +185,10 @@ const tierRows = computed(() => {
                  class="flex items-start gap-3 p-4 rounded-xl border bg-yellow-500/5 border-yellow-500/30">
                 <div class="w-3 h-3 rounded-full bg-yellow-500 mt-1 shrink-0" />
                 <div class="text-xs">
-                    <div class="text-yellow-400 font-bold">พูลรางวัลยังไม่ถูกเติมเงิน</div>
+                    <div class="text-yellow-400 font-bold">{{ t('admin.masterNode.poolEmpty.title') }}</div>
                     <div class="text-gray-400 mt-1">
-                        สัญญาจ่ายรางวัลได้เฉพาะเงินส่วนที่เกินจากเงินต้นของผู้วางค้ำ ตอนนี้ส่วนนั้นเป็น 0
-                        รางวัลจะสะสมต่อไปแต่ผู้ใช้กดรับไม่ได้ — โอน TPIX เข้าสัญญาผ่าน
-                        <code class="font-mono text-gray-300">fundRewardPool()</code> จากกระเป๋า Master Node Rewards
+                        {{ t('admin.masterNode.poolEmpty.bodyBefore') }}
+                        <code class="font-mono text-gray-300">fundRewardPool()</code> {{ t('admin.masterNode.poolEmpty.bodyAfter') }}
                     </div>
                 </div>
             </div>
@@ -196,13 +196,13 @@ const tierRows = computed(() => {
             <!-- Stats Grid -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div v-for="card in [
-                    { label: 'Block Height', value: fmt(stats.block_height), color: 'text-white', icon: '&#9632;' },
-                    { label: 'Total Nodes', value: fmt(stats.total_nodes), color: 'text-primary-400', icon: '&#9673;' },
-                    { label: 'Total Staked', value: `${fmt(stats.total_staked)} TPIX`, color: 'text-emerald-400', icon: '&#9733;' },
-                    { label: 'Rewards Distributed', value: `${fmt(stats.total_rewards_distributed)} TPIX`, color: 'text-yellow-400', icon: '&#9830;' },
-                ]" :key="card.label"
+                    { key: 'blockHeight', value: fmt(stats.block_height), color: 'text-white', icon: '&#9632;' },
+                    { key: 'totalNodes', value: fmt(stats.total_nodes), color: 'text-primary-400', icon: '&#9673;' },
+                    { key: 'totalStaked', value: `${fmt(stats.total_staked)} TPIX`, color: 'text-emerald-400', icon: '&#9733;' },
+                    { key: 'rewardsDistributed', value: `${fmt(stats.total_rewards_distributed)} TPIX`, color: 'text-yellow-400', icon: '&#9830;' },
+                ]" :key="card.key"
                    class="glass-card rounded-xl p-4 text-center">
-                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">{{ card.label }}</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">{{ t('admin.masterNode.stats.' + card.key) }}</div>
                     <div :class="['text-xl font-black', card.color]">{{ card.value }}</div>
                 </div>
             </div>
@@ -210,45 +210,45 @@ const tierRows = computed(() => {
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <!-- Node Tiers Info -->
                 <div class="glass-card rounded-xl p-5">
-                    <h3 class="text-sm font-bold text-white uppercase tracking-wide mb-4">Node Tiers</h3>
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wide mb-4">{{ t('admin.masterNode.tiers.title') }}</h3>
                     <div class="space-y-3">
                         <div v-for="tier in tierRows" :key="tier.name"
                              :class="['p-4 rounded-xl border', tier.bg]">
                             <div class="flex items-center justify-between mb-2">
                                 <span :class="['font-bold', tier.color]">
                                     {{ tier.name }}
-                                    <span class="text-[10px] text-gray-500 font-normal ml-1">tier {{ tier.index }}</span>
+                                    <span class="text-[10px] text-gray-500 font-normal ml-1">{{ t('admin.masterNode.tiers.tier', { n: tier.index }) }}</span>
                                 </span>
-                                <span class="text-xs text-gray-400">Lock: {{ tier.lock }}</span>
+                                <span class="text-xs text-gray-400">{{ t('admin.masterNode.tiers.lock', { days: t('admin.masterNode.tiers.days', { n: tier.lockDays }) }) }}</span>
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                                 <div>
-                                    <span class="text-gray-500">Min Stake:</span>
+                                    <span class="text-gray-500">{{ t('admin.masterNode.tiers.minStake') }}</span>
                                     <span class="text-white ml-1 font-mono">{{ tier.stake }}</span>
                                 </div>
                                 <div>
-                                    <span class="text-gray-500">Reward Share:</span>
+                                    <span class="text-gray-500">{{ t('admin.masterNode.tiers.rewardShare') }}</span>
                                     <span :class="[tier.color, 'ml-1 font-bold']">{{ tier.reward }}</span>
                                 </div>
                                 <div>
-                                    <span class="text-gray-500">Active Nodes:</span>
+                                    <span class="text-gray-500">{{ t('admin.masterNode.tiers.activeNodes') }}</span>
                                     <span class="text-white ml-1 font-mono">
                                         {{ fmt(stats[tier.countKey]) }}{{ tier.max ? ` / ${fmt(tier.max)}` : ' / ∞' }}
                                     </span>
                                 </div>
                                 <div>
-                                    <span class="text-gray-500">APR cap / node:</span>
+                                    <span class="text-gray-500">{{ t('admin.masterNode.tiers.aprCap') }}</span>
                                     <span class="text-white ml-1 font-mono">{{ fmtBps(tier.aprCap) }}</span>
                                 </div>
                                 <div>
-                                    <span class="text-gray-500">APR now:</span>
+                                    <span class="text-gray-500">{{ t('admin.masterNode.tiers.aprNow') }}</span>
                                     <span class="text-white ml-1 font-mono">{{ fmtBps(tier.currentApr) }}</span>
-                                    <span class="text-gray-500 ml-1">· new node:</span>
+                                    <span class="text-gray-500 ml-1">{{ t('admin.masterNode.tiers.newNode') }}</span>
                                     <span class="text-white ml-1 font-mono">{{ fmtBps(tier.projectedApr) }}</span>
                                 </div>
                             </div>
                             <div v-if="!tier.onChain" class="text-[10px] text-gray-600 mt-2">
-                                default values — not read from chain
+                                {{ t('admin.masterNode.tiers.defaultValues') }}
                             </div>
                         </div>
                     </div>
@@ -256,26 +256,26 @@ const tierRows = computed(() => {
 
                 <!-- Reward Pool -->
                 <div class="glass-card rounded-xl p-5">
-                    <h3 class="text-sm font-bold text-white uppercase tracking-wide mb-4">Reward Pool</h3>
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wide mb-4">{{ t('admin.masterNode.rewardPool.title') }}</h3>
                     <div class="space-y-4">
                         <div class="text-center p-6 rounded-xl bg-gradient-to-br from-yellow-500/10 to-amber-500/5 border border-yellow-500/20">
-                            <div class="text-xs text-gray-500 mb-1">Remaining Rewards (schedule cap)</div>
+                            <div class="text-xs text-gray-500 mb-1">{{ t('admin.masterNode.rewardPool.remaining') }}</div>
                             <div class="text-3xl font-black text-yellow-400">{{ fmt(stats.remaining_rewards) }} TPIX</div>
-                            <div class="text-xs text-gray-500 mt-1">1.4B total over 3 years (ending 2028)</div>
+                            <div class="text-xs text-gray-500 mt-1">{{ t('admin.masterNode.rewardPool.schedule') }}</div>
                         </div>
 
                         <!-- เพดานตามตาราง ≠ เงินที่มีจริง — สองตัวนี้ห้ามเอามารวมกัน
                              totalRewardPool เป็นแค่ตัวเลขบัญชี ส่วนที่จ่ายได้จริงคือ balance - totalStaked -->
                         <div class="grid grid-cols-2 gap-3">
                             <div class="p-4 rounded-xl bg-white/5 border border-white/10 text-center">
-                                <div class="text-[10px] text-gray-500 uppercase tracking-wider">Funded Into Pool</div>
+                                <div class="text-[10px] text-gray-500 uppercase tracking-wider">{{ t('admin.masterNode.rewardPool.funded') }}</div>
                                 <div class="text-lg font-black text-white mt-1">{{ fmt(stats.reward_pool_funded) }}</div>
                             </div>
                             <div class="p-4 rounded-xl border text-center"
                                  :class="Number(stats.reward_pool_available) > 0
                                      ? 'bg-emerald-500/5 border-emerald-500/20'
                                      : 'bg-yellow-500/5 border-yellow-500/20'">
-                                <div class="text-[10px] text-gray-500 uppercase tracking-wider">Payable Right Now</div>
+                                <div class="text-[10px] text-gray-500 uppercase tracking-wider">{{ t('admin.masterNode.rewardPool.payable') }}</div>
                                 <div class="text-lg font-black mt-1"
                                      :class="Number(stats.reward_pool_available) > 0 ? 'text-emerald-400' : 'text-yellow-400'">
                                     {{ fmt(stats.reward_pool_available) }}
@@ -284,23 +284,23 @@ const tierRows = computed(() => {
                         </div>
 
                         <div v-if="stats.kyc_contract" class="text-xs text-gray-500">
-                            KYC contract: <code class="font-mono text-gray-300">{{ stats.kyc_contract }}</code>
+                            {{ t('admin.masterNode.rewardPool.kycContract') }} <code class="font-mono text-gray-300">{{ stats.kyc_contract }}</code>
                         </div>
                         <div v-else-if="stats.registry_deployed" class="text-xs text-yellow-400/80">
-                            ยังไม่ได้ผูกสัญญา KYC — ชั้น Validator ลงทะเบียนไม่ได้จนกว่าจะเรียก setKYCContract()
+                            {{ t('admin.masterNode.rewardPool.kycMissing') }}
                         </div>
 
                         <div class="space-y-2 text-sm">
                             <div class="flex justify-between text-gray-400">
-                                <span>Year 1 (2025-2026):</span>
+                                <span>{{ t('admin.masterNode.rewardPool.year', { n: 1, range: '2025-2026' }) }}</span>
                                 <span class="text-white">600,000,000 TPIX</span>
                             </div>
                             <div class="flex justify-between text-gray-400">
-                                <span>Year 2 (2026-2027):</span>
+                                <span>{{ t('admin.masterNode.rewardPool.year', { n: 2, range: '2026-2027' }) }}</span>
                                 <span class="text-white">500,000,000 TPIX</span>
                             </div>
                             <div class="flex justify-between text-gray-400">
-                                <span>Year 3 (2027-2028):</span>
+                                <span>{{ t('admin.masterNode.rewardPool.year', { n: 3, range: '2027-2028' }) }}</span>
                                 <span class="text-white">300,000,000 TPIX</span>
                             </div>
                         </div>
@@ -310,27 +310,27 @@ const tierRows = computed(() => {
 
             <!-- Registry Configuration -->
             <div class="glass-card rounded-xl p-5">
-                <h3 class="text-sm font-bold text-white uppercase tracking-wide mb-4">Registry Configuration</h3>
+                <h3 class="text-sm font-bold text-white uppercase tracking-wide mb-4">{{ t('admin.masterNode.config.title') }}</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label class="text-xs text-gray-500 uppercase mb-1 block">Registry Contract Address</label>
+                        <label class="text-xs text-gray-500 uppercase mb-1 block">{{ t('admin.masterNode.config.registryAddress') }}</label>
                         <input v-model="configNote" type="text" placeholder="0x..."
                             class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white font-mono text-sm focus:border-primary-500/50 focus:outline-none" />
-                        <p class="text-xs text-gray-600 mt-1">Set via MASTERNODE_REGISTRY_ADDRESS in .env</p>
+                        <p class="text-xs text-gray-600 mt-1">{{ t('admin.masterNode.config.setVia', { env: 'MASTERNODE_REGISTRY_ADDRESS' }) }}</p>
                     </div>
                     <div>
-                        <label class="text-xs text-gray-500 uppercase mb-1 block">RPC Endpoint</label>
+                        <label class="text-xs text-gray-500 uppercase mb-1 block">{{ t('admin.masterNode.config.rpcEndpoint') }}</label>
                         <input :value="rpcUrl" disabled
                             class="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-gray-500 font-mono text-sm" />
-                        <p class="text-xs text-gray-600 mt-1">Chain ID: {{ chainId }}</p>
+                        <p class="text-xs text-gray-600 mt-1">{{ t('admin.masterNode.config.chainId', { id: chainId }) }}</p>
                     </div>
                 </div>
                 <div class="mt-4 flex items-center gap-3">
                     <button @click="saveConfig"
                         class="px-5 py-2 text-sm font-medium rounded-xl bg-primary-500/20 text-primary-400 border border-primary-500/30 hover:bg-primary-500/30 transition-all">
-                        Save Note
+                        {{ t('admin.masterNode.config.saveNote') }}
                     </button>
-                    <span v-if="configSaved" class="text-xs text-emerald-400">Saved!</span>
+                    <span v-if="configSaved" class="text-xs text-emerald-400">{{ t('admin.masterNode.config.saved') }}</span>
                 </div>
             </div>
         </div>

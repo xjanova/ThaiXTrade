@@ -7,6 +7,7 @@ import * as ethers from 'ethers';
 import {
     availableActions, resolveSubmitHash, encodeKycCall, humanWalletError, isBytes32, KYC_WRITE_ABI,
 } from '@/utils/validatorKyc';
+import { t } from '@/Composables/useTranslation';
 
 const APPLICANT = '0xabc0000000000000000000000000000000000001';
 const HASH = '0x' + 'ab'.repeat(32);
@@ -29,9 +30,9 @@ describe('resolveSubmitHash', () => {
 
     it('needs a valid manual hash and a note otherwise', () => {
         const row = { site_kyc: { status: 'pending', doc_hash: null } };
-        expect(resolveSubmitHash(row, '0x1234', 'x').error).toBeTruthy();
-        expect(resolveSubmitHash(row, '0x' + '0'.repeat(64), 'x').error).toBeTruthy();
-        expect(resolveSubmitHash(row, HASH, '   ').error).toMatch(/เหตุผล/);
+        expect(resolveSubmitHash(row, '0x1234', 'x').error).toBe(t('util.validatorKyc.error.hashFormat'));
+        expect(resolveSubmitHash(row, '0x' + '0'.repeat(64), 'x').error).toBe(t('util.validatorKyc.error.hashFormat'));
+        expect(resolveSubmitHash(row, HASH, '   ').error).toBe(t('util.validatorKyc.error.manualNoteRequired'));
         expect(resolveSubmitHash(row, HASH, 'ตรวจที่สำนักงาน')).toEqual({ hash: HASH, uuid: null, manual: true, error: null });
     });
 });
@@ -67,12 +68,14 @@ describe('encodeKycCall', () => {
 
 describe('humanWalletError', () => {
     it('never shows raw JSON', () => {
-        expect(humanWalletError({ code: 4001 })).toMatch(/ยกเลิก/);
-        expect(humanWalletError({ code: 'ACTION_REJECTED' })).toMatch(/ยกเลิก/);
-        expect(humanWalletError(new Error('NOT_OWNER'))).toMatch(/owner/);
-        expect(humanWalletError(new Error('WALLET_SWITCHED'))).toMatch(/สลับ/);
-        expect(humanWalletError({ reason: 'Not submitted' })).toBe('สัญญาปฏิเสธ: Not submitted');
-        expect(humanWalletError({ message: '{"jsonrpc":"2.0","error":{}}' })).toBe('ทำรายการไม่สำเร็จ — ลองใหม่อีกครั้ง');
+        expect(humanWalletError({ code: 4001 })).toBe(t('util.validatorKyc.wallet.rejected'));
+        expect(humanWalletError({ code: 'ACTION_REJECTED' })).toBe(t('util.validatorKyc.wallet.rejected'));
+        expect(humanWalletError(new Error('NOT_OWNER'))).toBe(t('util.validatorKyc.wallet.notOwner'));
+        expect(humanWalletError(new Error('WALLET_SWITCHED'))).toBe(t('util.validatorKyc.wallet.switched'));
+        expect(humanWalletError({ reason: 'Not submitted' })).toBe(t('util.validatorKyc.wallet.contractRejected', { reason: 'Not submitted' }));
+        expect(humanWalletError({ reason: 'Not submitted' })).toContain('Not submitted');
+        expect(humanWalletError({ message: '{"jsonrpc":"2.0","error":{}}' })).toBe(t('util.validatorKyc.wallet.failed'));
+        expect(humanWalletError({ message: '{"jsonrpc":"2.0","error":{}}' })).not.toMatch(/jsonrpc|util\.validatorKyc/);
     });
 
     it('isBytes32 rejects the zero hash', () => {

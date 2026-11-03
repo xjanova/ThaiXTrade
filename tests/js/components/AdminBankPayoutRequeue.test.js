@@ -27,8 +27,10 @@ vi.mock('@/Layouts/AdminLayout.vue', () => ({ default: { template: '<div><slot /
 vi.mock('@/Components/Admin/SaleLaunchPanel.vue', () => ({ default: { template: '<div />' } }));
 
 import TokenSalesIndex from '@/Pages/Admin/TokenSales/Index.vue';
+import { t } from '@/Composables/useTranslation';
 
-const REQUEUE_LABEL = 'เข้าคิวจ่ายใหม่';
+const REQUEUE_LABEL = t('admin.tokenSales.tx.requeuePayout');
+const RECEIVED_LABEL = t('admin.tokenSales.tx.received');
 
 const order = (overrides = {}) => ({
     id: 7,
@@ -46,7 +48,7 @@ const order = (overrides = {}) => ({
 
 async function openTransactions(rows) {
     const wrapper = mount(TokenSalesIndex, { props: { transactions: { data: rows }, canManageMoney: true } });
-    await wrapper.findAll('button').find((b) => b.text().includes('Transactions')).trigger('click');
+    await wrapper.findAll('button').find((b) => b.text().includes(t('admin.tokenSales.tabs.transactions'))).trigger('click');
 
     return wrapper;
 }
@@ -74,7 +76,7 @@ describe('Admin/TokenSales/Index — เข้าคิวจ่ายใหม�
     it('ออเดอร์รอยืนยันยังเห็นแค่ปุ่มยืนยันกับปฏิเสธ', async () => {
         const wrapper = await openTransactions([order({ status: 'pending' })]);
 
-        expect(wrapper.text()).toContain('ได้รับเงินแล้ว');
+        expect(wrapper.text()).toContain(RECEIVED_LABEL);
         expect(requeueButton(wrapper)).toBeUndefined();
     });
 
@@ -83,7 +85,7 @@ describe('Admin/TokenSales/Index — เข้าคิวจ่ายใหม�
         const confirmOrder = async (created_at) => {
             routerPost.mockReset();
             const wrapper = await openTransactions([order({ status: 'pending', created_at })]);
-            await wrapper.findAll('button').find((b) => b.text().includes('ได้รับเงินแล้ว')).trigger('click');
+            await wrapper.findAll('button').find((b) => b.text().includes(RECEIVED_LABEL)).trigger('click');
 
             return routerPost.mock.calls[0][1];
         };

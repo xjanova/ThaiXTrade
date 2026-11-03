@@ -8,6 +8,9 @@
 import { Head, Link } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import StatusBadge from '@/Components/Admin/StatusBadge.vue';
+import { useTranslation } from '@/Composables/useTranslation';
+
+const { t } = useTranslation();
 
 const props = defineProps({
     transaction: {
@@ -34,19 +37,32 @@ const formatMetadata = (meta) => {
         return meta;
     }
 };
+
+// ป้ายสถานะในไทม์ไลน์ — ค่าดิบจากเซิร์ฟเวอร์ใช้เทียบสี ส่วนที่แสดงแปลตามภาษา
+const statusLabelKeys = {
+    completed: 'common.completed',
+    pending: 'common.pending',
+    failed: 'common.failed',
+    processing: 'admin.transactionsShow.status.processing',
+    cancelled: 'admin.transactionsShow.status.cancelled',
+};
+const statusLabel = (status) => {
+    const key = statusLabelKeys[status];
+    return key ? t(key) : status;
+};
 </script>
 
 <template>
-    <Head :title="`Transaction ${transaction.uuid?.substring(0, 8)}...`" />
+    <Head :title="t('admin.transactionsShow.headTitle', { id: transaction.uuid?.substring(0, 8) ?? '' })" />
 
-    <AdminLayout title="Transaction Detail">
+    <AdminLayout :title="t('admin.transactionsShow.title')">
         <!-- Back Link -->
         <div class="mb-6">
             <Link href="/admin/transactions" class="inline-flex items-center gap-2 text-sm text-dark-400 hover:text-white transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                Back to Transactions
+                {{ t('admin.transactionsShow.back') }}
             </Link>
         </div>
 
@@ -56,7 +72,7 @@ const formatMetadata = (meta) => {
                 <!-- Transaction Card -->
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
                     <div class="flex items-center justify-between mb-6">
-                        <h2 class="text-lg font-semibold text-white">Transaction Details</h2>
+                        <h2 class="text-lg font-semibold text-white">{{ t('admin.transactionsShow.details') }}</h2>
                         <StatusBadge :status="transaction.status" type="transaction" />
                     </div>
 
@@ -67,33 +83,33 @@ const formatMetadata = (meta) => {
                                 <p class="font-mono text-sm text-white break-all">{{ transaction.uuid }}</p>
                             </div>
                             <div>
-                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">Type</p>
+                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">{{ t('admin.transactionsShow.fields.type') }}</p>
                                 <p class="text-sm text-white capitalize">{{ transaction.type }}</p>
                             </div>
                             <div>
-                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">Wallet Address</p>
+                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">{{ t('admin.transactionsShow.fields.walletAddress') }}</p>
                                 <p class="font-mono text-sm text-white break-all">{{ transaction.wallet_address }}</p>
                             </div>
                             <div>
-                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">Chain</p>
+                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">{{ t('admin.transactionsShow.fields.chain') }}</p>
                                 <p class="text-sm text-white">{{ transaction.chain?.name || '-' }}</p>
                             </div>
                         </div>
                         <div class="space-y-4">
                             <div>
-                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">From Token</p>
+                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">{{ t('admin.transactionsShow.fields.fromToken') }}</p>
                                 <p class="text-sm text-white">{{ transaction.from_token?.symbol || '-' }} ({{ transaction.from_token?.name || '-' }})</p>
                             </div>
                             <div>
-                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">To Token</p>
+                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">{{ t('admin.transactionsShow.fields.toToken') }}</p>
                                 <p class="text-sm text-white">{{ transaction.to_token?.symbol || '-' }} ({{ transaction.to_token?.name || '-' }})</p>
                             </div>
                             <div>
-                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">Amount</p>
+                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">{{ t('admin.transactionsShow.fields.amount') }}</p>
                                 <p class="font-mono text-lg font-semibold text-white">{{ transaction.amount }}</p>
                             </div>
                             <div>
-                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">Fee</p>
+                                <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">{{ t('admin.transactionsShow.fields.fee') }}</p>
                                 <p class="font-mono text-sm text-dark-300">{{ transaction.fee || '0' }}</p>
                             </div>
                         </div>
@@ -101,7 +117,7 @@ const formatMetadata = (meta) => {
 
                     <!-- TX Hash -->
                     <div v-if="transaction.tx_hash" class="mt-6 pt-4 border-t border-white/5">
-                        <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">Transaction Hash</p>
+                        <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">{{ t('admin.transactionsShow.fields.txHash') }}</p>
                         <div class="flex items-center gap-3">
                             <p class="font-mono text-sm text-primary-400 break-all">{{ transaction.tx_hash }}</p>
                             <a
@@ -109,7 +125,8 @@ const formatMetadata = (meta) => {
                                 :href="explorerUrl(transaction.tx_hash)"
                                 target="_blank"
                                 class="flex-shrink-0 p-1.5 rounded-lg text-dark-400 hover:text-primary-400 hover:bg-primary-500/10 transition-colors"
-                                title="View on Block Explorer"
+                                :title="t('admin.transactionsShow.viewOnExplorer')"
+                                :aria-label="t('admin.transactionsShow.viewOnExplorer')"
                             >
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -121,11 +138,11 @@ const formatMetadata = (meta) => {
                     <!-- Dates -->
                     <div class="mt-6 pt-4 border-t border-white/5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">Created At</p>
+                            <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">{{ t('admin.transactionsShow.fields.createdAt') }}</p>
                             <p class="text-sm text-dark-300">{{ transaction.created_at }}</p>
                         </div>
                         <div>
-                            <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">Updated At</p>
+                            <p class="text-xs text-dark-500 uppercase tracking-wider mb-1">{{ t('admin.transactionsShow.fields.updatedAt') }}</p>
                             <p class="text-sm text-dark-300">{{ transaction.updated_at }}</p>
                         </div>
                     </div>
@@ -133,7 +150,7 @@ const formatMetadata = (meta) => {
 
                 <!-- Metadata -->
                 <div v-if="transaction.metadata" class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                    <h3 class="text-lg font-semibold text-white mb-4">Metadata</h3>
+                    <h3 class="text-lg font-semibold text-white mb-4">{{ t('admin.transactionsShow.metadata') }}</h3>
                     <pre class="bg-dark-800/50 border border-dark-600 rounded-xl p-4 text-sm text-dark-300 font-mono overflow-x-auto">{{ JSON.stringify(formatMetadata(transaction.metadata), null, 2) }}</pre>
                 </div>
             </div>
@@ -142,7 +159,7 @@ const formatMetadata = (meta) => {
             <div class="space-y-6">
                 <!-- Status Timeline -->
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                    <h3 class="text-lg font-semibold text-white mb-4">Status Timeline</h3>
+                    <h3 class="text-lg font-semibold text-white mb-4">{{ t('admin.transactionsShow.timeline.title') }}</h3>
                     <div v-if="statusHistory.length > 0" class="space-y-0">
                         <div v-for="(entry, idx) in statusHistory" :key="idx" class="relative pl-6 pb-6 last:pb-0">
                             <!-- Line -->
@@ -166,35 +183,35 @@ const formatMetadata = (meta) => {
                                 ></div>
                             </div>
                             <div>
-                                <p class="text-sm font-medium text-white capitalize">{{ entry.status }}</p>
+                                <p class="text-sm font-medium text-white capitalize">{{ statusLabel(entry.status) }}</p>
                                 <p class="text-xs text-dark-400 mt-0.5">{{ entry.created_at }}</p>
                                 <p v-if="entry.note" class="text-xs text-dark-500 mt-1">{{ entry.note }}</p>
                             </div>
                         </div>
                     </div>
                     <div v-else class="text-center py-6">
-                        <p class="text-sm text-dark-400">No status history available</p>
+                        <p class="text-sm text-dark-400">{{ t('admin.transactionsShow.timeline.empty') }}</p>
                     </div>
                 </div>
 
                 <!-- Quick Info -->
                 <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-                    <h3 class="text-lg font-semibold text-white mb-4">Summary</h3>
+                    <h3 class="text-lg font-semibold text-white mb-4">{{ t('admin.transactionsShow.summary.title') }}</h3>
                     <div class="space-y-3 text-sm">
                         <div class="flex justify-between">
-                            <span class="text-dark-400">Status</span>
+                            <span class="text-dark-400">{{ t('admin.transactionsShow.summary.status') }}</span>
                             <StatusBadge :status="transaction.status" />
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-dark-400">Amount</span>
+                            <span class="text-dark-400">{{ t('admin.transactionsShow.fields.amount') }}</span>
                             <span class="font-mono text-white">{{ transaction.amount }}</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-dark-400">Fee</span>
+                            <span class="text-dark-400">{{ t('admin.transactionsShow.fields.fee') }}</span>
                             <span class="font-mono text-dark-300">{{ transaction.fee || '0' }}</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-dark-400">Net Amount</span>
+                            <span class="text-dark-400">{{ t('admin.transactionsShow.summary.netAmount') }}</span>
                             <span class="font-mono text-white">{{ transaction.net_amount || transaction.amount }}</span>
                         </div>
                     </div>
