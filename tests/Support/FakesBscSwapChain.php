@@ -17,6 +17,9 @@ trait FakesBscSwapChain
 {
     protected string $bscRouter = '0x10ed43c718714eb63d5aa57b78b54704e256024e';
 
+    /** PancakeSwap V3 SmartRouter — ห่อ/ถอน WBNB เองเหมือน V2 router */
+    protected string $bscSmartRouter = '0x13f4ea83d0bd40e75c8222255bc855a974568dd4';
+
     protected string $bscWbnb = '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c';
 
     /** พูลที่ router ดึงเหรียญเข้า/ส่งเหรียญออก — ตัวตรวจดูแค่ฝั่งกระเป๋า */
@@ -77,7 +80,7 @@ trait FakesBscSwapChain
      * ไม้สวอปบนเชน: กระเป๋าจ่าย $inWei ของ $from ได้ $outWei ของ $to.
      *
      * $state: success | failed (revert) | pending (อยู่ใน mempool ยังไม่มีใบเสร็จ)
-     * $target: ที่อยู่ที่ธุรกรรมส่งเข้า (ปริยาย = PancakeSwap router)
+     * $target: ที่อยู่ที่ธุรกรรมส่งเข้า (ปริยาย = PancakeSwap V2 router) — WBNB Deposit/Withdrawal มาจากตัวนี้
      */
     protected function bscSwap(
         string $hash,
@@ -90,18 +93,19 @@ trait FakesBscSwapChain
         ?string $target = null,
     ): void {
         $wallet = strtolower($wallet);
+        $router = strtolower($target ?? $this->bscRouter);
         $logs = [];
 
         $logs[] = $this->isBscNative($from)
-            ? $this->bscLog($this->bscWbnb, [self::BSC_DEPOSIT, $this->bscRouter], $inWei)
+            ? $this->bscLog($this->bscWbnb, [self::BSC_DEPOSIT, $router], $inWei)
             : $this->bscLog($from, [self::BSC_TRANSFER, $wallet, $this->bscPool], $inWei);
         $logs[] = $this->isBscNative($to)
-            ? $this->bscLog($this->bscWbnb, [self::BSC_WITHDRAWAL, $this->bscRouter], $outWei)
+            ? $this->bscLog($this->bscWbnb, [self::BSC_WITHDRAWAL, $router], $outWei)
             : $this->bscLog($to, [self::BSC_TRANSFER, $this->bscPool, $wallet], $outWei);
 
         $this->bscTxs[strtolower($hash)] = [
             'from' => $wallet,
-            'to' => strtolower($target ?? $this->bscRouter),
+            'to' => $router,
             'state' => $state,
             'logs' => $logs,
             'value' => $this->isBscNative($from) ? $inWei : '0',
@@ -135,6 +139,18 @@ trait FakesBscSwapChain
     protected function bscForget(string $hash): void
     {
         unset($this->bscTxs[strtolower($hash)]);
+    }
+
+    /** WBNB Deposit/Withdrawal ของธุรกรรมนี้มาจาก $router อื่น (ไม่ใช่ตัวที่ธุรกรรมส่งเข้า) */
+    protected function bscRewriteLogEmitter(string $hash, string $router): void
+    {
+        $topic = '0x'.str_pad(substr(strtolower($router), 2), 64, '0', STR_PAD_LEFT);
+        foreach ($this->bscTxs[strtolower($hash)]['logs'] as &$log) {
+            if (in_array($log['topics'][0] ?? null, [self::BSC_DEPOSIT, self::BSC_WITHDRAWAL], true)) {
+                $log['topics'][1] = $topic;
+            }
+        }
+        unset($log);
     }
 
     /** จำนวนทศนิยม → หน่วยเล็กสุด */

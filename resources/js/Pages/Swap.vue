@@ -411,7 +411,7 @@ async function runQuote(seq) {
         if (isWalletConnected.value) {
             const needs = tpix
                 ? await dex.needsApproval(from.address, amountText, from.decimals)
-                : !(await swap.checkAllowance(from.address, amountText, from.decimals));
+                : !(await swap.checkAllowance(from.address, amountText, from.decimals, quote.router));
             if (seq !== quoteSeq) return;
             needsApproval.value = needs;
         } else {
@@ -743,7 +743,8 @@ async function handleApprove() {
             }
         }
 
-        await swap.approveToken(approvedAddress);
+        // router ของเส้นทางที่ราคาบนจอเลือก (V2 หรือ V3) — ราคาใหม่เปลี่ยนเส้นทาง = ตรวจวงเงินใหม่ตอนขอราคา
+        await swap.approveToken(approvedAddress, currentQuote.value?.router);
 
         // ผู้ใช้เปลี่ยนเหรียญระหว่างรอเซ็น/รอบล็อก — ผลนี้เป็นของเหรียญเก่า ห้ามไปปิดสถานะของเหรียญใหม่
         if (fromToken.value.address === approvedAddress) {

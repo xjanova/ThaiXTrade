@@ -209,6 +209,97 @@ class BscSwapRecordTest extends TestCase
         $this->assertSame(0, Transaction::count());
     }
 
+    // ── PancakeSwap V3 (SmartRouter) — หน้าเว็บส่งไม้เข้าทางนี้เมื่อ V3 ให้ราคาดีกว่า ─────────
+
+    public function test_a_swap_through_the_v3_smart_router_is_recorded_from_its_receipt(): void
+    {
+        $hash = $this->nextHash();
+        $this->swapOnChain($hash, in: '99.7', out: '0.0015', target: $this->bscSmartRouter);
+
+        $this->record($hash, ['fee_tx_hash' => $this->feeOnChain()])
+            ->assertStatus(201)
+            ->assertJsonPath('data.source', 'chain')
+            ->assertJsonPath('data.fee_status', 'verified');
+
+        $tx = $this->row($hash);
+        $this->assertSame('confirmed', $tx->status);
+        $this->assertEqualsWithDelta(0.0015, (float) $tx->to_amount, 1e-12);
+        $this->assertEqualsWithDelta(100, (float) $tx->from_amount, 1e-12);
+    }
+
+    public function test_a_v3_swap_paid_out_in_bnb_reads_the_smart_router_unwrap(): void
+    {
+        $hash = $this->nextHash();
+        // SmartRouter ถือ WBNB ไว้แล้ว unwrapWETH9 ส่ง BNB ให้กระเป๋า — Withdrawal มาจาก SmartRouter
+        $this->bscSwap($hash, self::WALLET, self::USDT, self::BNB, self::wei('597', 18), self::wei('0.995', 18), target: $this->bscSmartRouter);
+
+        $this->record($hash, [
+            'from_token' => self::USDT,
+            'to_token' => self::BNB,
+            'from_amount' => 597,
+            'to_amount' => 0.995,
+            'fee_amount' => 0,
+        ])->assertStatus(201);
+
+        $this->assertEqualsWithDelta(0.995, (float) $this->row($hash)->to_amount, 1e-12);
+    }
+
+    public function test_a_v3_swap_paid_in_bnb_reads_the_smart_router_wrap(): void
+    {
+        $hash = $this->nextHash();
+        $this->bscSwap($hash, self::WALLET, self::BNB, self::USDT, self::wei('0.997', 18), self::wei('600', 18), target: $this->bscSmartRouter);
+
+        $this->record($hash, [
+            'from_token' => self::BNB,
+            'to_token' => self::USDT,
+            'from_amount' => 0.997,
+            'to_amount' => 600,
+            'fee_amount' => 0,
+        ])->assertStatus(201);
+
+        $this->assertEqualsWithDelta(0.997, (float) $this->row($hash)->from_amount, 1e-12);
+    }
+
+    public function test_bnb_unwrapped_by_another_router_is_not_counted_for_a_v3_swap(): void
+    {
+        $hash = $this->nextHash();
+        // ส่งเข้า SmartRouter แต่ Withdrawal มาจาก V2 router (ไม่ใช่ตัวที่ผู้ใช้ส่งไม้เข้า) — ไม่ใช่ยอดของไม้นี้
+        $this->bscSwap($hash, self::WALLET, self::USDT, self::BNB, self::wei('597', 18), self::wei('0.995', 18), target: $this->bscSmartRouter);
+        $this->bscRewriteLogEmitter($hash, $this->bscRouter);
+
+        $this->record($hash, ['from_token' => self::USDT, 'to_token' => self::BNB, 'from_amount' => 597, 'to_amount' => 0.995, 'fee_amount' => 0])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'NOT_A_SWAP');
+    }
+
+    public function test_a_ticket_bound_to_a_v3_swap_closes_when_it_lands(): void
+    {
+        $uuid = $this->issueTicket();
+        $hash = $this->nextHash();
+        $this->swapOnChain($hash, in: '100', state: 'pending', target: $this->bscSmartRouter);
+        $this->record($hash, ['fee_amount' => 0, 'fee_ticket' => $uuid])->assertStatus(202);
+
+        $this->bscMine($hash);
+        $this->reconcile();
+
+        $this->assertSame('confirmed', $this->row($hash)->status);
+        $this->assertSame(TradingOrderTicket::STATUS_CONSUMED, TradingOrderTicket::where('uuid', $uuid)->firstOrFail()->status);
+    }
+
+    public function test_only_configured_routers_are_accepted(): void
+    {
+        // แอดมินถอด V3 ออกจากรายการ = ไม้ที่ส่งเข้า SmartRouter ไม่ถูกบันทึก (V2 ยังผ่าน)
+        config(['chains.chains.56.swap_routers' => [$this->bscRouter]]);
+
+        $v3 = $this->nextHash();
+        $this->swapOnChain($v3, target: $this->bscSmartRouter);
+        $this->record($v3)->assertStatus(422)->assertJsonPath('error.code', 'NOT_A_SWAP');
+
+        $v2 = $this->nextHash();
+        $this->swapOnChain($v2);
+        $this->record($v2, ['fee_tx_hash' => $this->feeOnChain()])->assertStatus(201);
+    }
+
     public function test_only_bsc_is_recorded_from_this_path(): void
     {
         $this->record($this->nextHash(), ['chain_id' => 1])
