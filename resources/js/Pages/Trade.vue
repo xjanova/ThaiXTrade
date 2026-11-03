@@ -1359,11 +1359,12 @@ async function executeBscMarketOrder(order) {
         }
 
         // 7) Approve router ถ้า allowance ไม่พอ (เฉพาะ token ไม่ใช่ BNB) — approveToken รอลงบล็อกให้แล้ว
+        //    router ของเส้นทางที่ quote เลือก (PancakeSwap V2 หรือ V3 SmartRouter — อนุมัติแยกกัน)
         if (!fromTok.native) {
-            const hasAllowance = await swap.checkAllowance(fromTok.address, inputText, fromTok.decimals);
+            const hasAllowance = await swap.checkAllowance(fromTok.address, inputText, fromTok.decimals, quote.router);
             if (!hasAllowance) {
                 orderMessage.value = t('trade.status.approving', { symbol: fromSym });
-                await swap.approveToken(fromTok.address);
+                await swap.approveToken(fromTok.address, quote.router);
             }
         }
 

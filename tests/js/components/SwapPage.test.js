@@ -309,6 +309,21 @@ describe('Swap page', () => {
             expect(order).toEqual(['switch:56', 'approve']);
         });
 
+        it('checks and approves the router of the route on screen (PancakeSwap V3)', async () => {
+            const SMART_ROUTER = '0x13f4EA83D0bd40E75C8222255bc855a974568Dd4';
+            getQuote.mockImplementation(async (_from, _to, amount, opts = {}) => ({ ...quoteFor(amount, opts.slippage ?? 0.5), protocol: 'v3', router: SMART_ROUTER }));
+            checkAllowance.mockResolvedValue(false);
+
+            const wrapper = await mountSwap();
+            await typeAmount(wrapper, '1');
+            await wrapper.find('[data-test="approve-button"]').trigger('click');
+            await flushPromises();
+
+            // V2 กับ V3 อนุมัติแยกกัน — วงเงินที่ V2 router มีอยู่ใช้กับไม้ V3 ไม่ได้
+            expect(checkAllowance.mock.calls.at(-1)[3]).toBe(SMART_ROUTER);
+            expect(approveToken).toHaveBeenCalledWith(expect.any(String), SMART_ROUTER);
+        });
+
         it('does not approve when the network switch is rejected', async () => {
             wallet.isBSC = false;
             checkAllowance.mockResolvedValue(false);

@@ -1,7 +1,7 @@
 /**
  * TPIX TRADE - BSC Trade Token Registry
  * แผนที่เหรียญ major (คู่เทรดในหน้า Trade) → token address บน BSC
- * ใช้กับ market order ที่ execute จริงผ่าน PancakeSwap V2
+ * ใช้กับ market order ที่ execute จริงผ่าน PancakeSwap (V2 หรือ V3 — useSwap เลือกเส้นทางที่ได้มากสุด)
  *
  * ความปลอดภัย (อย่าตัดออก):
  *  - decimals ในไฟล์นี้เป็นแค่ค่า fallback สำหรับแสดงผล — ค่าจริงอ่านจาก
@@ -73,6 +73,22 @@ export const BSC_TRADE_TOKENS = {
     TST: { name: 'Test', address: '0x86Bb94DdD16Efc8bc58e6b056e8df71D9e666429', decimals: 18, onchainSymbols: ['TST'] },
     BROCCOLI714: { name: 'Broccoli', address: '0x6d5AD1592ed9D6D1dF9b93c793AB759573Ed6714', decimals: 18, onchainSymbols: ['Broccoli', 'BROCCOLI'] },
     USD1: { name: 'World Liberty Financial USD', address: '0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d', decimals: 18, onchainSymbols: ['USD1'] },
+    // เพิ่ม 2026-11-03 (PancakeSwap V3) — ผ่านการตรวจ symbol() + ราคาเส้นทางที่ดีที่สุด (V2/V3) เทียบ Binance แล้ว
+    ETC: { name: 'Ethereum Classic', address: '0x3d6545b08693daE087E957cb1180ee38B9e3c25E', decimals: 18, onchainSymbols: ['ETC'] },
+    AAVE: { name: 'Aave', address: '0xfb6115445Bff7b52FeB98650C87f44907E58f802', decimals: 18, onchainSymbols: ['AAVE'] },
+    MANA: { name: 'Decentraland', address: '0x26433c8127d9b4e9B71Eaa15111DF99Ea2EeB2f8', decimals: 18, onchainSymbols: ['MANA'] },
+    BCH: { name: 'Bitcoin Cash', address: '0x8fF795a6F4D97E7887C79beA79aba5cc76444aDf', decimals: 18, onchainSymbols: ['BCH'] },
+    ZEC: { name: 'Zcash', address: '0x1Ba42e5193dfA8B03D15dd1B86a3113bbBEF8Eeb', decimals: 18, onchainSymbols: ['ZEC'] },
+    FET: { name: 'Fetch.ai', address: '0x031b41e504677879370e9DBcF937283A8691Fa7f', decimals: 18, onchainSymbols: ['FET'] },
+    PENDLE: { name: 'Pendle', address: '0xb3Ed0A426155B79B898849803E3B36552f7ED507', decimals: 18, onchainSymbols: ['PENDLE'] },
+    ZRO: { name: 'LayerZero', address: '0x6985884C4392D348587B19cb9eAAf157F13271cd', decimals: 18, onchainSymbols: ['ZRO'] },
+    LISTA: { name: 'Lista DAO', address: '0xFceB31A79F71AC9CBDCF853519c1b12D379EdC46', decimals: 18, onchainSymbols: ['LISTA'] },
+    BONK: { name: 'Bonk', address: '0xA697e272a73744b343528C3Bc4702F2565b2F422', decimals: 5, onchainSymbols: ['Bonk', 'BONK'] },
+    FDUSD: { name: 'First Digital USD', address: '0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409', decimals: 18, onchainSymbols: ['FDUSD'] },
+    LAZIO: { name: 'FC Lazio Fan Token', address: '0x77d547256A2cD95F32F67aE0313E450Ac200648d', decimals: 8, onchainSymbols: ['LAZIO'] },
+    MUBARAK: { name: 'Mubarak', address: '0x5C85D6C6825aB4032337F11Ee92a72DF936b46F6', decimals: 18, onchainSymbols: ['mubarak', 'MUBARAK'] },
+    FORM: { name: 'Four (FORM)', address: '0x5b73A93b4E5e4f1FD27D8b3F8C97D69908b5E284', decimals: 18, onchainSymbols: ['FORM'] },
+    COOKIE: { name: 'Cookie DAO', address: '0xC0041EF357B183448B235a8Ea73Ce4E4eC8c265F', decimals: 18, onchainSymbols: ['COOKIE'] },
 };
 
 // ABI ขั้นต่ำสำหรับตรวจ token ก่อนเทรด

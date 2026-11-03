@@ -43,13 +43,15 @@ class BscSwapVerifier
     /** ผู้ส่งไม่ใช่กระเป๋านี้ */
     public const WALLET_MISMATCH = 'wallet_mismatch';
 
-    /** สวอป: ไม่ได้ส่งเข้า router ที่หน้าเว็บใช้ · ค่าธรรมเนียม BNB: ไม่ได้โอนเข้ากระเป๋าค่าธรรมเนียม */
+    /** สวอป: ไม่ได้ส่งเข้า router ที่หน้าเว็บใช้ (V2 / V3 SmartRouter) · ค่าธรรมเนียม BNB: ไม่ได้โอนเข้ากระเป๋าค่าธรรมเนียม */
     public const WRONG_TARGET = 'wrong_target';
 
     /** ส่งถูกที่ แต่ไม่มีเหรียญที่อ้างเคลื่อนออก/เข้ากระเป๋านี้ */
     public const NO_TRANSFER = 'no_transfer';
 
     private const PANCAKE_V2_ROUTER = '0x10ed43c718714eb63d5aa57b78b54704e256024e';
+
+    private const PANCAKE_V3_SMART_ROUTER = '0x13f4ea83d0bd40e75c8222255bc855a974568dd4';
 
     private const WBNB = '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c';
 
@@ -69,6 +71,7 @@ class BscSwapVerifier
      *
      * เหรียญ = ผลรวม Transfer ของเหรียญนั้นที่ออกจาก/เข้ากระเป๋า
      * BNB ขาเข้า = WBNB Deposit ที่ router ห่อ · BNB ขาออก = WBNB Withdrawal ที่ router ถอนส่งให้
+     * (router = ตัวที่ธุรกรรมส่งเข้าจริง — V2 กับ V3 SmartRouter ห่อ/ถอน WBNB แบบเดียวกัน)
      *
      * @return array{status: string, amount_in?: string, amount_out?: string, block_number?: int}
      */
@@ -84,8 +87,8 @@ class BscSwapVerifier
             return ['status' => self::FAILED];
         }
 
-        $router = $this->router();
-        if ($this->lower($receipt['to'] ?? null) !== $router) {
+        $router = $this->lower($receipt['to'] ?? null);
+        if (! in_array($router, $this->routers(), true)) {
             return ['status' => self::WRONG_TARGET];
         }
 
@@ -111,7 +114,7 @@ class BscSwapVerifier
     /**
      * ผลของธุรกรรมไม้ (ไม่ดูเหรียญ) — ใช้ตัดสินใบอนุญาตวางไม้ที่ผูก tx ไว้แล้ว.
      *
-     * CONFIRMED = ลงเชนสำเร็จ ส่งโดยกระเป๋านี้ เข้า router ที่หน้าเว็บใช้
+     * CONFIRMED = ลงเชนสำเร็จ ส่งโดยกระเป๋านี้ เข้า router ตัวใดตัวหนึ่งที่หน้าเว็บใช้
      */
     public function outcome(string $txHash, string $wallet): string
     {
@@ -124,7 +127,7 @@ class BscSwapVerifier
             return self::FAILED;
         }
 
-        return $this->lower($receipt['to'] ?? null) === $this->router() ? self::CONFIRMED : self::WRONG_TARGET;
+        return in_array($this->lower($receipt['to'] ?? null), $this->routers(), true) ? self::CONFIRMED : self::WRONG_TARGET;
     }
 
     /**
@@ -258,9 +261,22 @@ class BscSwapVerifier
         }
     }
 
-    private function router(): string
+    /**
+     * router ที่ยอมรับ (พิมพ์เล็ก) — swap_routers ใน config · ไม่มีรายการ = V2 + V3 SmartRouter.
+     *
+     * swap_router (ตัวเดียวแบบเดิม) ยังนับรวม — config เก่าที่ตั้งไว้ต้องไม่ทำให้ไม้ V2 ถูกตีตก
+     *
+     * @return list<string>
+     */
+    private function routers(): array
     {
-        return $this->lower((string) config('chains.chains.56.swap_router', self::PANCAKE_V2_ROUTER));
+        $list = (array) config('chains.chains.56.swap_routers', [self::PANCAKE_V2_ROUTER, self::PANCAKE_V3_SMART_ROUTER]);
+        $list[] = (string) config('chains.chains.56.swap_router', self::PANCAKE_V2_ROUTER);
+
+        return array_values(array_unique(array_filter(
+            array_map(fn ($a) => $this->lower($a), $list),
+            fn (string $a) => preg_match('/^0x[0-9a-f]{40}$/', $a) === 1,
+        )));
     }
 
     private function wrappedNative(): string

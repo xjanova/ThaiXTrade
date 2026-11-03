@@ -23,11 +23,16 @@
  *  - เข้าคิวบันทึกตั้งแต่ธุรกรรมออกจากกระเป๋า (ก่อนรอลงบล็อก) · รอผลไม่สำเร็จก็ยังส่งบันทึก
  *  - minOut ไม่ต่ำกว่า "ได้รับอย่างน้อย" ที่ผู้ใช้เห็น · deadline ไม่เกินอายุใบอนุญาตวางไม้
  *
+ * เพิ่มเติม (2026-11-03 — PancakeSwap V3):
+ *  - ขอราคาทั้ง V2 และ V3 (ทุกระดับค่าธรรมเนียมพูล ทางตรง/ผ่าน WBNB) แล้วใช้ทางที่ได้มากสุด
+ *    V3 ส่งผ่าน SmartRouter.multicall(deadline, [exactInput …]) — ด่านทุกชั้นเดิมใช้กับทั้งสองทาง
+ *  - quote บอก router ที่ต้อง approve (quote.router) — ผู้เรียกตรวจ/ขอ allowance กับ router นั้น
+ *
  * Developed by Xman Studio
  */
 
 import { ref } from 'vue';
-import { Contract, parseUnits, formatUnits, MaxUint256, id as eventTopic } from 'ethers';
+import { Contract, Interface, parseUnits, formatUnits, MaxUint256, id as eventTopic } from 'ethers';
 import { useWalletStore } from '@/Stores/walletStore';
 import {
     PANCAKE_ROUTER_ADDRESS,
@@ -43,6 +48,14 @@ import {
     isRpcUnreachable,
     getTxUrl,
 } from '@/utils/web3';
+import {
+    PANCAKE_V3_SMART_ROUTER_ADDRESS,
+    PANCAKE_V3_SMART_ROUTER_ABI,
+    V3_ADDRESS_THIS,
+    bestV3Route,
+    quoteV3Path,
+    encodeV3Path,
+} from '@/utils/pancakeV3';
 import { txDeadlineSeconds } from '@/utils/tradeSettings';
 import { t } from '@/Composables/useTranslation';
 import axios from 'axios';
@@ -61,6 +74,10 @@ const FEE_PROMPT_TIMEOUT_MS = 300000;    // รอผู้ใช้กดยื
 const FEE_WAIT_TIMEOUT_MS = 120000;      // รอธุรกรรมค่าธรรมเนียมลงบล็อก
 const FEE_COLLECTOR_TTL_MS = 60000;
 
+/** วงเงิน approve ไม่พอ: ถามโหนดซ้ำกี่ครั้ง ห่างกันเท่าไร (โหนดอ่านตามหลังบล็อกที่เพิ่ง approve ได้) */
+const ALLOWANCE_RECHECKS = 2;
+const ALLOWANCE_RECHECK_MS = 1500;
+
 /** ยอดที่เกินยอดจริงได้ไม่เกินเท่านี้ถือเป็นเศษจากการปัด → ตัดให้พอดียอด (1 ใน 10,000) */
 const CLAMP_DUST_DIVISOR = 10000n;
 
@@ -69,6 +86,40 @@ export const BSC_PRICE_IMPACT_BLOCK_PCT = 10;
 
 const TRANSFER_TOPIC = eventTopic('Transfer(address,address,uint256)');
 const WITHDRAWAL_TOPIC = eventTopic('Withdrawal(address,uint256)');
+
+/**
+ * router ที่ยอมส่งไม้เข้า — ต้องตรงกับ config chains.56.swap_routers ฝั่งเซิร์ฟเวอร์
+ * (ส่งเข้า router อื่น = เซิร์ฟเวอร์ตีตก WRONG_TARGET และไม่บันทึกไม้)
+ */
+export const BSC_SWAP_ROUTERS = Object.freeze({
+    v2: PANCAKE_ROUTER_ADDRESS,
+    v3: PANCAKE_V3_SMART_ROUTER_ADDRESS,
+});
+
+const smartRouterIface = new Interface(PANCAKE_V3_SMART_ROUTER_ABI);
+
+/** ที่อยู่นี้คือ router ที่เราใช้ (V2 หรือ V3) ไหม */
+function isKnownRouter(address) {
+    const a = String(address || '').toLowerCase();
+    return Object.values(BSC_SWAP_ROUTERS).some(r => r.toLowerCase() === a);
+}
+
+/**
+ * เลือกเส้นทางที่ได้มากสุดจากผลขอราคาทุกทาง (V2 ตรง / V2 ผ่าน WBNB / V3 ที่ดีที่สุด)
+ * เท่ากัน = ใช้ตัวที่มาก่อน (V2 ก่อน V3 — ค่าแก๊สถูกกว่าและเป็นทางเดิม)
+ *
+ * @param {{status: string, value?: {amountOut: bigint}}[]} results ผล Promise.allSettled ตามลำดับ candidates
+ * @returns {number} ตำแหน่งที่ชนะ · -1 = ไม่มีทางไหนได้ราคา
+ */
+export function pickBestRoute(results) {
+    let best = -1;
+    results.forEach((r, i) => {
+        const out = r?.status === 'fulfilled' ? r.value?.amountOut : null;
+        if (typeof out !== 'bigint' || out <= 0n) return;
+        if (best === -1 || out > results[best].value.amountOut) best = i;
+    });
+    return best;
+}
 
 /**
  * ตัวเลขจากช่องกรอก/ตัวแปร → สตริงทศนิยมธรรมดา (ไม่มีจุลภาค ไม่มีรูป 1e-7)
@@ -164,10 +215,10 @@ function withTimeout(promise, ms, code = 'TIMEOUT') {
 /**
  * ยอดที่ได้รับจริงจาก log ของใบเสร็จ (ไม่ใช่ตัวเลขจาก quote)
  * โทเคน = ผลรวม Transfer ของเหรียญปลายทางที่เข้ากระเป๋าเรา
- * BNB = WBNB Withdrawal ที่ router ถอนออกมาโอนให้เรา
+ * BNB = WBNB Withdrawal ที่ router ถอนออกมาโอนให้เรา (router ของเส้นทางที่ใช้จริง — V2 หรือ V3)
  * @returns {bigint|null} null = อ่านไม่ได้ (ผู้เรียกใช้ตัวเลขจาก quote แทน)
  */
-export function receivedFromReceipt(receipt, toToken, owner) {
+export function receivedFromReceipt(receipt, toToken, owner, router = PANCAKE_ROUTER_ADDRESS) {
     const logs = Array.isArray(receipt?.logs) ? receipt.logs : [];
     const lower = s => String(s || '').toLowerCase();
     const topicAddress = topic => `0x${lower(topic).slice(-40)}`;
@@ -179,7 +230,7 @@ export function receivedFromReceipt(receipt, toToken, owner) {
             const topics = log?.topics || [];
             if (isNativeToken(toToken?.address)) {
                 if (lower(log.address) !== lower(WBNB_ADDRESS) || lower(topics[0]) !== WITHDRAWAL_TOPIC) continue;
-                if (topicAddress(topics[1]) !== lower(PANCAKE_ROUTER_ADDRESS)) continue;
+                if (topicAddress(topics[1]) !== lower(router)) continue;
             } else {
                 if (lower(log.address) !== lower(toToken?.address) || lower(topics[0]) !== TRANSFER_TOPIC || topics.length < 3) continue;
                 if (topicAddress(topics[2]) !== lower(owner)) continue;
@@ -516,39 +567,40 @@ export function useSwap() {
             const swapInput = Number(formatUnits(amountInSwapWei, fromDecimals));
 
             /*
-             * 3) เส้นทาง: ตรง กับ ผ่าน WBNB — ขอราคาทั้งสองแล้วเลือกทางที่ได้มากกว่า
+             * 3) เส้นทาง: V2 ตรง · V2 ผ่าน WBNB · V3 ที่ดีที่สุด (ทุกระดับค่าธรรมเนียมพูล ตรง/ผ่าน WBNB)
+             *    ขอราคาทุกทางพร้อมกันแล้วใช้ทางที่ได้มากที่สุด
              *
              * ⚠️ เดิมบังคับผ่าน WBNB เสมอ (ทางตรงใช้เฉพาะตอนทางนั้นล้ม) = จ่ายค่า LP 0.25% สองต่อ
              *    และโดนผลกระทบราคาสองพูล ทั้งที่ BTCB/ETH/… มีพูลตรงกับ USDT อยู่แล้ว
+             * ⚠️ เดิมมีแต่ V2 — สภาพคล่องหลายเหรียญย้ายไป V3 แล้ว ไม้ $100 ของ PEPE ได้ราคาห่าง Binance 48%
+             *    (V3 ห่าง 0.5%) ด่านราคาเบี่ยงในหน้าเทรดจึงบล็อกไม้ทั้งที่ตลาดจริงมีสภาพคล่อง
              */
             const fromAddr = getRoutingAddress(fromToken.address);
             const toAddr = getRoutingAddress(toToken.address);
             const viaWbnb = fromAddr.toLowerCase() === WBNB_ADDRESS.toLowerCase()
                 || toAddr.toLowerCase() === WBNB_ADDRESS.toLowerCase();
-            const candidates = viaWbnb
+            const v2Paths = viaWbnb
                 ? [[fromAddr, toAddr]]
                 : [[fromAddr, toAddr], [fromAddr, WBNB_ADDRESS, toAddr]];
 
             // 4) ราคาจริงบนเชนจาก BSC node (ไม่ขึ้นกับเชนที่กระเป๋าอยู่) — มีโหนดสำรอง
-            const results = await Promise.allSettled(candidates.map(p =>
-                withBscReadFallback(provider => getAmountsOut(amountInSwapWei, p, provider))));
-            let path = null;
-            let amountOut = null;
-            results.forEach((r, i) => {
-                if (r.status === 'fulfilled' && r.value != null && r.value > 0n && (amountOut === null || r.value > amountOut)) {
-                    amountOut = r.value;
-                    path = candidates[i];
-                }
-            });
+            const results = await Promise.allSettled([
+                ...v2Paths.map(p => withBscReadFallback(provider => getAmountsOut(amountInSwapWei, p, provider))
+                    .then(out => ({ protocol: 'v2', path: p, fees: null, amountOut: out }))),
+                withBscReadFallback(provider => bestV3Route(provider, amountInSwapWei, fromAddr, toAddr, WBNB_ADDRESS))
+                    .then(r => (r ? { protocol: 'v3', path: r.tokens, fees: r.fees, amountOut: r.amountOut } : null)),
+            ]);
+            const winner = pickBestRoute(results);
             // Never proceed without a real on-chain amount (no 1:1 fabrication).
-            if (amountOut === null) {
+            if (winner === -1) {
                 // ทุกทางล้มเพราะติดต่อโหนดไม่ได้ ≠ ไม่มีสภาพคล่อง — บอกให้ตรงกับที่เกิดจริง
                 const unreachable = results.some(r => r.status === 'rejected' && isRpcUnreachable(r.reason));
                 throw friendlyThrow(t(unreachable ? 'swapError.rpcUnavailable' : 'swapError.noLiquidity'));
             }
+            const { protocol, path, fees, amountOut } = results[winner].value;
 
             /*
-             * 5) ผลกระทบต่อราคาจริง — เทียบกับไม้จิ๋ว (0.1%) บนเส้นทางเดียวกัน
+             * 5) ผลกระทบต่อราคาจริง — เทียบกับไม้จิ๋ว (0.1%) บนเส้นทางเดียวกัน (พูลเดียวกัน ระดับค่าธรรมเนียมเดียวกัน)
              * เดิมใช้ตัวเลขจาก backend (จำนวน × 0.001) ซึ่งไม่เกี่ยวกับพูลเลย
              * อ่านไม่ได้ = null ("ไม่รู้") ไม่ใช่ 0 ("ไม่กระทบ")
              */
@@ -556,8 +608,10 @@ export function useSwap() {
             const refIn = amountInSwapWei / 1000n;
             if (refIn > 0n) {
                 try {
-                    const refOut = await withBscReadFallback(provider => getAmountsOut(refIn, path, provider));
-                    priceImpact = priceImpactPct(amountInSwapWei, amountOut, refIn, refOut);
+                    const refOut = await withBscReadFallback(provider => (protocol === 'v3'
+                        ? quoteV3Path(provider, path, fees, refIn)
+                        : getAmountsOut(refIn, path, provider)));
+                    priceImpact = refOut == null ? null : priceImpactPct(amountInSwapWei, amountOut, refIn, refOut);
                 } catch {
                     priceImpact = null;
                 }
@@ -585,6 +639,9 @@ export function useSwap() {
                 minimumReceived: Math.max(minimumReceived, 0),
                 path,
                 route: path.length === 3 ? 'wbnb' : 'direct',
+                protocol,                     // 'v2' | 'v3'
+                fees,                         // ระดับค่าธรรมเนียมพูล V3 ของแต่ละช่วง (V2 = null)
+                router: BSC_SWAP_ROUTERS[protocol],   // ตัวที่ต้อง approve และส่งไม้เข้า
                 waived,
                 rawAmountOut: amountOut,       // BigInt — router output for the swapped amount
                 minOutWei,                    // BigInt — minOut at this quote's slippage
@@ -606,11 +663,13 @@ export function useSwap() {
     /**
      * Check if the router has sufficient allowance to spend the token.
      * Read against the BSC RPC so it is correct regardless of the wallet's chain.
+     * @param {string} [spender] router ของเส้นทางที่จะใช้ (quote.router) — V2 กับ V3 ต้อง approve แยกกัน
      */
-    async function checkAllowance(tokenAddress, amount, decimals = 18) {
+    async function checkAllowance(tokenAddress, amount, decimals = 18, spender = PANCAKE_ROUTER_ADDRESS) {
         const walletStore = useWalletStore();
         if (!walletStore.address) return false;
         if (isNativeToken(tokenAddress)) return true;
+        if (!isKnownRouter(spender)) return false;
 
         let needed;
         try {
@@ -622,7 +681,7 @@ export function useSwap() {
         const allowance = await withBscReadFallback(provider => getAllowance(
             tokenAddress,
             owner,
-            PANCAKE_ROUTER_ADDRESS,
+            spender,
             provider,
         ));
         return allowance >= needed;
@@ -640,18 +699,24 @@ export function useSwap() {
     /**
      * Approve the router to spend tokens (must be on BSC — caller switches first).
      * รอให้ลงบล็อกก่อนคืนค่า (มีเพดานเวลา) — ผู้เรียกไม่ต้อง wait() ซ้ำ
+     * @param {string} [spender] router ของเส้นทางที่จะใช้ (quote.router) — รับเฉพาะ router ที่รู้จัก
      */
-    async function approveToken(tokenAddress) {
+    async function approveToken(tokenAddress, spender = PANCAKE_ROUTER_ADDRESS) {
         const walletStore = useWalletStore();
         const signer = walletStore.signer;
         if (!signer) throw new Error('Wallet not connected');
+        // ห้ามเปิดวงเงินให้ที่อยู่อื่นที่ไม่ใช่ router ของ PancakeSwap เด็ดขาด
+        if (!isKnownRouter(spender)) {
+            error.value = t('swapError.approveFailed');
+            throw friendlyThrow(error.value);
+        }
 
         isApproving.value = true;
         error.value = null;
 
         try {
             const contract = new Contract(tokenAddress, ERC20_ABI, signer);
-            const tx = await contract.approve(PANCAKE_ROUTER_ADDRESS, MaxUint256);
+            const tx = await contract.approve(spender, MaxUint256);
             try {
                 await tx.wait(1, APPROVE_WAIT_TIMEOUT_MS);
             } catch (waitErr) {
@@ -796,7 +861,51 @@ export function useSwap() {
                 throw friendlyThrow(error.value);
             }
 
+            /*
+             * เส้นทางต้องเริ่ม/จบที่เหรียญของไม้นี้ ผ่านได้แค่ WBNB และส่งเข้า router ที่เรารู้จักเท่านั้น
+             * (รูปเดียวกับที่ getQuote สร้าง) quote ค้างจากคู่อื่น / ถูกแก้ระหว่างทาง = ไม่ส่ง
+             * ไม่เชื่อ quote.router — เลือกจาก protocol เอง
+             */
             const path = quote.path;
+            const protocol = quote.protocol === 'v3' ? 'v3' : 'v2';
+            const routerAddress = BSC_SWAP_ROUTERS[protocol];
+            let v3Path = null;
+            try {
+                if (!Array.isArray(path) || path.length < 2 || path.length > 3
+                    || !sameHash(path[0], getRoutingAddress(fromToken.address))
+                    || !sameHash(path[path.length - 1], getRoutingAddress(toToken.address))
+                    || (path.length === 3 && !sameHash(path[1], WBNB_ADDRESS))
+                    || (quote.router && !sameHash(quote.router, routerAddress))) {
+                    throw new Error('route mismatch');
+                }
+                if (protocol === 'v3') v3Path = encodeV3Path(path, quote.fees);
+            } catch {
+                error.value = t('swapError.quoteUnavailable');
+                throw friendlyThrow(error.value);
+            }
+
+            /*
+             * วงเงินที่อนุมัติให้ router ของเส้นทางนี้ต้องพอ — V2 กับ V3 อนุมัติแยกกัน
+             * ผู้เรียกตรวจไว้แล้วกับ quote.router แต่ราคาใหม่อาจเปลี่ยนเส้นทาง → ส่งไปก็ revert เสียค่าแก๊สฟรี
+             * โหนดอ่านอาจตามหลังบล็อกที่เพิ่ง approve — ถามซ้ำสั้นๆ ก่อนสรุป · อ่านไม่ได้เลย = ไม่บล็อก
+             */
+            if (!isNativeToken(fromToken.address)) {
+                for (let attempt = 0; ; attempt++) {
+                    let allowance = null;
+                    try {
+                        allowance = await withBscReadFallback(provider => getAllowance(fromToken.address, owner, routerAddress, provider));
+                    } catch {
+                        allowance = null;
+                    }
+                    if (allowance === null || allowance >= amountInSwap) break;
+                    if (attempt >= ALLOWANCE_RECHECKS) {
+                        error.value = t('swapError.needsApproval');
+                        throw friendlyThrow(error.value);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, ALLOWANCE_RECHECK_MS));
+                }
+            }
+
             /*
              * ระยะเวลาจำกัดจากหน้าตั้งค่า (ไม่เคยตั้ง = 20 นาที) แต่ไม่เกินอายุใบอนุญาตวางไม้
              * ⚠️ ใบอนุญาตหมดอายุ 15 นาที — เดิมไม้ลงบล็อกได้ถึงนาทีที่ 20 หลังตั๋วถูกคืนเงินไปแล้ว
@@ -809,24 +918,43 @@ export function useSwap() {
                 error.value = t('swapError.expired');
                 throw friendlyThrow(error.value);
             }
-            const router = new Contract(PANCAKE_ROUTER_ADDRESS, PANCAKE_ROUTER_ABI, signer);
+            const v2Router = new Contract(PANCAKE_ROUTER_ADDRESS, PANCAKE_ROUTER_ABI, signer);
 
             notify('swapping');
             let tx;
-            if (isNativeToken(fromToken.address)) {
+            if (protocol === 'v3') {
+                /*
+                 * PancakeSwap V3 ผ่าน SmartRouter: multicall(deadline, [...]) — deadline อยู่ที่ multicall
+                 * minOut ตัวเดียวกับ V2 (ราคาจาก quote − slippage และไม่ต่ำกว่าที่ผู้ใช้เห็นบนจอ)
+                 */
+                const nativeIn = isNativeToken(fromToken.address);
+                const nativeOut = isNativeToken(toToken.address);
+                const steps = [smartRouterIface.encodeFunctionData('exactInput', [{
+                    path: v3Path,
+                    // ขาออกเป็น BNB: router ถือ WBNB ไว้ก่อน แล้วถอนเป็น BNB ส่งให้ผู้ใช้ในขั้นถัดไป
+                    recipient: nativeOut ? V3_ADDRESS_THIS : owner,
+                    amountIn: amountInSwap,
+                    amountOutMinimum: minOut,
+                }])];
+                if (nativeOut) steps.push(smartRouterIface.encodeFunctionData('unwrapWETH9', [minOut, owner]));
+                // ขาเข้าเป็น BNB: ส่วนที่พูลไม่ได้ใช้ต้องคืนผู้ใช้ในธุรกรรมเดียวกัน — ค้างใน router = ใครก็ดึงไปได้
+                if (nativeIn) steps.push(smartRouterIface.encodeFunctionData('refundETH', []));
+                const router = new Contract(routerAddress, PANCAKE_V3_SMART_ROUTER_ABI, signer);
+                tx = await router.multicall(deadline, steps, nativeIn ? { value: amountInSwap } : {});
+            } else if (isNativeToken(fromToken.address)) {
                 // BNB → Token
-                tx = await router.swapExactETHForTokens(
+                tx = await v2Router.swapExactETHForTokens(
                     minOut, path, owner, deadline,
                     { value: amountInSwap },
                 );
             } else if (isNativeToken(toToken.address)) {
                 // Token → BNB
-                tx = await router.swapExactTokensForETH(
+                tx = await v2Router.swapExactTokensForETH(
                     amountInSwap, minOut, path, owner, deadline,
                 );
             } else {
                 // Token → Token
-                tx = await router.swapExactTokensForTokens(
+                tx = await v2Router.swapExactTokensForTokens(
                     amountInSwap, minOut, path, owner, deadline,
                 );
             }
@@ -932,7 +1060,7 @@ export function useSwap() {
                 txStatus.value = 'confirmed';
 
                 // ยอดที่ได้รับจริงจาก log ของใบเสร็จ — ต่างจาก quote ได้ถึงเท่า slippage
-                const received = receivedFromReceipt(receipt, toToken, owner);
+                const received = receivedFromReceipt(receipt, toToken, owner, routerAddress);
                 const amountOut = received !== null ? Number(formatUnits(received, toDecimals)) : quote.netOutput;
                 record.to_amount = amountOut;
                 setFillPrice(amountOut);

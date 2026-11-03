@@ -87,6 +87,27 @@ return [
         'TST' => ['name' => 'Test', 'address' => '0x86Bb94DdD16Efc8bc58e6b056e8df71D9e666429', 'decimals' => 18, 'coingecko_id' => null, 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x86Bb94DdD16Efc8bc58e6b056e8df71D9e666429/logo.png', 'sort_order' => 45],
         'BROCCOLI714' => ['name' => 'Broccoli', 'address' => '0x6d5AD1592ed9D6D1dF9b93c793AB759573Ed6714', 'decimals' => 18, 'coingecko_id' => null, 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x6d5AD1592ed9D6D1dF9b93c793AB759573Ed6714/logo.png', 'sort_order' => 46],
         'USD1' => ['name' => 'World Liberty Financial USD', 'address' => '0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d', 'decimals' => 18, 'coingecko_id' => 'usd1-wlfi', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d/logo.png', 'sort_order' => 47],
+
+        /*
+         * เพิ่ม 2026-11-03 (PancakeSwap V3) — เกณฑ์เดียวกับชุดบน: symbol() ตรง · ไม้ \$100 ทั้งซื้อและขาย
+         * ห่างราคา Binance ไม่เกิน 2% บนเส้นทางที่ดีที่สุด (V2 หรือ V3) — ส่วนใหญ่ผ่านเพราะสภาพคล่องอยู่บน V3
+         * (บน V2 ตัวเดียวกันห่าง 3%–ล้าน%) · LAZIO ผ่านบน V2
+         */
+        'ETC' => ['name' => 'Ethereum Classic', 'address' => '0x3d6545b08693daE087E957cb1180ee38B9e3c25E', 'decimals' => 18, 'coingecko_id' => 'ethereum-classic', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x3d6545b08693daE087E957cb1180ee38B9e3c25E/logo.png', 'sort_order' => 48],
+        'AAVE' => ['name' => 'Aave', 'address' => '0xfb6115445Bff7b52FeB98650C87f44907E58f802', 'decimals' => 18, 'coingecko_id' => 'aave', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xfb6115445Bff7b52FeB98650C87f44907E58f802/logo.png', 'sort_order' => 49],
+        'MANA' => ['name' => 'Decentraland', 'address' => '0x26433c8127d9b4e9B71Eaa15111DF99Ea2EeB2f8', 'decimals' => 18, 'coingecko_id' => 'decentraland', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x26433c8127d9b4e9B71Eaa15111DF99Ea2EeB2f8/logo.png', 'sort_order' => 50],
+        'BCH' => ['name' => 'Bitcoin Cash', 'address' => '0x8fF795a6F4D97E7887C79beA79aba5cc76444aDf', 'decimals' => 18, 'coingecko_id' => 'bitcoin-cash', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x8fF795a6F4D97E7887C79beA79aba5cc76444aDf/logo.png', 'sort_order' => 51],
+        'ZEC' => ['name' => 'Zcash', 'address' => '0x1Ba42e5193dfA8B03D15dd1B86a3113bbBEF8Eeb', 'decimals' => 18, 'coingecko_id' => 'zcash', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x1Ba42e5193dfA8B03D15dd1B86a3113bbBEF8Eeb/logo.png', 'sort_order' => 52],
+        'FET' => ['name' => 'Fetch.ai', 'address' => '0x031b41e504677879370e9DBcF937283A8691Fa7f', 'decimals' => 18, 'coingecko_id' => 'fetch-ai', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x031b41e504677879370e9DBcF937283A8691Fa7f/logo.png', 'sort_order' => 53],
+        'PENDLE' => ['name' => 'Pendle', 'address' => '0xb3Ed0A426155B79B898849803E3B36552f7ED507', 'decimals' => 18, 'coingecko_id' => 'pendle', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xb3Ed0A426155B79B898849803E3B36552f7ED507/logo.png', 'sort_order' => 54],
+        'ZRO' => ['name' => 'LayerZero', 'address' => '0x6985884C4392D348587B19cb9eAAf157F13271cd', 'decimals' => 18, 'coingecko_id' => 'layerzero', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x6985884C4392D348587B19cb9eAAf157F13271cd/logo.png', 'sort_order' => 55],
+        'LISTA' => ['name' => 'Lista DAO', 'address' => '0xFceB31A79F71AC9CBDCF853519c1b12D379EdC46', 'decimals' => 18, 'coingecko_id' => 'lista', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xFceB31A79F71AC9CBDCF853519c1b12D379EdC46/logo.png', 'sort_order' => 56],
+        'BONK' => ['name' => 'Bonk', 'address' => '0xA697e272a73744b343528C3Bc4702F2565b2F422', 'decimals' => 5, 'coingecko_id' => 'bonk', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xA697e272a73744b343528C3Bc4702F2565b2F422/logo.png', 'sort_order' => 57],
+        'FDUSD' => ['name' => 'First Digital USD', 'address' => '0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409', 'decimals' => 18, 'coingecko_id' => 'first-digital-usd', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409/logo.png', 'sort_order' => 58],
+        'LAZIO' => ['name' => 'FC Lazio Fan Token', 'address' => '0x77d547256A2cD95F32F67aE0313E450Ac200648d', 'decimals' => 8, 'coingecko_id' => 'lazio-fan-token', 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x77d547256A2cD95F32F67aE0313E450Ac200648d/logo.png', 'sort_order' => 59],
+        'MUBARAK' => ['name' => 'Mubarak', 'address' => '0x5C85D6C6825aB4032337F11Ee92a72DF936b46F6', 'decimals' => 18, 'coingecko_id' => null, 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x5C85D6C6825aB4032337F11Ee92a72DF936b46F6/logo.png', 'sort_order' => 60],
+        'FORM' => ['name' => 'Four (FORM)', 'address' => '0x5b73A93b4E5e4f1FD27D8b3F8C97D69908b5E284', 'decimals' => 18, 'coingecko_id' => null, 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0x5b73A93b4E5e4f1FD27D8b3F8C97D69908b5E284/logo.png', 'sort_order' => 61],
+        'COOKIE' => ['name' => 'Cookie DAO', 'address' => '0xC0041EF357B183448B235a8Ea73Ce4E4eC8c265F', 'decimals' => 18, 'coingecko_id' => null, 'logo' => 'https://assets-cdn.trustwallet.com/blockchains/smartchain/assets/0xC0041EF357B183448B235a8Ea73Ce4E4eC8c265F/logo.png', 'sort_order' => 62],
     ],
 
     /*
@@ -99,5 +120,6 @@ return [
         'XRP' => 4, 'ADA' => 4, 'DOGE' => 5, 'POL' => 4, 'DOT' => 3, 'UNI' => 3, 'TRX' => 5, 'NEAR' => 3,
         'SHIB' => 8, 'PEPE' => 8, 'USDC' => 4,
         'CAKE' => 4, 'INJ' => 3, 'FIL' => 4, 'AXS' => 4, 'EGLD' => 3, 'ZIL' => 6, 'FLOKI' => 8, 'TWT' => 4, 'XVS' => 3, 'ASTER' => 4, 'BAND' => 4, 'C98' => 5, 'SFP' => 4, 'DODO' => 5, 'ALICE' => 4, 'TKO' => 4, 'SANTOS' => 4, 'TST' => 5, 'BROCCOLI714' => 5, 'USD1' => 4,
+        'ETC' => 3, 'AAVE' => 2, 'MANA' => 5, 'BCH' => 2, 'ZEC' => 2, 'FET' => 5, 'PENDLE' => 4, 'ZRO' => 4, 'LISTA' => 5, 'BONK' => 8, 'FDUSD' => 4, 'LAZIO' => 4, 'MUBARAK' => 5, 'FORM' => 4, 'COOKIE' => 6,
     ],
 ];

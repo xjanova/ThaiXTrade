@@ -1031,6 +1031,7 @@
         "tooSmall": "Amount is too small to swap.",
         "approveRejected": "Approval rejected in your wallet.",
         "approveFailed": "Failed to approve token.",
+        "needsApproval": "Approve this token for the PancakeSwap route first, then try again.",
         "connectFirst": "Please connect your wallet first.",
         "quoteUnavailable": "Price quote unavailable — please re-enter the amount.",
         "switchBsc": "Please switch your wallet to BSC to swap.",
