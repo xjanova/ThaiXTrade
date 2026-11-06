@@ -110,7 +110,7 @@ class CreatorPublicProfile
 
     /**
      * แถวสั้นสำหรับหน้ารวมโครงการ — ชื่อโครงการ ชื่อที่เผยแพร่ ประเภท วันที่ผ่านการตรวจ (ไม่มีรายละเอียด/เอกสาร/กระเป๋า).
-     * เหรียญแนบทีหลังด้วย tokensByWallet() เพื่อไม่ยิงคิวรีทีละใบ.
+     * เหรียญแนบทีหลังด้วย tokensForRegistrations() เพื่อไม่ยิงคิวรีทีละใบ.
      */
     public function summary(CreatorRegistration $registration): array
     {
@@ -152,20 +152,28 @@ class CreatorPublicProfile
     }
 
     /**
-     * เหรียญที่ deploy แล้วของกระเป๋าเหล่านี้ จับคู่แบบไม่สนตัวพิมพ์ — คิวรีเดียว.
+     * เหรียญของแต่ละใบสำหรับหน้ารวม — เหรียญที่ deploy แล้วจากกระเป๋าของใบ จับคู่แบบไม่สนตัวพิมพ์ คิวรีเดียวทั้งหน้า.
      *
-     * @param  array<int, string>  $wallets
-     * @return array<string, array<int, array<string, mixed>>> wallet ตัวเล็ก => เหรียญ (สูงสุด 20 ต่อกระเป๋า)
+     * จุดเดียวที่หน้ารวมใช้หาเหรียญ: ใบที่ผูกกับเหรียญที่ deploy ไปแล้วด้วยกระเป๋าอื่น
+     * (factory_token_id — งาน claim existing token) ต้องเพิ่มเหรียญนั้นที่นี่ ให้ตรงกับ build()['tokens'].
+     *
+     * @param  Collection<int, CreatorRegistration>  $registrations
+     * @return array<int, array<int, array<string, mixed>>> registration id => เหรียญ (สูงสุด 20 ต่อใบ)
      */
-    public function tokensByWallet(array $wallets): array
+    public function tokensForRegistrations(Collection $registrations): array
     {
-        $wallets = array_values(array_unique(array_map(fn ($w) => strtolower((string) $w), array_filter($wallets))));
+        $wallets = $registrations
+            ->map(fn (CreatorRegistration $r) => strtolower((string) $r->wallet_address))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
         if ($wallets === []) {
             return [];
         }
 
         $explorer = rtrim((string) config('blockchain.explorer_url', 'https://explorer.tpix.online'), '/');
-        $out = [];
+        $byWallet = [];
 
         FactoryToken::query()
             ->deployed()
@@ -173,12 +181,12 @@ class CreatorPublicProfile
             ->whereIn(DB::raw('LOWER(creator_address)'), $wallets)
             ->orderBy('id')
             ->get(['id', 'name', 'symbol', 'contract_address', 'creator_address'])
-            ->each(function (FactoryToken $t) use (&$out, $explorer) {
+            ->each(function (FactoryToken $t) use (&$byWallet, $explorer) {
                 $key = strtolower((string) $t->creator_address);
-                if (count($out[$key] ?? []) >= 20) {
+                if (count($byWallet[$key] ?? []) >= 20) {
                     return;
                 }
-                $out[$key][] = [
+                $byWallet[$key][] = [
                     'id' => $t->id,
                     'name' => $t->name,
                     'symbol' => $t->symbol,
@@ -188,7 +196,9 @@ class CreatorPublicProfile
                 ];
             });
 
-        return $out;
+        return $registrations
+            ->mapWithKeys(fn (CreatorRegistration $r) => [$r->id => $byWallet[strtolower((string) $r->wallet_address)] ?? []])
+            ->all();
     }
 
     /** ชื่อผู้สร้าง/นิติบุคคลที่เผยแพร่ได้ — ชื่อบุคคลออกเฉพาะเมื่อติ๊ก consent_publish_name */

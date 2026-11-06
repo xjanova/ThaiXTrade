@@ -46,10 +46,10 @@ class CreatorProjectController extends Controller
         $needle = Str::lower($q);
 
         $rows = $this->profiles->publishedRegistrations();
-        $tokens = $this->profiles->tokensByWallet($rows->pluck('wallet_address')->all());
+        $tokens = $this->profiles->tokensForRegistrations($rows);
 
         $projects = $rows
-            ->map(fn (CreatorRegistration $r) => $this->profiles->summary($r) + ['tokens' => $tokens[strtolower($r->wallet_address)] ?? []])
+            ->map(fn (CreatorRegistration $r) => $this->profiles->summary($r) + ['tokens' => $tokens[$r->id] ?? []])
             ->filter(fn (array $p) => $needle === '' || $this->matches($p, $needle))
             ->values();
 
