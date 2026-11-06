@@ -200,6 +200,14 @@
     <table class="kv" style="margin-top:18px; text-align:left">
         <tr><td class="k">เลขที่ใบลงทะเบียน <span class="en">/ Registration ID</span></td><td>{{ $r->uuid }}</td></tr>
         <tr><td class="k">กระเป๋าที่ลงทะเบียน <span class="en">/ Registered wallet</span></td><td>{{ $r->wallet_address }}</td></tr>
+        @if ($claimedToken)
+            {{-- ลงทะเบียนผ่านลิงก์เชิญให้เหรียญที่ขึ้นเชนแล้ว — กระเป๋าที่ลงทะเบียนคือกระเป๋ารับเหรียญของโครงการ --}}
+            <tr><td class="k">เหรียญที่ขึ้นเชนแล้ว <span class="en">/ Existing token</span></td>
+                <td>{{ $claimedToken->name }} ({{ $claimedToken->symbol }}) · Token Factory #{{ $claimedToken->id }}<br>{{ strtolower((string) $claimedToken->contract_address) }}</td></tr>
+            <tr><td class="k">กระเป๋าเจ้าของเหรียญ (ไม่เปลี่ยน) <span class="en">/ Token owner wallet (unchanged)</span></td>
+                <td>{{ strtolower((string) $claimedToken->creator_address) }}</td></tr>
+            <tr><td class="k">กระเป๋ารับเหรียญของโครงการ <span class="en">/ Project wallet</span></td><td>{{ $r->wallet_address }}</td></tr>
+        @endif
         <tr><td class="k">ฉบับข้อตกลง <span class="en">/ Agreement version</span></td><td>{{ $document['version'] }}</td></tr>
         @if ($signed)
             <tr><td class="k">ลงนามเมื่อ <span class="en">/ Signed at</span></td><td>{{ $bkk($r->agreement_signed_at) }}</td></tr>
@@ -286,6 +294,10 @@
             <td class="{{ $evidence['form_hash_matches'] ? 'ok' : 'bad' }}">{{ $ok($evidence['form_hash_matches']) }}</td></tr>
         <tr><td class="k">เอกสารตรงกับที่ลงนาม <span class="en">/ Documents match signed hash</span></td>
             <td class="{{ $evidence['documents_hash_matches'] ? 'ok' : 'bad' }}">{{ $ok($evidence['documents_hash_matches']) }}</td></tr>
+        @if ($claimedToken || $r->factory_token_id)
+            <tr><td class="k">เหรียญที่ผูกตรงกับที่ลงนาม <span class="en">/ Bound token matches signed message</span></td>
+                <td class="{{ $evidence['token_binding_matches'] ? 'ok' : 'bad' }}">{{ $ok($evidence['token_binding_matches']) }}</td></tr>
+        @endif
     </table>
     <h3>ข้อความที่ลงนาม (EIP-191 personal_sign) <span class="en">/ Signed message</span></h3>
     <pre>{{ $r->agreement_message }}</pre>

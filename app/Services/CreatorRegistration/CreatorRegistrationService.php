@@ -6,13 +6,16 @@ use App\Models\AdminUser;
 use App\Models\AuditLog;
 use App\Models\CreatorRegistration;
 use App\Models\CreatorRegistrationDocument;
+use App\Models\FactoryToken;
 use App\Models\SiteSetting;
 use App\Models\User;
 use App\Services\AdminNotificationService;
 use App\Services\Kyc\KycGate;
 use App\Services\MasterNode\Web3SignatureService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -26,6 +29,10 @@ use Throwable;
  *   4. เซ็นข้อตกลง — ข้อความผูก hash ของข้อตกลงฉบับนั้น + hash ของข้อมูลที่กรอก
  *      + hash ของรายการเอกสารแนบ (ถ้ามี) + nonce
  *   5. แอดมินอนุมัติ (กำหนดส่วนเริ่มโครงการ) หรือปฏิเสธพร้อมเหตุผล
+ *
+ * เหรียญที่ขึ้นเชนไปแล้ว (สร้างก่อนมีระบบนี้ เช่น IDTC) — แอดมินออกลิงก์เชิญ (signed URL) ให้ผู้แทนโครงการ
+ * ผู้แทนเซ็นด้วยกระเป๋ารับเหรียญของโครงการ ใบผูกกับเหรียญด้วย factory_token_id
+ * กระเป๋าเจ้าของเหรียญ (creator_address) ไม่เปลี่ยน และข้อความข้อตกลงที่เซ็นระบุทั้งสองกระเป๋า
  *
  * ⚠️ ไม่เคยรับ private key ของใคร — ทุกขั้นที่ต้องพิสูจน์ตัวใช้ลายเซ็นจากกระเป๋าของผู้สร้างเอง
  * ⚠️ ข้อความที่เซ็นเป็น ASCII ล้วน — ความยาวใน prefix ของ EIP-191 ต้องตรงกันทุกกระเป๋า
@@ -42,6 +49,9 @@ class CreatorRegistrationService
     public const KEY_DEFAULT_BPS = 'creator_registration_default_bps';
 
     public const NONCE_TTL = 600;
+
+    /** อายุลิงก์เชิญลงทะเบียนให้เหรียญที่ขึ้นเชนแล้ว */
+    public const CLAIM_LINK_DAYS = 30;
 
     public function __construct(
         private readonly Web3SignatureService $signatures,
@@ -152,6 +162,14 @@ class CreatorRegistrationService
             }
         }
 
+        // ใบที่ผูกเหรียญที่ขึ้นเชนแล้ว — ชื่อ/สัญลักษณ์มาจากเหรียญจริง ผู้แทนพิมพ์ทับไม่ได้
+        $token = $this->boundToken($registration);
+        if ($token !== null) {
+            $data['token_name'] = (string) $token->name;
+            $data['token_symbol'] = strtoupper((string) $token->symbol);
+            $data['planned_supply'] = null;
+        }
+
         $this->clearSignature($registration, [
             'applicant_type' => $data['applicant_type'],
             'project_name' => $data['project_name'],
@@ -232,11 +250,14 @@ class CreatorRegistrationService
         $nonce = bin2hex(random_bytes(16));
         $issued = now()->utc()->format('Y-m-d\TH:i:s\Z');
 
+        $binding = $this->tokenBinding($registration);
+
         Cache::put($this->agreementKey($registration, $nonce), [
             'issued' => $issued,
             'form_hash' => $registration->form_hash,
             'documents_hash' => $registration->documents_hash,
             'version' => $version,
+            'token' => $binding,
         ], self::NONCE_TTL);
 
         return [
@@ -249,6 +270,7 @@ class CreatorRegistrationService
                 $nonce,
                 $issued,
                 $registration->documents_hash,
+                $binding,
             ),
             'nonce' => $nonce,
             'agreement_version' => $version,
@@ -280,6 +302,12 @@ class CreatorRegistrationService
             throw new CreatorRegistrationException('FORM_CHANGED', __('ข้อมูลใบลงทะเบียนเปลี่ยนไประหว่างเซ็น — ตรวจข้อมูลแล้วเซ็นใหม่อีกครั้ง'), 409);
         }
 
+        // เหรียญที่ผูกเปลี่ยนระหว่างเซ็น (หรือเหรียญถูกถอด) — ลายเซ็นนี้ครอบเหรียญเดิม
+        $pendingToken = $pending['token'] ?? null;
+        if ($pendingToken !== $this->tokenBinding($registration)) {
+            throw new CreatorRegistrationException('FORM_CHANGED', __('ข้อมูลใบลงทะเบียนเปลี่ยนไประหว่างเซ็น — ตรวจข้อมูลแล้วเซ็นใหม่อีกครั้ง'), 409);
+        }
+
         $agreementHash = $this->agreement->hash($pending['version']);
         $message = self::agreementMessage(
             $registration->wallet_address,
@@ -290,6 +318,7 @@ class CreatorRegistrationService
             $nonce,
             $pending['issued'],
             $pendingDocs,
+            $pendingToken,
         );
 
         if (! $this->signatures->verify($message, $signature, $registration->wallet_address)) {
@@ -352,8 +381,13 @@ class CreatorRegistrationService
         }
 
         $evidence = $this->verifyEvidence($registration);
-        if (! $evidence['agreement_signature_valid'] || ! $evidence['form_hash_matches'] || ! $evidence['agreement_hash_matches'] || ! $evidence['documents_hash_matches']) {
+        if (! $evidence['agreement_signature_valid'] || ! $evidence['form_hash_matches'] || ! $evidence['agreement_hash_matches'] || ! $evidence['documents_hash_matches'] || ! $evidence['token_binding_matches']) {
             throw new CreatorRegistrationException('EVIDENCE_INVALID', __('หลักฐานการลงนามตรวจไม่ผ่าน — อนุมัติไม่ได้'), 409);
+        }
+
+        $token = $this->boundToken($registration);
+        if ($token !== null && $this->tokenTaken($token, $registration->id, approvedOnly: true)) {
+            throw new CreatorRegistrationException('TOKEN_TAKEN', __('เหรียญนี้มีใบลงทะเบียนผู้สร้างที่อนุมัติแล้ว — ปฏิเสธใบนี้แทน'), 409);
         }
 
         $updated = CreatorRegistration::query()
@@ -408,7 +442,7 @@ class CreatorRegistrationService
     /**
      * ตรวจหลักฐานซ้ำจากสิ่งที่เก็บไว้ — แอดมินเห็นผลนี้ก่อนกดอนุมัติ และ PDF พิมพ์ผลนี้.
      *
-     * @return array{ownership_signature_valid: bool, agreement_signature_valid: bool, agreement_hash_matches: bool, form_hash_matches: bool, documents_hash_matches: bool}
+     * @return array{ownership_signature_valid: bool, agreement_signature_valid: bool, agreement_hash_matches: bool, form_hash_matches: bool, documents_hash_matches: bool, token_binding_matches: bool}
      */
     public function verifyEvidence(CreatorRegistration $registration): array
     {
@@ -442,12 +476,172 @@ class CreatorRegistrationService
                 ? ! str_contains((string) $registration->agreement_message, 'Documents SHA-256:')
                 : str_contains((string) $registration->agreement_message, 'Documents SHA-256: '.$docsNow)));
 
+        // ใบที่ผูกเหรียญ — ข้อความที่เซ็นต้องระบุเหรียญนั้นตรงตัว · ใบปกติต้องไม่มีบรรทัดเหรียญ
+        // ผูกไว้แต่เหรียญหายไป (ถูกลบ/ไม่ใช่ deployed แล้ว) = ไม่ผ่าน
+        $binding = $this->tokenBinding($registration);
+        $signedMessage = (string) $registration->agreement_message;
+        $tokenBinding = ($registration->factory_token_id === null || $binding !== null)
+            && (! $registration->isSigned() || ($binding === null
+                ? ! str_contains($signedMessage, 'Token contract:')
+                : str_contains($signedMessage, implode("\n", self::tokenLines($binding)))));
+
         return [
             'ownership_signature_valid' => $ownership,
             'agreement_signature_valid' => $agreementSig,
             'agreement_hash_matches' => $agreementHash,
             'form_hash_matches' => $formHash,
             'documents_hash_matches' => $docsHash,
+            'token_binding_matches' => $tokenBinding,
+        ];
+    }
+
+    // =========================================================================
+    // เหรียญที่ขึ้นเชนแล้ว — ลิงก์เชิญ + ผูกใบเข้ากับเหรียญ
+    // =========================================================================
+
+    /** เหรียญที่ออกลิงก์เชิญได้ — ขึ้นเชนแล้วและมีที่อยู่สัญญา */
+    public function claimableToken(int $id): ?FactoryToken
+    {
+        return FactoryToken::query()->deployed()->whereNotNull('contract_address')->find($id);
+    }
+
+    /**
+     * ลิงก์เชิญ (signed URL อายุ CLAIM_LINK_DAYS วัน).
+     *
+     * ใครถือลิงก์ก็เปิดใบได้ แต่ยังต้องผ่าน KYC + เซ็นข้อตกลง + แอดมินอนุมัติอีกชั้น
+     * ลิงก์หลุดไปจึงได้แค่ใบรอตรวจที่แอดมินปฏิเสธได้ — ไม่เปลี่ยนอะไรบนเชน
+     *
+     * @return array{url: string, expires_at: string}
+     */
+    public function claimLink(FactoryToken $token, AdminUser $admin): array
+    {
+        $expires = now()->addDays(self::CLAIM_LINK_DAYS);
+        // ลายเซ็นแบบ relative (route ใช้ signed:relative) — ไม่ผูก scheme/host ที่ proxy อาจเปลี่ยน
+        $url = url(URL::temporarySignedRoute('token-creator.claim', $expires, ['token' => $token->id], absolute: false));
+
+        try {
+            AuditLog::log('creator_registration.claim_link', $token, null, [
+                'factory_token_id' => $token->id,
+                'admin_id' => $admin->id,
+                'expires_at' => $expires->toIso8601String(),
+            ]);
+        } catch (Throwable $e) {
+            Log::warning('Creator claim link audit failed', ['token' => $token->id, 'error' => class_basename($e)]);
+        }
+
+        return ['url' => $url, 'expires_at' => $expires->toIso8601String()];
+    }
+
+    /**
+     * ผูกใบ (ร่าง/ถูกปฏิเสธ) เข้ากับเหรียญที่ขึ้นเชนแล้ว — ลายเซ็นข้อตกลงเดิมถูกล้าง (เนื้อหาที่เซ็นเปลี่ยน).
+     *
+     * @throws CreatorRegistrationException
+     */
+    public function bindToken(CreatorRegistration $registration, FactoryToken $token): CreatorRegistration
+    {
+        if ($registration->factory_token_id === $token->id) {
+            return $registration;
+        }
+
+        if (! $registration->isEditable()) {
+            throw new CreatorRegistrationException('NOT_EDITABLE', __('ใบลงทะเบียนของกระเป๋านี้ส่งตรวจหรืออนุมัติแล้ว ผูกกับเหรียญนี้ไม่ได้ — ใช้กระเป๋าอีกใบ หรือติดต่อทีมงาน'), 409);
+        }
+
+        if ($registration->factory_token_id !== null) {
+            throw new CreatorRegistrationException('ALREADY_BOUND', __('ใบลงทะเบียนของกระเป๋านี้ผูกกับเหรียญอื่นอยู่แล้ว — ใช้กระเป๋าอีกใบ'), 409);
+        }
+
+        // กระเป๋าที่เป็นเจ้าของเหรียญตัวอื่นอยู่แล้ว — ใบของมันคือใบของเหรียญนั้น ห้ามย้ายมาผูกเหรียญนี้
+        if (FactoryToken::query()->deployed()->byCreator($registration->wallet_address)->whereKeyNot($token->id)->exists()) {
+            throw new CreatorRegistrationException('WALLET_HAS_TOKENS', __('กระเป๋านี้เป็นเจ้าของเหรียญอื่นอยู่แล้ว — ใช้กระเป๋าใหม่สำหรับรับเหรียญของโครงการนี้'), 409);
+        }
+
+        return DB::transaction(function () use ($registration, $token) {
+            $locked = CreatorRegistration::query()->whereKey($registration->id)->lockForUpdate()->first();
+            if ($locked === null || ! $locked->isEditable() || $locked->factory_token_id !== null) {
+                throw new CreatorRegistrationException('NOT_EDITABLE', __('ใบลงทะเบียนนี้เปลี่ยนสถานะไปแล้ว — โหลดหน้าใหม่'), 409);
+            }
+
+            if ($this->tokenTaken($token, $locked->id)) {
+                throw new CreatorRegistrationException('TOKEN_TAKEN', __('เหรียญนี้มีใบลงทะเบียนผู้สร้างที่ส่งตรวจหรืออนุมัติแล้ว — ติดต่อทีมงาน'), 409);
+            }
+
+            $changes = ['factory_token_id' => $token->id, 'token_symbol' => strtoupper((string) $token->symbol)];
+            $form = $locked->form_data;
+            if (is_array($form)) {
+                // กรอกข้อมูลไว้ก่อนแล้ว — ชื่อ/สัญลักษณ์เปลี่ยนเป็นของเหรียญจริง hash ต้องคำนวณใหม่
+                $form['token_name'] = (string) $token->name;
+                $form['token_symbol'] = strtoupper((string) $token->symbol);
+                $form['planned_supply'] = null;
+                $changes['form_data'] = $form;
+                $changes['form_hash'] = self::formHash($form);
+            }
+
+            $this->clearSignature($locked, $changes);
+            $this->audit('creator_registration.bind_token', $locked, ['factory_token_id' => $token->id]);
+
+            return $locked->refresh();
+        });
+    }
+
+    /**
+     * เหรียญนี้มีใบอื่นที่ส่งตรวจ/อนุมัติแล้วไหม — ทั้งใบที่ผูกด้วย id และใบปกติของกระเป๋าเจ้าของเหรียญ.
+     */
+    public function tokenTaken(FactoryToken $token, ?int $exceptId = null, bool $approvedOnly = false): bool
+    {
+        $statuses = $approvedOnly
+            ? [CreatorRegistration::STATUS_APPROVED]
+            : [CreatorRegistration::STATUS_SUBMITTED, CreatorRegistration::STATUS_APPROVED];
+
+        return CreatorRegistration::query()
+            ->whereIn('status', $statuses)
+            ->where(fn ($q) => $q->where('factory_token_id', $token->id)
+                ->orWhere(fn ($q) => $q->whereNull('factory_token_id')
+                    ->where('wallet_address', strtolower((string) $token->creator_address))))
+            ->when($exceptId !== null, fn ($q) => $q->whereKeyNot($exceptId))
+            ->exists();
+    }
+
+    public function boundToken(CreatorRegistration $registration): ?FactoryToken
+    {
+        if ($registration->factory_token_id === null) {
+            return null;
+        }
+
+        return $this->claimableToken((int) $registration->factory_token_id);
+    }
+
+    /**
+     * ข้อมูลเหรียญที่ผูกอยู่ในข้อความที่เซ็น — null = ใบปกติ (หรือเหรียญหายไปแล้ว).
+     *
+     * @return array{id: int, symbol: string, contract: string, owner: string, chain_id: int}|null
+     */
+    public function tokenBinding(CreatorRegistration $registration): ?array
+    {
+        $token = $this->boundToken($registration);
+        if ($token === null) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $token->id,
+            'symbol' => strtoupper((string) $token->symbol),
+            'contract' => strtolower((string) $token->contract_address),
+            'owner' => strtolower((string) $token->creator_address),
+            'chain_id' => (int) ($token->chain_id ?: 4289),
+        ];
+    }
+
+    /** บรรทัดเหรียญในข้อความข้อตกลง — ASCII ล้วน (ตัดสัญลักษณ์ให้เหลือ A-Z0-9) */
+    public static function tokenLines(array $binding): array
+    {
+        $symbol = preg_replace('/[^A-Z0-9]/', '', strtoupper((string) $binding['symbol']));
+
+        return [
+            'Existing token: '.$symbol.' (Token Factory #'.(int) $binding['id'].', chain '.(int) $binding['chain_id'].')',
+            'Token contract: '.strtolower((string) $binding['contract']),
+            'Token owner wallet (unchanged): '.strtolower((string) $binding['owner']),
+            'This wallet is the project wallet that receives the project token share.',
         ];
     }
 
@@ -509,6 +703,7 @@ class CreatorRegistrationService
         string $nonce,
         string $issued,
         ?string $documentsHash = null,
+        ?array $token = null,
     ): string {
         return implode("\n", array_filter([
             'TPIX Token Creator Agreement',
@@ -524,6 +719,8 @@ class CreatorRegistrationService
             'Application SHA-256: '.$formHash,
             // เอกสารแนบ (ถ้ามี) — ใบที่ไม่มีเอกสารได้ข้อความแบบเดิมทุกตัวอักษร
             $documentsHash !== null ? 'Documents SHA-256: '.$documentsHash : null,
+            // เหรียญที่ขึ้นเชนแล้ว (ลิงก์เชิญ) — ใบปกติได้ข้อความแบบเดิมทุกตัวอักษร
+            ...($token !== null ? self::tokenLines($token) : []),
             'Nonce: '.$nonce,
             'Issued: '.$issued,
         ], fn ($line) => $line !== null));
@@ -552,6 +749,16 @@ class CreatorRegistrationService
 
         if (! $this->hasKyc($user)) {
             throw new CreatorRegistrationException('KYC_REQUIRED', __('ต้องยืนยันตัวตน (KYC) ผ่าน Thaiprompt ก่อนเซ็นข้อตกลง'), 403);
+        }
+
+        if ($registration->factory_token_id !== null) {
+            $token = $this->boundToken($registration);
+            if ($token === null) {
+                throw new CreatorRegistrationException('TOKEN_NOT_FOUND', __('ไม่พบเหรียญที่ใบนี้ผูกไว้ — ติดต่อทีมงาน'), 409);
+            }
+            if ($this->tokenTaken($token, $registration->id)) {
+                throw new CreatorRegistrationException('TOKEN_TAKEN', __('เหรียญนี้มีใบลงทะเบียนผู้สร้างที่ส่งตรวจหรืออนุมัติแล้ว — ติดต่อทีมงาน'), 409);
+            }
         }
     }
 

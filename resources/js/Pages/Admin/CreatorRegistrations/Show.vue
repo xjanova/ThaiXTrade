@@ -36,7 +36,8 @@ const pending = computed(() => r.value.status === 'submitted');
 const evidenceOk = computed(() => !!(props.evidence.agreement_signature_valid
     && props.evidence.agreement_hash_matches
     && props.evidence.form_hash_matches
-    && props.evidence.documents_hash_matches !== false));
+    && props.evidence.documents_hash_matches !== false
+    && props.evidence.token_binding_matches !== false));
 const canApprove = computed(() => props.canDecide && pending.value && props.kyc.approved && evidenceOk.value);
 
 const approveForm = useForm({ starter_pct: props.defaultStarterBps / 100 });
@@ -82,6 +83,8 @@ const evidenceRows = computed(() => [
     ['agreementHash', props.evidence.agreement_hash_matches],
     ['formHash', props.evidence.form_hash_matches],
     ['documentsHash', props.evidence.documents_hash_matches],
+    // แถวนี้มีเฉพาะใบจากลิงก์เชิญ (ผูกเหรียญที่ขึ้นเชนแล้ว)
+    ...(props.registration.factory_token_id ? [['tokenBinding', props.evidence.token_binding_matches]] : []),
 ]);
 </script>
 
@@ -101,6 +104,19 @@ const evidenceRows = computed(() => [
                     <a :href="`/admin/creator-registrations/${r.uuid}/pdf`" class="btn-primary text-sm" data-test="pdf">{{ t('admin.creatorRegistrations.show.pdf') }}</a>
                 </div>
             </header>
+
+            <!-- ใบจากลิงก์เชิญ — ผูกกับเหรียญที่ขึ้นเชนแล้ว -->
+            <section v-if="r.factory_token_id" class="glass-card p-4 text-sm space-y-1 border border-primary-500/30" data-test="claimed-token">
+                <p class="font-semibold text-white">{{ t('admin.creatorRegistrations.show.claimedTitle') }}</p>
+                <template v-if="r.claimed_token">
+                    <p class="text-gray-300">{{ r.claimed_token.name }} ({{ r.claimed_token.symbol }}) · #{{ r.claimed_token.id }}
+                        <span class="font-mono text-xs text-gray-500 break-all">{{ r.claimed_token.contract_address }}</span></p>
+                    <p class="text-gray-400">{{ t('admin.creatorRegistrations.show.claimedOwner') }}: <span class="font-mono text-xs break-all">{{ r.claimed_token.owner_wallet }}</span></p>
+                    <p class="text-gray-400">{{ t('admin.creatorRegistrations.show.claimedProject') }}: <span class="font-mono text-xs break-all">{{ r.wallet_address }}</span></p>
+                    <p class="text-xs text-amber-300">{{ t('admin.creatorRegistrations.show.claimedNote') }}</p>
+                </template>
+                <p v-else class="text-trading-red">{{ t('admin.creatorRegistrations.show.claimedMissing') }}</p>
+            </section>
 
             <div v-if="flash.success" class="rounded-lg border border-trading-green/40 bg-trading-green/10 px-3 py-2 text-sm text-trading-green">{{ flash.success }}</div>
             <div v-for="(msg, key) in pageErrors" :key="key" class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300" data-test="error">{{ msg }}</div>

@@ -5169,6 +5169,61 @@
                     "project_photo": "Project photo",
                     "signatory_id": "Signatory ID (admin only)"
                 }
+            },
+            "claim": {
+                "kicker": "Creator registration for a token already on chain",
+                "intro": "{symbol} is already live on TPIX Chain. This page links the creator and project details to the token so buyers can see who is behind it. Nothing changes on chain.",
+                "contract": "Token contract",
+                "viewExplorer": "View on explorer",
+                "viewWhitepaper": "Whitepaper",
+                "ownerWallet": "Token owner wallet",
+                "locked": "Locked",
+                "ownerWalletNote": "The wallet that created this token. It does not change and is not used to sign on this page.",
+                "projectWallet": "Project receiving wallet",
+                "projectWalletEmpty": "No wallet connected yet",
+                "projectWalletNote": "The wallet you connect and sign with in step 1 becomes the project's receiving wallet. Use a wallet your team controls, with its recovery phrase written down.",
+                "projectWalletBound": "This wallet is linked to the token. Sign the agreement with it.",
+                "sameAsOwner": "This is the token owner wallet. Connect a different wallet if the project should receive tokens separately.",
+                "walletTitle": "1. Connect the project receiving wallet and sign",
+                "walletDesc": "Use the wallet that will receive the project's share of {symbol} (not the token owner wallet). Signing is free and sends no transaction.",
+                "fromToken": "Taken from the on-chain token. Cannot be edited.",
+                "agreementNote": "The signed message names {symbol}, the token owner wallet {owner} (unchanged) and this wallet as the project receiving wallet. The project's share is transferred from the token owner wallet after approval, as agreed with the platform.",
+                "approvedDesc": "Approved. The creator details are now linked to {symbol} and shown on the project page and whitepaper. The team will transfer the project's share ({pct}%) from the token owner wallet to this wallet.",
+                "guideTitle": "What to prepare and what to do (step by step)",
+                "guide": {
+                    "wallet": {
+                        "title": "Prepare the project receiving wallet",
+                        "body": "Use MetaMask (or any wallet that can sign messages) that your team controls, with TPIX Chain (Chain ID 4289) added.\nWrite down the 12/24-word recovery phrase and keep it safe. The platform never asks for your recovery phrase or private key."
+                    },
+                    "sign": {
+                        "title": "Connect the wallet and press \"Sign to prove wallet ownership\"",
+                        "body": "This signs a message: free, no gas. You are signed in with this wallet and your registration is linked to {symbol} automatically."
+                    },
+                    "form": {
+                        "title": "Fill in the creator and project details",
+                        "body": "Company: company name (Thai/English), 13-digit registration number, country of registration, authorised signatory name and position.\nIndividual: full name, date of birth, nationality.\nEveryone: email, phone, address, project description (at least 50 characters), team, use of funds, source of funds, website/socials (if any).\nToken name and symbol are pre-filled from the real token. Tick consent to publish the project details (required) and choose whether to publish your name."
+                    },
+                    "docs": {
+                        "title": "Attach documents (JPG/PNG/WebP/PDF, up to 10 MB each)",
+                        "body": "Companies must attach: company certificate (issued within 6 months).\nOptional: VAT certificate (P.P.20), shareholder list (BOJ.5), other company documents, project photos, signatory ID (IDs are never published).\nChoose per file whether to publish. Published images always carry a PDPA watermark."
+                    },
+                    "kyc": {
+                        "title": "Verify identity (KYC) in the Thaiprompt app",
+                        "body": "Download the Thaiprompt app → complete eKYC in the app (ID card + face scan) → come back here and press \"Connect Thaiprompt account\" so the result reaches this site.\nThe person doing KYC should be the project's authorised signatory."
+                    },
+                    "agreement": {
+                        "title": "Read the creator agreement and sign with the wallet",
+                        "body": "Tick the 3 confirmations and sign. The signed message binds your details, documents and {symbol} together; editing after signing means signing again.\nYou can download the signed agreement as a PDF."
+                    },
+                    "review": {
+                        "title": "Wait for the team to review and approve",
+                        "body": "The team checks your details, KYC result and signatures. If something needs fixing you will see the reason and can resubmit on this page."
+                    },
+                    "after": {
+                        "title": "After approval",
+                        "body": "The public project page and {symbol} whitepaper show the creator details you agreed to publish. The team transfers the project's share from the token owner wallet to the project receiving wallet."
+                    }
+                }
             }
         },
         "creatorProject": {
@@ -5200,7 +5255,8 @@
                 "signatory_position": "Position",
                 "full_name": "Creator name",
                 "full_name_en": "Creator name (English)"
-            }
+            },
+            "claimedNote": "Token launched before registration. Token owner wallet:"
         }
     },
     "admin": {
@@ -10145,7 +10201,28 @@
                 "docPrivate": "Not published",
                 "docOpen": "Open original file",
                 "documentsEmpty": "No documents attached",
-                "docAudit": "Every time an original file is opened, the admin's name is recorded in the audit log."
+                "docAudit": "Every time an original file is opened, the admin's name is recorded in the audit log.",
+                "tokenBinding": "Bound token matches signed message",
+                "claimedTitle": "Invite-link registration: bound to a token already on chain",
+                "claimedOwner": "Token owner wallet (unchanged)",
+                "claimedProject": "Project receiving wallet (signer)",
+                "claimedNote": "Approval mints nothing. The project's share must be transferred from the token owner wallet.",
+                "claimedMissing": "The token this registration is bound to was not found (deleted or no longer deployed). Cannot approve."
+            },
+            "claim": {
+                "title": "Tokens already on chain: creator registration invite links",
+                "desc": "For tokens created before registration existed (e.g. IDTC), create a link for the project's representative. They sign with the project receiving wallet; the token owner wallet does not change. KYC, agreement signing and approval work as usual.",
+                "token": "Token",
+                "owner": "Owner wallet",
+                "registration": "Registration",
+                "none": "None yet",
+                "create": "Create invite link",
+                "creating": "Creating…",
+                "copy": "Copy",
+                "copied": "Copied",
+                "linkNote": "Send this link only to the project's representative. Valid until {date}. Anyone with the link can open a registration, but it still needs KYC and admin approval.",
+                "failed": "Could not create the link",
+                "empty": "No tokens on chain yet"
             }
         }
     },

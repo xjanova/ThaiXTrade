@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\SaveCreatorRegistrationRequest;
 use App\Models\CreatorRegistration;
 use App\Models\CreatorRegistrationDocument as Document;
+use App\Models\FactoryToken;
 use App\Models\User;
 use App\Services\CreatorRegistration\CreatorAgreement;
 use App\Services\CreatorRegistration\CreatorDocumentService;
@@ -27,6 +28,7 @@ use Symfony\Component\HttpFoundation\Response;
  * TPIX TRADE — ลงทะเบียนผู้สร้างเหรียญ (หน้าเว็บ).
  *
  *   GET  /token-creator                       หน้าลงทะเบียน (เปิดได้โดยไม่ล็อกอิน)
+ *   GET  /token-creator/claim/{token}         ลิงก์เชิญ (signed) — ลงทะเบียนให้เหรียญที่ขึ้นเชนแล้ว
  *   POST /token-creator/challenge             ขอข้อความยืนยันความเป็นเจ้าของกระเป๋า
  *   POST /token-creator/start                 ส่งลายเซ็น → เข้าสู่ระบบด้วยกระเป๋า + เปิดใบ
  *   PUT  /token-creator/form                  บันทึกข้อมูลผู้สร้าง/โครงการ        (auth)
@@ -55,14 +57,50 @@ class CreatorRegistrationController extends Controller
         private readonly CreatorPublicProfile $profiles,
     ) {}
 
+    /** session key: เหรียญจากลิงก์เชิญที่เปิดล่าสุด — start() ผูกใบเข้ากับเหรียญนี้เมื่อหน้าส่ง id ตรงกันมา */
+    private const CLAIM_SESSION = 'creator_claim_token_id';
+
     public function show(Request $request): InertiaResponse
     {
+        $registration = $this->registrationFor($request->user('web'));
+
+        return $this->render($request, $registration, $registration ? $this->registrations->boundToken($registration) : null);
+    }
+
+    /**
+     * GET /token-creator/claim/{token} (signed) — ลิงก์เชิญลงทะเบียนผู้สร้างให้เหรียญที่ขึ้นเชนแล้ว.
+     *
+     * ผู้แทนโครงการเซ็นด้วยกระเป๋ารับเหรียญของโครงการ · กระเป๋าเจ้าของเหรียญไม่เปลี่ยน (แสดงแบบล็อก)
+     * เข้าสู่ระบบด้วยกระเป๋าอยู่แล้วและใบยังแก้ได้ → ผูกทันที
+     */
+    public function claim(Request $request, int $token): InertiaResponse
+    {
+        $claimToken = $this->registrations->claimableToken($token);
+        abort_if($claimToken === null, 404);
+
+        $request->session()->put(self::CLAIM_SESSION, $claimToken->id);
+
+        $registration = $this->registrationFor($request->user('web'));
+        $claimError = null;
+        if ($registration !== null && $registration->factory_token_id !== $claimToken->id) {
+            try {
+                $registration = $this->registrations->bindToken($registration, $claimToken);
+            } catch (CreatorRegistrationException $e) {
+                $claimError = $e->getMessage();
+            }
+        }
+
+        return $this->render($request, $registration, $claimToken, $claimError);
+    }
+
+    private function render(Request $request, ?CreatorRegistration $registration, ?FactoryToken $claimToken, ?string $claimError = null): InertiaResponse
+    {
         $user = $request->user('web');
-        $registration = $this->registrationFor($user);
         $version = $this->agreement->currentVersion();
 
         return Inertia::render('TokenCreator/Register', [
             'registration' => $registration ? $this->payload($registration) : null,
+            'claim' => $claimToken ? $this->claimPayload($claimToken, $claimError) : null,
             'kyc' => [
                 'approved' => $this->registrations->hasKyc($user),
                 'level' => $this->kyc->approvedLevel($user),
@@ -120,6 +158,7 @@ class CreatorRegistrationController extends Controller
             'wallet_address' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{40}$/'],
             'nonce' => ['required', 'string', 'regex:/^[a-f0-9]{32}$/'],
             'signature' => ['required', 'string', 'regex:/^0x[a-fA-F0-9]{130}$/'],
+            'claim_token_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $wallet = strtolower($validated['wallet_address']);
@@ -162,11 +201,29 @@ class CreatorRegistrationController extends Controller
 
         $registration = $this->registrations->start($user, $wallet, $message, $validated['signature'], $request->ip());
 
+        // มาจากลิงก์เชิญ — ผูกเฉพาะเมื่อหน้าส่ง id มาตรงกับลิงก์ที่เปิดใน session นี้
+        // (session ค้างจากลิงก์เก่าต้องไม่ไปผูกใบปกติที่เริ่มจาก /token-creator)
+        $claimError = null;
+        $claimId = $validated['claim_token_id'] ?? null;
+        if ($claimId !== null && (int) $request->session()->get(self::CLAIM_SESSION) === (int) $claimId) {
+            $claimToken = $this->registrations->claimableToken((int) $claimId);
+            if ($claimToken === null) {
+                $claimError = __('ไม่พบเหรียญในลิงก์เชิญนี้แล้ว — ติดต่อทีมงาน');
+            } else {
+                try {
+                    $registration = $this->registrations->bindToken($registration, $claimToken);
+                } catch (CreatorRegistrationException $e) {
+                    $claimError = $e->getMessage();
+                }
+            }
+        }
+
         return response()->json([
             'success' => true,
             'data' => [
                 'registration' => $this->payload($registration),
                 'kyc' => ['approved' => $this->registrations->hasKyc($user)],
+                'claim_error' => $claimError,
             ],
         ]);
     }
@@ -345,6 +402,24 @@ class CreatorRegistrationController extends Controller
         return CreatorRegistration::where('wallet_address', strtolower((string) $user->wallet_address))->first();
     }
 
+    /** เหรียญในลิงก์เชิญ — ข้อมูลสาธารณะของเหรียญอยู่แล้ว (อยู่บนเชน) */
+    private function claimPayload(FactoryToken $token, ?string $error): array
+    {
+        $explorer = rtrim((string) config('blockchain.explorer_url', 'https://explorer.tpix.online'), '/');
+
+        return [
+            'token_id' => $token->id,
+            'name' => $token->name,
+            'symbol' => $token->symbol,
+            'logo_url' => $token->logo_url,
+            'contract_address' => strtolower((string) $token->contract_address),
+            'owner_wallet' => strtolower((string) $token->creator_address),
+            'explorer_url' => $explorer.'/address/'.strtolower((string) $token->contract_address),
+            'whitepaper_url' => route('token-factory.whitepaper', $token->id),
+            'error' => $error,
+        ];
+    }
+
     private function noRegistration(): JsonResponse
     {
         return response()->json([
@@ -365,6 +440,7 @@ class CreatorRegistrationController extends Controller
             'uuid' => $registration->uuid,
             'status' => $registration->status,
             'wallet_address' => $registration->wallet_address,
+            'factory_token_id' => $registration->factory_token_id,
             'form' => $registration->form_data,
             'form_hash' => $registration->form_hash,
             'documents' => $registration->documents()->get()->map(fn (Document $d) => [

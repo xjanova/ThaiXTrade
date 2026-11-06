@@ -28,6 +28,7 @@ use Illuminate\Support\Str;
  * @property string|null $applicant_type
  * @property string|null $project_name
  * @property string|null $token_symbol
+ * @property int|null $factory_token_id
  * @property array|null $form_data
  * @property string|null $form_hash
  * @property string|null $documents_hash
@@ -85,6 +86,7 @@ class CreatorRegistration extends Model
         'applicant_type',
         'project_name',
         'token_symbol',
+        'factory_token_id',
         'form_data',
         'form_hash',
         'documents_hash',
@@ -118,6 +120,7 @@ class CreatorRegistration extends Model
             'submitted_at' => 'datetime',
             'reviewed_at' => 'datetime',
             'starter_allocation_bps' => 'integer',
+            'factory_token_id' => 'integer',
         ];
     }
 
@@ -139,6 +142,14 @@ class CreatorRegistration extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(CreatorRegistrationDocument::class)->orderBy('id');
+    }
+
+    /**
+     * เหรียญที่ขึ้นเชนแล้วซึ่งใบนี้ผูกไว้ (ลงทะเบียนผ่านลิงก์เชิญ) — null = ใบปกติ ผูกผ่านกระเป๋า.
+     */
+    public function factoryToken(): BelongsTo
+    {
+        return $this->belongsTo(FactoryToken::class);
     }
 
     public function isCompany(): bool

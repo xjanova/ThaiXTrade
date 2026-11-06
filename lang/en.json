@@ -1126,5 +1126,15 @@
     "ไฟล์เอกสาร": "document file",
     "ไฟล์ใหญ่เกิน 10 MB": "The file is larger than 10 MB",
     "ไม่พบเอกสารนี้": "Document not found",
-    "ไม่รู้จักประเภทเอกสารนี้": "Unknown document type"
+    "ไม่รู้จักประเภทเอกสารนี้": "Unknown document type",
+    "ไม่พบเหรียญที่ขึ้นเชนแล้วตัวนี้": "This token was not found on chain.",
+    "เหรียญนี้มีผู้สร้างที่อนุมัติแล้ว — ไม่ต้องออกลิงก์ใหม่": "This token already has an approved creator. No new link is needed.",
+    "ไม่พบเหรียญในลิงก์เชิญนี้แล้ว — ติดต่อทีมงาน": "The token in this invite link no longer exists. Please contact the team.",
+    "เหรียญนี้มีใบลงทะเบียนผู้สร้างที่อนุมัติแล้ว — ปฏิเสธใบนี้แทน": "This token already has an approved creator registration. Reject this one instead.",
+    "ใบลงทะเบียนของกระเป๋านี้ส่งตรวจหรืออนุมัติแล้ว ผูกกับเหรียญนี้ไม่ได้ — ใช้กระเป๋าอีกใบ หรือติดต่อทีมงาน": "This wallet's registration is already submitted or approved and cannot be linked to this token. Use another wallet or contact the team.",
+    "ใบลงทะเบียนของกระเป๋านี้ผูกกับเหรียญอื่นอยู่แล้ว — ใช้กระเป๋าอีกใบ": "This wallet's registration is already linked to another token. Use another wallet.",
+    "กระเป๋านี้เป็นเจ้าของเหรียญอื่นอยู่แล้ว — ใช้กระเป๋าใหม่สำหรับรับเหรียญของโครงการนี้": "This wallet already owns another token. Use a new wallet to receive this project's tokens.",
+    "ใบลงทะเบียนนี้เปลี่ยนสถานะไปแล้ว — โหลดหน้าใหม่": "This registration has changed status. Please reload the page.",
+    "เหรียญนี้มีใบลงทะเบียนผู้สร้างที่ส่งตรวจหรืออนุมัติแล้ว — ติดต่อทีมงาน": "This token already has a submitted or approved creator registration. Please contact the team.",
+    "ไม่พบเหรียญที่ใบนี้ผูกไว้ — ติดต่อทีมงาน": "The token this registration is linked to was not found. Please contact the team."
 }

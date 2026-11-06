@@ -170,6 +170,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/', [AdminCreatorRegistrationController::class, 'index'])->name('index');
             Route::put('settings', [AdminCreatorRegistrationController::class, 'updateSettings'])
                 ->middleware('admin.role:super_admin')->name('settings');
+            // ลิงก์เชิญลงทะเบียนให้เหรียญที่ขึ้นเชนแล้ว (เช่น IDTC) — super_admin
+            Route::post('claim-link', [AdminCreatorRegistrationController::class, 'claimLink'])
+                ->middleware(['admin.role:super_admin', 'throttle:20,1'])->name('claim-link');
             Route::get('{uuid}', [AdminCreatorRegistrationController::class, 'show'])->whereUuid('uuid')->name('show');
             Route::get('{uuid}/pdf', [AdminCreatorRegistrationController::class, 'pdf'])->whereUuid('uuid')->name('pdf');
             Route::get('{uuid}/documents/{document}', [AdminCreatorRegistrationController::class, 'document'])

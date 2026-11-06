@@ -226,3 +226,34 @@ describe('Admin/CreatorRegistrations/Index', () => {
         expect(w.findAll('[data-test="row"]')).toHaveLength(0);
     });
 });
+
+describe('Admin/CreatorRegistrations — ลิงก์เชิญเหรียญที่ขึ้นเชนแล้ว', () => {
+    const tokens = [
+        { id: 1, name: 'IDTC Token', symbol: 'IDTC', contract_address: '0x7989', owner_wallet: '0x3da3776e0ab0f442c181aa031f47fa83696859af', registration: null },
+        { id: 2, name: 'Done', symbol: 'DONE', contract_address: '0x1', owner_wallet: '0x2', registration: { uuid: 'r-2', status: 'approved', wallet_address: '0x9' } },
+    ];
+
+    it('super admin กดสร้างลิงก์ → ได้ลิงก์ให้คัดลอก · เหรียญที่อนุมัติแล้วไม่มีปุ่ม', async () => {
+        const axios = (await import('axios')).default;
+        const post = vi.spyOn(axios, 'post').mockResolvedValueOnce({ data: { data: { url: 'https://tpix.online/token-creator/claim/1?expires=1&signature=x', expires_at: '2026-12-06T00:00:00Z' } } });
+
+        const w = mount(Index, { props: { claimTokens: tokens, canEditSettings: true } });
+        expect($(w, 'claim-link-2').exists()).toBe(false);
+
+        await $(w, 'claim-link-1').trigger('click');
+        await new Promise((r) => setTimeout(r));
+
+        expect(post).toHaveBeenCalledWith('/admin/creator-registrations/claim-link', { factory_token_id: 1 });
+        expect($(w, 'claim-link-url').element.value).toContain('/token-creator/claim/1');
+        post.mockRestore();
+        w.unmount();
+    });
+
+    it('ไม่ใช่ super admin → เห็นรายการแต่ไม่มีปุ่มสร้างลิงก์', () => {
+        const w = mount(Index, { props: { claimTokens: tokens, canEditSettings: false } });
+
+        expect(w.findAll('[data-test="claim-row"]')).toHaveLength(2);
+        expect($(w, 'claim-link-1').exists()).toBe(false);
+        w.unmount();
+    });
+});
