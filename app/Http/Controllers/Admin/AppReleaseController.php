@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
+use App\Services\AppReleaseRetention;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -17,6 +18,9 @@ use Inertia\Response as InertiaResponse;
  */
 class AppReleaseController extends Controller
 {
+    /** ลบได้มากสุดต่อการกดปุ่มหนึ่งครั้ง — เว้น 1 วิต่อตัว + อ่านรายการ ≈ 20 วิ ต่ำกว่า max_execution_time 30 วิ */
+    private const PRUNE_BATCH = 15;
+
     /**
      * แสดง releases ทั้งหมดจาก GitHub.
      */
@@ -36,6 +40,7 @@ class AppReleaseController extends Controller
                 'wallet' => SiteSetting::get('app_release', 'wallet_active_tag'),
                 'masternode' => SiteSetting::get('app_release', 'masternode_active_tag'),
             ],
+            'releaseKeep' => (int) config('services.github.release_keep', AppReleaseRetention::DEFAULT_KEEP),
             'activeVersions' => [
                 'trade' => SiteSetting::get('app_release', 'version'),
                 'wallet' => SiteSetting::get('app_release', 'wallet_version'),
@@ -147,6 +152,55 @@ class AppReleaseController extends Controller
     }
 
     /**
+     * ลบ release เก่า เก็บแต่ละแอปไว้ N รุ่นล่าสุด (กติกาเดียวกับ app-releases:prune รายวัน).
+     * ลบได้รอบละไม่เกิน PRUNE_BATCH ตัว — GitHub ให้เว้น 1 วิระหว่างการลบ
+     * ถ้ารอบเดียวลบหลายร้อยตัว request จะหมดเวลากลางทาง ที่เหลือกดซ้ำหรือรอรอบรายวัน.
+     */
+    public function prune(AppReleaseRetention $retention)
+    {
+        if (! config('services.github.token')) {
+            return back()->with('error', __('ยังไม่ได้ตั้ง GITHUB_TOKEN บนเซิร์ฟเวอร์'));
+        }
+
+        $keep = (int) config('services.github.release_keep', AppReleaseRetention::DEFAULT_KEEP);
+        if ($keep < 1) {
+            return back()->with('error', __('GITHUB_RELEASE_KEEP ต้องเป็นจำนวนเต็มบวก'));
+        }
+
+        $plan = $retention->plan($keep);
+
+        if (! $plan['delete']) {
+            return $plan['errors']
+                ? back()->with('error', implode(' | ', $plan['errors']))
+                : back()->with('success', __('ไม่มีรุ่นเก่าให้ลบ (เก็บแอปละ :keep รุ่นล่าสุด)', ['keep' => $keep]));
+        }
+
+        $result = $retention->execute($plan, self::PRUNE_BATCH);
+
+        Log::info('app releases pruned by admin', [
+            'admin_id' => auth('admin')->id(),
+            'keep' => $keep,
+            'deleted' => $result['deleted'],
+            'remaining' => $result['remaining'],
+        ]);
+
+        Cache::forget('admin_app_releases');
+        $this->clearReleaseCaches();
+
+        $message = __('ลบรุ่นเก่าแล้ว :deleted รุ่น คืนพื้นที่ :mb MB', [
+            'deleted' => $result['deleted'],
+            'mb' => number_format($result['bytes'] / 1024 / 1024, 1),
+        ]);
+        if ($result['remaining'] > 0) {
+            $message .= ' · '.__('เหลืออีก :n รุ่น กดซ้ำได้ หรือรอรอบลบอัตโนมัติ 04:30', ['n' => $result['remaining']]);
+        }
+
+        return $result['failed'] > 0
+            ? back()->with('error', $message.' · '.($result['stopped'] ?? __('ลบบางรุ่นไม่สำเร็จ')))
+            : back()->with('success', $message);
+    }
+
+    /**
      * ล้าง cache ที่เกี่ยวข้องกับ releases ทั้งหมด.
      */
     private function clearReleaseCaches(): void
@@ -188,10 +242,12 @@ class AppReleaseController extends Controller
             $headers['Authorization'] = "Bearer {$token}";
         }
 
-        // ดึงจากทั้ง 2 repos
+        // repo เดียวกับที่ AppReleaseRetention ดูแล — มาสเตอร์โหนดแยก repo ออกมาแล้ว
+        // เดิมดึงแค่ 2 repo หน้านี้จึงเห็นแค่ตัวที่ก๊อปไว้ใน repo เชน ไม่เห็นรุ่นจริงของ TPIX-Masternode
         $repos = [
             ['repo' => config('services.github.repo', 'ThaiXTrade'), 'source' => 'trade'],
-            ['repo' => 'TPIX-Coin', 'source' => 'chain'],
+            ['repo' => config('services.github.chain_repo', 'TPIX-Coin'), 'source' => 'chain'],
+            ['repo' => config('services.github.masternode_repo', 'TPIX-Masternode'), 'source' => 'masternode'],
         ];
 
         $allReleases = [];

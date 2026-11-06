@@ -571,5 +571,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('app-releases', [AppReleaseController::class, 'index'])->name('app-releases.index');
         Route::post('app-releases/refresh', [AppReleaseController::class, 'refresh'])->name('app-releases.refresh');
         Route::post('app-releases/set-active', [AppReleaseController::class, 'setActive'])->name('app-releases.set-active');
+        // ลบ release เก่าบน GitHub (ถาวร) — เฉพาะ super_admin
+        Route::post('app-releases/prune', [AppReleaseController::class, 'prune'])
+            ->middleware(['admin.role:super_admin', 'throttle:6,1'])
+            ->name('app-releases.prune');
     });
 });

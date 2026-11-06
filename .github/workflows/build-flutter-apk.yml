@@ -383,10 +383,11 @@ jobs:
             echo "| **Status** | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
 
-      # ---- ลบ Release เก่าเมื่อปล่อยตัวใหม่สำเร็จ เก็บไว้ 10 รุ่นล่าสุด ----
+      # ---- ลบ Release เก่าเมื่อปล่อยตัวใหม่สำเร็จ เก็บไว้ 5 รุ่นล่าสุด ----
       #
       # ผู้ใช้โหลดผ่าน tpix.online แล้ว GitHub Release เหลือหน้าที่แค่เป็นที่เก็บไฟล์
-      # เก็บ 10 รุ่นไว้ให้แอดมินย้อนรุ่นได้จากหน้า App Releases ที่เก่ากว่านั้นลบทิ้ง
+      # เก็บ 5 รุ่นไว้ให้แอดมินย้อนรุ่นได้จากหน้า App Releases ที่เก่ากว่านั้นลบทิ้ง
+      # (เจ้าของสั่งลดจาก 10 เหลือ 5 เมื่อ 2026-11-06 — เว็บลบซ้ำทุกวันด้วย app-releases:prune)
       # รวม release ยุค React Native ด้วย (เจ้าของเลือก 2026-10-22)
       #
       # ★ ตั้งแต่เพิ่มขั้นนี้ 2026-08-23 ถึง 2026-10-22 ไม่เคยลบอะไรได้สักรอบ
@@ -400,12 +401,12 @@ jobs:
       #   2. คัดเฉพาะ Release ที่มี .apk — release ของเว็บ (ci.yml) ใช้ tag ชุดเดียวกัน
       #      แต่ไม่มีไฟล์แนบ ต้องไม่โดนลบ
       #   3. อ่านรายการครบทุกหน้าก่อน (repo มี release หลายร้อยตัว) อ่านไม่ครบ = ไม่ลบอะไรเลย
-      #   4. ไม่ลบรุ่นที่เพิ่งแนบไฟล์รอบนี้ แม้จะเก่ากว่า 10 อันดับ (target_tag ย้อนแนบรุ่นเก่า)
+      #   4. ไม่ลบรุ่นที่เพิ่งแนบไฟล์รอบนี้ แม้จะเก่ากว่า 5 อันดับ (target_tag ย้อนแนบรุ่นเก่า)
       #   5. พิมพ์รายการที่จะลบทั้งหมดลง log และ Summary ก่อนลบตัวแรก
       #   6. ลบเฉพาะตัว Release ไม่แตะ tag — ย้อนสร้างใหม่จาก source ได้เสมอ
       #   7. continue-on-error — ลบพลาดต้องไม่ทำให้รอบที่ปล่อยรุ่นสำเร็จกลายเป็นล้มเหลว
       # อยากเห็นก่อนว่าจะลบอะไร: ตั้ง DRY_RUN: 'true' = พิมพ์รายการอย่างเดียว ไม่ลบ
-      - name: Prune old releases (keep newest 10)
+      - name: Prune old releases (keep newest 5)
         continue-on-error: true
         if: >-
           (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
@@ -414,7 +415,7 @@ jobs:
           github.event.inputs.target_tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          KEEP: '10'
+          KEEP: '5'
           DRY_RUN: 'false'
           CURRENT_TAG: v${{ steps.version.outputs.version }}
         shell: bash

@@ -121,6 +121,14 @@ Schedule::command('masternode:uptime-oracle')
     ->onOneServer()
     ->name('masternode:uptime-oracle');
 
+// App Releases: เก็บ release ของแต่ละแอปไว้ 5 รุ่นล่าสุด (GITHUB_RELEASE_KEEP) ที่เหลือลบทิ้ง
+// ลบตัว Release บน GitHub (ไฟล์แนบหายด้วย) ไม่แตะ tag · ไม่ลบรุ่นที่แอดมินล็อกไว้
+Schedule::command('app-releases:prune', ['--force'])
+    ->dailyAt('04:30')
+    ->withoutOverlapping(60)
+    ->onOneServer()
+    ->name('app-releases:prune');
+
 // GeoLite2 (ประเทศ/เมืองบนแผนที่โหนด) — MaxMind ปล่อยฐานใหม่สัปดาห์ละ 2 ครั้ง
 // ยังไม่ตั้ง MAXMIND_LICENSE_KEY = จบเองทันที
 Schedule::command('geoip:update')
