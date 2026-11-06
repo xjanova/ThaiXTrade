@@ -104,6 +104,7 @@ function clear() {
                         <ul v-if="p.tokens.length" class="space-y-2" data-test="tokens">
                             <li v-for="token in p.tokens" :key="token.id" class="flex flex-wrap items-center gap-x-3 gap-y-1">
                                 <span class="text-white font-semibold">{{ token.name }} ({{ token.symbol }})</span>
+                                <span v-if="token.claimed" class="rounded-full bg-white/5 border border-white/10 px-2 py-0.5 text-xs text-gray-400" data-test="claimed-badge">{{ t('page.creatorProjects.claimed') }}</span>
                                 <code class="text-xs text-gray-500" :title="token.contract_address">{{ shortAddr(token.contract_address) }}</code>
                                 <span class="ml-auto flex gap-3 text-xs">
                                     <a :href="token.whitepaper_url" class="text-primary-400 hover:underline" data-test="whitepaper-link">{{ t('page.creatorProject.whitepaper') }}</a>

@@ -73,6 +73,14 @@ describe('TokenCreator/Projects', () => {
         expect($(w, 'project-link').attributes('href')).toBe('/token-creator/projects/u-1');
     });
 
+    it('เหรียญที่ผูกด้วยลิงก์เชิญ → มีป้าย "ขึ้นเชนก่อนลงทะเบียน" เหรียญปกติไม่มี', () => {
+        const base = project().tokens[0];
+        const w = mountPage({ projects: [project({ tokens: [{ ...base, id: 1, claimed: true }, { ...base, id: 2, claimed: false }] })] });
+
+        expect(w.findAll('[data-test="claimed-badge"]')).toHaveLength(1);
+        expect($(w, 'claimed-badge').text()).toBe(t('page.creatorProjects.claimed'));
+    });
+
     it('ผู้สร้างไม่เผยแพร่ชื่อ → ขึ้นข้อความแทนช่องว่าง', () => {
         const w = mountPage({ projects: [project({ applicant_type: 'individual', display_name: null, display_name_en: null, registration_number: null, tokens: [] })] });
 

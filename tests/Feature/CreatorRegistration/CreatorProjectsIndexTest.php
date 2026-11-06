@@ -126,6 +126,40 @@ class CreatorProjectsIndexTest extends TestCase
     }
 
     #[Test]
+    public function เหรียญที่ผูกด้วยลิงก์เชิญจากกระเป๋าอื่นแสดงในโครงการ_ตรงกับหน้าโครงการ(): void
+    {
+        // เช่น IDTC: เหรียญขึ้นเชนจากกระเป๋าเจ้าของ แต่ใบลงทะเบียนเป็นของกระเป๋ารับเหรียญของโครงการ
+        $ownerWallet = $this->wallet(21);
+        $projectWallet = $this->wallet(22);
+        $bound = $this->token($ownerWallet, 'IDTC');
+        $own = $this->token($projectWallet, 'IDTX');
+        $this->token($ownerWallet, 'OTHER');   // เหรียญอื่นของกระเป๋าเจ้าของ — ไม่ใช่ของโครงการนี้
+
+        $r = $this->registration($projectWallet, CreatorRegistration::STATUS_APPROVED, ['project_name' => 'IDTC Project']);
+        $r->update(['factory_token_id' => $bound->id]);
+
+        $this->get('/token-creator/projects')
+            ->assertInertia(fn ($page) => $page
+                ->has('projects', 1)
+                ->has('projects.0.tokens', 2)
+                ->where('projects.0.tokens.0.id', $bound->id)
+                ->where('projects.0.tokens.0.claimed', true)
+                ->where('projects.0.tokens.1.id', $own->id)
+                ->where('projects.0.tokens.1.claimed', false));
+
+        // ค้นด้วยที่อยู่สัญญาของเหรียญที่ผูกไว้ก็เจอโครงการ
+        $this->get('/token-creator/projects?q='.$bound->contract_address)
+            ->assertInertia(fn ($page) => $page->has('projects', 1)->where('projects.0.uuid', $r->uuid));
+
+        // ชุดเหรียญตรงกับหน้าโครงการ (build()['tokens'])
+        $this->get("/token-creator/projects/{$r->uuid}")
+            ->assertInertia(fn ($page) => $page
+                ->where('project.tokens.0.id', $bound->id)
+                ->where('project.tokens.1.id', $own->id)
+                ->has('project.tokens', 2));
+    }
+
+    #[Test]
     public function ไม่หลุดข้อมูลส่วนตัว_กระเป๋า_หรือเอกสาร(): void
     {
         $wallet = $this->wallet(7);
