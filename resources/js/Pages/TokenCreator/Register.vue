@@ -20,6 +20,7 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import QRCode from 'qrcode';
 import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import CreatorClaimGuide from '@/Components/TokenCreator/CreatorClaimGuide.vue';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTranslation } from '@/Composables/useTranslation';
 import { isMobile } from '@/utils/mobileWallet';
@@ -42,7 +43,14 @@ const props = defineProps({
     agreement: { type: Object, required: true },
     defaultStarterBps: { type: Number, default: 1000 },
     options: { type: Object, default: () => ({ categories: [], fund_sources: [], document_types: {} }) },
+    // ลิงก์เชิญให้เหรียญที่ขึ้นเชนแล้ว (หรือใบที่ผูกเหรียญไว้แล้ว) — null = ลงทะเบียนปกติ
+    claim: { type: Object, default: null },
 });
+
+const claimError = ref('');
+const claimInfo = computed(() => (props.claim ? { ...props.claim, error: claimError.value || props.claim.error } : null));
+// ชื่อ/สัญลักษณ์มาจากเหรียญจริง — เซิร์ฟเวอร์บังคับทับอีกชั้น
+const lockedTokenFields = ['token_name', 'token_symbol', 'planned_supply'];
 
 const walletStore = useWalletStore();
 
@@ -52,6 +60,12 @@ watch(() => props.registration, (r) => { registration.value = r; });
 const kycApproved = computed(() => !!props.kyc?.approved);
 
 const form = reactive(blankCreatorForm(props.registration?.form));
+if (props.claim) {
+    form.token_name = props.claim.name;
+    form.token_symbol = String(props.claim.symbol || '').toUpperCase();
+    form.planned_supply = null;
+    if (!form.project_name) form.project_name = props.claim.name;
+}
 const errors = ref({});
 const notice = ref('');
 const errorKey = ref('');
@@ -106,8 +120,10 @@ async function startRegistration() {
             wallet_address: wallet,
             nonce: signature.nonce,
             signature: signature.signature,
+            claim_token_id: props.claim?.token_id ?? null,
         });
         registration.value = res.data.data.registration;
+        claimError.value = res.data.data.claim_error || '';
         editing.value = !registration.value?.form_hash;
         // เข้าสู่ระบบแล้ว — ดึง props ของหน้า (auth, kyc, ใบลงทะเบียน) ใหม่ทั้งชุด
         router.reload({ preserveScroll: true });
@@ -350,6 +366,11 @@ const isCompany = computed(() => form.applicant_type === 'company');
                 </p>
             </header>
 
+            <!-- เหรียญที่ขึ้นเชนแล้ว (ลิงก์เชิญ) -->
+            <CreatorClaimGuide v-if="claimInfo" :claim="claimInfo"
+                               :project-wallet="registration?.wallet_address || connected"
+                               :registered="!!registration && registration.factory_token_id === claimInfo.token_id" />
+
             <!-- ขั้นตอน -->
             <ol class="grid grid-cols-5 gap-2 text-xs" data-test="steps">
                 <li v-for="(s, i) in stepList" :key="s"
@@ -366,8 +387,8 @@ const isCompany = computed(() => form.applicant_type === 'company');
 
             <!-- 1. กระเป๋า -->
             <section class="glass-card p-5 space-y-3" data-test="step-wallet">
-                <h2 class="text-lg font-semibold text-white">{{ t('page.tokenCreator.wallet.title') }}</h2>
-                <p class="text-sm text-gray-400">{{ t('page.tokenCreator.wallet.desc') }}</p>
+                <h2 class="text-lg font-semibold text-white">{{ claim ? t('page.tokenCreator.claim.walletTitle') : t('page.tokenCreator.wallet.title') }}</h2>
+                <p class="text-sm text-gray-400">{{ claim ? t('page.tokenCreator.claim.walletDesc', { symbol: claim.symbol }) : t('page.tokenCreator.wallet.desc') }}</p>
                 <div v-if="registration" class="text-sm">
                     <span class="text-gray-400">{{ t('page.tokenCreator.wallet.registered') }}:</span>
                     <code class="ml-2 text-white break-all" data-test="registered-wallet">{{ registration.wallet_address }}</code>
@@ -488,7 +509,10 @@ const isCompany = computed(() => form.applicant_type === 'company');
                         <div class="grid md:grid-cols-2 gap-3">
                             <label v-for="f in ['project_name', 'token_name', 'token_symbol', 'planned_supply']" :key="f" class="block text-sm">
                                 <span class="text-gray-400">{{ t(`page.tokenCreator.fields.${f}`) }}</span>
-                                <input v-model="form[f]" :class="fieldCls(f)" :name="f" type="text" :inputmode="f === 'planned_supply' ? 'numeric' : undefined">
+                                <input v-model="form[f]" :class="[fieldCls(f), claim && lockedTokenFields.includes(f) ? 'opacity-60 cursor-not-allowed' : '']" :name="f" type="text"
+                                       :inputmode="f === 'planned_supply' ? 'numeric' : undefined"
+                                       :disabled="!!claim && lockedTokenFields.includes(f)">
+                                <span v-if="claim && lockedTokenFields.includes(f)" class="text-xs text-gray-500">🔒 {{ t('page.tokenCreator.claim.fromToken') }}</span>
                                 <span v-if="errors[f]" class="text-xs text-red-400">{{ errors[f] }}</span>
                             </label>
                             <label class="block text-sm">
@@ -716,7 +740,7 @@ const isCompany = computed(() => form.applicant_type === 'company');
                     </div>
                 </article>
 
-                <p class="text-sm text-primary-300" data-test="starter-note">{{ t('page.tokenCreator.agreement.starter', { pct: starterPct }) }}</p>
+                <p class="text-sm text-primary-300" data-test="starter-note">{{ claim ? t('page.tokenCreator.claim.agreementNote', { symbol: claim.symbol, owner: claim.owner_wallet }) : t('page.tokenCreator.agreement.starter', { pct: starterPct }) }}</p>
 
                 <div class="space-y-2 text-sm">
                     <label class="flex items-start gap-2 text-white"><input v-model="ack.read" type="checkbox" class="mt-1" data-test="ack-read"> {{ t('page.tokenCreator.agreement.ackRead') }}</label>
@@ -743,7 +767,7 @@ const isCompany = computed(() => form.applicant_type === 'company');
                 </template>
                 <template v-else-if="registration.status === 'approved'">
                     <h2 class="text-lg font-semibold text-trading-green">{{ t('page.tokenCreator.status.approvedTitle') }}</h2>
-                    <p class="text-sm text-gray-300" data-test="approved-desc">{{ t('page.tokenCreator.status.approvedDesc', { pct: starterPct }) }}</p>
+                    <p class="text-sm text-gray-300" data-test="approved-desc">{{ claim ? t('page.tokenCreator.claim.approvedDesc', { symbol: claim.symbol, pct: starterPct }) : t('page.tokenCreator.status.approvedDesc', { pct: starterPct }) }}</p>
                     <div class="flex flex-wrap gap-3">
                         <Link href="/token-factory" class="btn-primary inline-block">{{ t('page.tokenCreator.status.approvedCta') }}</Link>
                         <a v-if="registration.public_url" :href="registration.public_url" class="btn-secondary inline-block" data-test="public-page">{{ t('page.tokenCreator.status.publicPage') }}</a>

@@ -305,7 +305,7 @@ class CreatorRegistrationFlowTest extends TestCase
         $this->assertSame('127.0.0.1', $registration->agreement_ip);
 
         $evidence = app(CreatorRegistrationService::class)->verifyEvidence($registration);
-        $this->assertSame([true, true, true, true, true], array_values($evidence));
+        $this->assertSame([true, true, true, true, true, true], array_values($evidence));
     }
 
     #[Test]

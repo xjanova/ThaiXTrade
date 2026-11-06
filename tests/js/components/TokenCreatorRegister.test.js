@@ -503,3 +503,74 @@ describe('TokenCreator/Register — ความยินยอมและเ�
         expect($(w, 'public-page').attributes('href')).toBe('/token-creator/projects/u-1');
     });
 });
+
+describe('TokenCreator/Register — ลิงก์เชิญให้เหรียญที่ขึ้นเชนแล้ว', () => {
+    const OWNER = '0x3da3776e0ab0f442c181aa031f47fa83696859af';
+    const claim = (overrides = {}) => ({
+        token_id: 1,
+        name: 'IDTC Token',
+        symbol: 'IDTC',
+        logo_url: null,
+        contract_address: '0x798923aeb2692bbd27cfb0505bf7c94f6cf4e288',
+        owner_wallet: OWNER,
+        explorer_url: 'https://explorer.tpix.online/address/0x798923aeb2692bbd27cfb0505bf7c94f6cf4e288',
+        whitepaper_url: '/token-factory/1/whitepaper',
+        error: null,
+        ...overrides,
+    });
+
+    it('เห็นเหรียญ กระเป๋าเจ้าของล็อกแก้ไม่ได้ และคู่มือทีละขั้น', () => {
+        const w = mountPage({ claim: claim() });
+
+        expect($(w, 'claim-token').text()).toContain('IDTC');
+        const owner = $(w, 'owner-wallet');
+        expect(owner.element.value).toBe(OWNER);
+        expect(owner.attributes('disabled')).toBeDefined();
+        expect($(w, 'claim-guide').findAll('li')).toHaveLength(8);
+        expect(w.text()).toContain(t('page.tokenCreator.claim.walletTitle'));
+    });
+
+    it('เซ็นเริ่มใบ → ส่ง id เหรียญไปผูก และโชว์ error ถ้าผูกไม่ได้', async () => {
+        wallet.address = WALLET;
+        wallet.signer = { getAddress: vi.fn(() => Promise.resolve(WALLET)), signMessage: vi.fn(() => Promise.resolve('0xsig')) };
+        axiosPost
+            .mockResolvedValueOnce({ data: { data: { message: 'msg', nonce: 'n'.repeat(32) } } })
+            .mockResolvedValueOnce({ data: { data: { registration: draft({ form_hash: null, form: null }), claim_error: 'เหรียญนี้มีใบลงทะเบียนแล้ว' } } });
+
+        const w = mountPage({ claim: claim() });
+        expect($(w, 'project-wallet').element.value).toBe(WALLET);
+        await $(w, 'start').trigger('click');
+        await flushPromises();
+
+        expect(axiosPost.mock.calls[1][1]).toMatchObject({ wallet_address: WALLET, claim_token_id: 1 });
+        expect($(w, 'claim-error').text()).toBe('เหรียญนี้มีใบลงทะเบียนแล้ว');
+    });
+
+    it('ชื่อ/สัญลักษณ์เหรียญมาจากเหรียญจริงและแก้ไม่ได้', async () => {
+        axiosPut.mockResolvedValueOnce({ data: { data: { registration: draft({ factory_token_id: 1 }) } } });
+        const w = mountPage({ claim: claim(), registration: draft({ form_hash: null, form: null, factory_token_id: 1 }) });
+
+        const symbol = w.find('input[name="token_symbol"]');
+        expect(symbol.element.value).toBe('IDTC');
+        expect(symbol.attributes('disabled')).toBeDefined();
+        expect(w.find('input[name="token_name"]').element.value).toBe('IDTC Token');
+
+        await $(w, 'creator-form').trigger('submit');
+        await flushPromises();
+        expect(axiosPut.mock.calls[0][1]).toMatchObject({ token_symbol: 'IDTC', token_name: 'IDTC Token', planned_supply: null });
+    });
+
+    it('เชื่อมกระเป๋าเจ้าของเหรียญเอง → เตือนให้ใช้กระเป๋าอีกใบ', () => {
+        wallet.address = OWNER;
+        const w = mountPage({ claim: claim() });
+
+        expect($(w, 'same-as-owner').exists()).toBe(true);
+    });
+
+    it('ไม่มีลิงก์เชิญ → ไม่มีการ์ดเหรียญ ช่องสัญลักษณ์แก้ได้', () => {
+        const w = mountPage({ registration: draft({ form_hash: null }) });
+
+        expect($(w, 'claim-card').exists()).toBe(false);
+        expect(w.find('input[name="token_symbol"]').attributes('disabled')).toBeUndefined();
+    });
+});

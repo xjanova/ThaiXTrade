@@ -103,6 +103,10 @@ const riskText = (risk) => (locale.value === 'th' ? risk.th : risk.en);
                         <span class="text-white font-semibold">{{ token.name }} ({{ token.symbol }})</span>
                         <code class="text-xs text-gray-500 break-all">{{ token.contract_address }}</code>
                         <a :href="token.whitepaper_url" class="ml-auto text-primary-400 hover:underline" data-test="whitepaper-link">{{ t('page.creatorProject.whitepaper') }}</a>
+                        <p v-if="token.claimed && token.owner_wallet !== (p.wallet_address || '').toLowerCase()" class="w-full text-xs text-gray-400" data-test="claimed-token-note">
+                            {{ t('page.creatorProject.claimedNote') }}
+                            <span class="font-mono break-all">{{ token.owner_wallet }}</span>
+                        </p>
                     </li>
                 </ul>
             </section>

@@ -44,6 +44,46 @@ class CreatorPublicProfile
         return $this->isPublic($registration) ? $registration : null;
     }
 
+    /**
+     * ใบที่เผยแพร่ได้ของเหรียญนี้ — ใบที่ผูกเหรียญด้วยลิงก์เชิญมาก่อน แล้วค่อยใบปกติของกระเป๋าเจ้าของเหรียญ.
+     */
+    public function forToken(FactoryToken $token): ?CreatorRegistration
+    {
+        $bound = CreatorRegistration::query()
+            ->where('factory_token_id', $token->id)
+            ->where('status', CreatorRegistration::STATUS_APPROVED)
+            ->latest('reviewed_at')
+            ->first();
+
+        if ($this->isPublic($bound)) {
+            return $bound;
+        }
+
+        $byWallet = $this->forWallet($token->creator_address);
+
+        // ใบปกติของกระเป๋าเจ้าของที่ไปผูกเหรียญอื่นด้วยลิงก์เชิญ — ไม่ใช่ใบของเหรียญนี้
+        return $byWallet !== null && ($byWallet->factory_token_id === null || $byWallet->factory_token_id === $token->id)
+            ? $byWallet
+            : null;
+    }
+
+    /**
+     * เหรียญของใบนี้ — เหรียญที่ผูกด้วยลิงก์เชิญ + เหรียญที่กระเป๋านี้สร้างเอง.
+     *
+     * @return Collection<int, FactoryToken>
+     */
+    public function tokensFor(CreatorRegistration $registration)
+    {
+        return FactoryToken::query()
+            ->deployed()
+            ->whereNotNull('contract_address')
+            ->where(fn ($q) => $q->where('creator_address', strtolower($registration->wallet_address))
+                ->when($registration->factory_token_id !== null, fn ($q) => $q->orWhere('id', $registration->factory_token_id)))
+            ->orderBy('id')
+            ->limit(20)
+            ->get();
+    }
+
     public function build(CreatorRegistration $registration): array
     {
         $form = (array) $registration->form_data;
@@ -68,18 +108,15 @@ class CreatorPublicProfile
             ->values()
             ->all();
 
-        $tokens = FactoryToken::query()
-            ->deployed()
-            ->byCreator($registration->wallet_address)
-            ->whereNotNull('contract_address')
-            ->orderBy('id')
-            ->limit(20)
-            ->get()
+        $tokens = $this->tokensFor($registration)
             ->map(fn (FactoryToken $t) => [
                 'id' => $t->id,
                 'name' => $t->name,
                 'symbol' => $t->symbol,
                 'contract_address' => $t->contract_address,
+                // เหรียญที่ผูกด้วยลิงก์เชิญ — กระเป๋าเจ้าของเหรียญต่างจากกระเป๋ารับเหรียญของโครงการ
+                'owner_wallet' => strtolower((string) $t->creator_address),
+                'claimed' => $t->id === $registration->factory_token_id,
                 'whitepaper_url' => route('token-factory.whitepaper', $t->id),
             ])
             ->all();
@@ -152,13 +189,12 @@ class CreatorPublicProfile
     }
 
     /**
-     * เหรียญของแต่ละใบสำหรับหน้ารวม — เหรียญที่ deploy แล้วจากกระเป๋าของใบ จับคู่แบบไม่สนตัวพิมพ์ คิวรีเดียวทั้งหน้า.
-     *
-     * จุดเดียวที่หน้ารวมใช้หาเหรียญ: ใบที่ผูกกับเหรียญที่ deploy ไปแล้วด้วยกระเป๋าอื่น
-     * (factory_token_id — งาน claim existing token) ต้องเพิ่มเหรียญนั้นที่นี่ ให้ตรงกับ build()['tokens'].
+     * เหรียญของแต่ละใบสำหรับหน้ารวม — ชุดเดียวกับ tokensFor()/build()['tokens'] แต่คิวรีเดียวทั้งหน้า:
+     * เหรียญที่ผูกด้วยลิงก์เชิญ (factory_token_id — กระเป๋าเจ้าของเหรียญต่างจากกระเป๋าของใบได้)
+     * + เหรียญที่กระเป๋าของใบสร้างเอง (จับคู่แบบไม่สนตัวพิมพ์) เรียงตาม id สูงสุด 20 ต่อใบ.
      *
      * @param  Collection<int, CreatorRegistration>  $registrations
-     * @return array<int, array<int, array<string, mixed>>> registration id => เหรียญ (สูงสุด 20 ต่อใบ)
+     * @return array<int, array<int, array<string, mixed>>> registration id => เหรียญ
      */
     public function tokensForRegistrations(Collection $registrations): array
     {
@@ -168,36 +204,39 @@ class CreatorPublicProfile
             ->unique()
             ->values()
             ->all();
-        if ($wallets === []) {
+        $boundIds = $registrations->pluck('factory_token_id')->filter()->unique()->values()->all();
+        if ($wallets === [] && $boundIds === []) {
             return [];
         }
 
-        $explorer = rtrim((string) config('blockchain.explorer_url', 'https://explorer.tpix.online'), '/');
-        $byWallet = [];
-
-        FactoryToken::query()
+        $tokens = FactoryToken::query()
             ->deployed()
             ->whereNotNull('contract_address')
-            ->whereIn(DB::raw('LOWER(creator_address)'), $wallets)
+            ->where(fn ($q) => $q->whereIn(DB::raw('LOWER(creator_address)'), $wallets)->orWhereIn('id', $boundIds))
             ->orderBy('id')
-            ->get(['id', 'name', 'symbol', 'contract_address', 'creator_address'])
-            ->each(function (FactoryToken $t) use (&$byWallet, $explorer) {
-                $key = strtolower((string) $t->creator_address);
-                if (count($byWallet[$key] ?? []) >= 20) {
-                    return;
-                }
-                $byWallet[$key][] = [
-                    'id' => $t->id,
-                    'name' => $t->name,
-                    'symbol' => $t->symbol,
-                    'contract_address' => $t->contract_address,
-                    'whitepaper_url' => route('token-factory.whitepaper', $t->id),
-                    'explorer_url' => $explorer.'/address/'.$t->contract_address,
-                ];
-            });
+            ->get(['id', 'name', 'symbol', 'contract_address', 'creator_address']);
+
+        $explorer = rtrim((string) config('blockchain.explorer_url', 'https://explorer.tpix.online'), '/');
 
         return $registrations
-            ->mapWithKeys(fn (CreatorRegistration $r) => [$r->id => $byWallet[strtolower((string) $r->wallet_address)] ?? []])
+            ->mapWithKeys(function (CreatorRegistration $r) use ($tokens, $explorer) {
+                $wallet = strtolower((string) $r->wallet_address);
+
+                return [$r->id => $tokens
+                    ->filter(fn (FactoryToken $t) => $t->id === $r->factory_token_id || strtolower((string) $t->creator_address) === $wallet)
+                    ->take(20)
+                    ->map(fn (FactoryToken $t) => [
+                        'id' => $t->id,
+                        'name' => $t->name,
+                        'symbol' => $t->symbol,
+                        'contract_address' => $t->contract_address,
+                        'claimed' => $t->id === $r->factory_token_id,
+                        'whitepaper_url' => route('token-factory.whitepaper', $t->id),
+                        'explorer_url' => $explorer.'/address/'.$t->contract_address,
+                    ])
+                    ->values()
+                    ->all()];
+            })
             ->all();
     }
 

@@ -263,6 +263,9 @@ Route::get('/token-factory', [TokenFactoryController::class, 'index'])->name('to
  * ⚠️ throttle ทุกเส้นมีชื่อ (ตัวที่สาม) — ไม่มีชื่อ = ตัวนับเดียวกันทั้งเว็บต่อผู้ใช้
  */
 Route::get('/token-creator', [CreatorRegistrationController::class, 'show'])->name('token-creator');
+// ลิงก์เชิญจากหลังบ้าน — ลงทะเบียนผู้สร้างให้เหรียญที่ขึ้นเชนแล้ว (signed URL อายุ 30 วัน)
+Route::get('/token-creator/claim/{token}', [CreatorRegistrationController::class, 'claim'])
+    ->whereNumber('token')->middleware(['signed:relative', 'throttle:30,1,creator-reg-claim'])->name('token-creator.claim');
 Route::post('/token-creator/challenge', [CreatorRegistrationController::class, 'challenge'])
     ->middleware('throttle:20,1,creator-reg-challenge')->name('token-creator.challenge');
 Route::post('/token-creator/start', [CreatorRegistrationController::class, 'start'])

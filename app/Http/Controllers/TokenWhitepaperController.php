@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\FactoryToken;
+use App\Services\BlockscoutVerifyService;
 use App\Services\CreatorRegistration\CreatorPublicProfile;
 use App\Services\TokenFactory\TokenOnchainFacts;
 use App\Support\BuyerRiskWarnings;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -27,6 +29,7 @@ class TokenWhitepaperController extends Controller
     public function __construct(
         private readonly TokenOnchainFacts $facts,
         private readonly CreatorPublicProfile $profiles,
+        private readonly BlockscoutVerifyService $blockscout,
     ) {}
 
     public function show(int $id): View
@@ -55,18 +58,47 @@ class TokenWhitepaperController extends Controller
     {
         $token = FactoryToken::query()->deployed()->whereNotNull('contract_address')->findOrFail($id);
 
-        $registration = $this->profiles->forWallet($token->creator_address);
+        $registration = $this->profiles->forToken($token);
         $registration?->load(['documents', 'user']);
 
         return [
             'mode' => $mode,
             'token' => $token,
             'facts' => $this->facts->for((string) $token->contract_address),
+            'sourceVerified' => $this->sourceVerified((string) $token->contract_address),
             'creator' => $registration ? $this->profiles->build($registration) : null,
             'risks' => BuyerRiskWarnings::all(),
             'fontDir' => storage_path('fonts'),
             'explorer' => rtrim((string) config('blockchain.explorer_url', 'https://explorer.tpix.online'), '/'),
             'generatedAt' => now()->timezone('Asia/Bangkok'),
         ];
+    }
+
+    /**
+     * explorer ยืนยันซอร์สโค้ดสัญญานี้แล้วหรือยัง — ถาม explorer ตรง แคช 10 นาที.
+     *
+     * is_verified ในฐานข้อมูลเป็นป้ายที่แอดมินให้ ไม่ใช่สถานะซอร์สโค้ด ห้ามใช้แทนกัน
+     * null = ถาม explorer ไม่ได้ (แคชสั้น 1 นาที ลองใหม่เร็วแต่ไม่ยิง explorer ทุกคำขอตอนล่ม)
+     */
+    private function sourceVerified(string $contract): ?bool
+    {
+        $key = 'token_source_verified:'.strtolower($contract);
+        $cached = Cache::get($key);
+        if (in_array($cached, ['yes', 'no', 'unknown'], true)) {
+            return match ($cached) {
+                'yes' => true,
+                'no' => false,
+                default => null,
+            };
+        }
+
+        $verified = $this->blockscout->isVerified($contract);
+        Cache::put($key, match ($verified) {
+            true => 'yes',
+            false => 'no',
+            null => 'unknown',
+        }, $verified === null ? 60 : TokenOnchainFacts::CACHE_TTL);
+
+        return $verified;
     }
 }

@@ -36,6 +36,7 @@ class CreatorRegistrationPdf
             'document' => $this->agreement->document($version),
             'agreementHash' => $this->agreement->hash($version),
             'evidence' => $this->registrations->verifyEvidence($registration),
+            'claimedToken' => $this->registrations->boundToken($registration),
             'fontDir' => storage_path('fonts'),
             'generatedAt' => now()->timezone('Asia/Bangkok'),
         ])

@@ -23,10 +23,15 @@ class TokenWhitepaperTest extends TestCase
 
     private const CONTRACT = '0x1111111111111111111111111111111111111111';
 
+    /** explorer ปลอม [status, body] — เทสต์ไหนอยากได้ผลอื่นก็เปลี่ยนค่านี้ */
+    private array $explorer = [200, ['is_verified' => false]];
+
     protected function setUp(): void
     {
         parent::setUp();
         Cache::flush();
+        Http::preventStrayRequests();
+        Http::fake(['*/v2/smart-contracts/*' => fn () => Http::response($this->explorer[1], $this->explorer[0])]);
     }
 
     private function token(array $overrides = []): FactoryToken
@@ -146,6 +151,35 @@ class TokenWhitepaperTest extends TestCase
     }
 
     #[Test]
+    public function สถานะยืนยันซอร์สมาจาก_explorer_ไม่ใช่ป้ายในฐานข้อมูล(): void
+    {
+        $this->fullChain();
+        $this->explorer = [200, ['is_verified' => true, 'name' => 'FactoryERC20V2']];
+        $token = $this->token(['is_verified' => false]);   // ป้ายแอดมินยังไม่ให้ แต่ explorer ยืนยันซอร์สแล้ว
+
+        $this->get("/token-factory/{$token->id}/whitepaper")
+            ->assertOk()
+            ->assertSee('ยืนยันแล้ว / Verified')
+            ->assertSee('1,000,000');   // ซัพพลายมีจุลภาคคั่นหลักพัน
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/v2/smart-contracts/'.self::CONTRACT));
+    }
+
+    #[Test]
+    public function explorer_บอกว่ายังไม่ยืนยัน_หรือถามไม่ได้_แสดงตามจริง(): void
+    {
+        $this->fullChain();
+        $this->explorer = [404, ['message' => 'Not found']];
+        $token = $this->token(['is_verified' => true]);   // ป้ายแอดมินให้แล้ว แต่ explorer ไม่มีซอร์ส
+
+        $this->get("/token-factory/{$token->id}/whitepaper")->assertOk()->assertSee('ยังไม่ยืนยัน / Not verified');
+
+        Cache::flush();
+        $this->explorer = [503, 'down'];
+        $this->get("/token-factory/{$token->id}/whitepaper")->assertOk()->assertSee('ตรวจกับ explorer ไม่ได้ตอนนี้');
+    }
+
+    #[Test]
     public function ดาวน์โหลด_pd_f_ได้(): void
     {
         $this->fullChain();
@@ -160,7 +194,6 @@ class TokenWhitepaperTest extends TestCase
     #[Test]
     public function เหรียญที่ยังไม่ขึ้นเชนไม่มีไวท์เปเปอร์(): void
     {
-        Http::fake();
         $pending = $this->token(['status' => 'pending', 'contract_address' => null]);
 
         $this->get("/token-factory/{$pending->id}/whitepaper")->assertNotFound();

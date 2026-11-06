@@ -22,6 +22,15 @@
     $flagText = fn ($v) => $v === null ? ['อ่านจากเชนไม่ได้', 'Could not read on chain', 'muted'] : ($v ? ['มี', 'Yes', 'bad'] : ['ไม่มี', 'No', 'ok']);
     $riskyOn = array_keys(array_filter($facts['flags'] ?? [], fn ($v) => $v === true));
     $zero = '0x'.str_repeat('0', 40);
+    // 1100000000000 → 1,100,000,000,000 (สตริงทศนิยม ไม่ผ่าน float — ตัวเลขใหญ่เกิน PHP_INT ได้)
+    $groupDigits = function ($value) {
+        $s = (string) $value;
+        if (! preg_match('/^(\d+)(\.\d+)?$/', $s, $m)) {
+            return $s;
+        }
+
+        return preg_replace('/\B(?=(\d{3})+(?!\d))/', ',', $m[1]).($m[2] ?? '');
+    };
 
     $categories = [
         'utility' => ['ยูทิลิตี้', 'Utility'], 'community' => ['ชุมชน', 'Community'], 'gaming' => ['เกม', 'Gaming'],
@@ -140,7 +149,7 @@
     <tr><td class="k">ที่อยู่สัญญา <span class="en">/ Contract</span></td>
         <td class="mono">@if ($web)<a href="{{ $explorer }}/address/{{ $contract }}" rel="noopener" target="_blank">{{ $contract }}</a>@else{{ $contract }}@endif</td></tr>
     <tr><td class="k">ซัพพลายทั้งหมด <span class="en">/ Total supply</span></td>
-        <td>{{ $facts['total_supply'] !== null ? $facts['total_supply'] : $t->total_supply.' (บันทึกของแพลตฟอร์ม / platform record)' }} {{ $symbol }}</td></tr>
+        <td>{{ $facts['total_supply'] !== null ? $groupDigits($facts['total_supply']) : $groupDigits($t->total_supply).' (บันทึกของแพลตฟอร์ม / platform record)' }} {{ $symbol }}</td></tr>
     <tr><td class="k">ทศนิยม <span class="en">/ Decimals</span></td><td>{{ $facts['decimals'] ?? $t->decimals }}</td></tr>
     @if (filled($t->creator_address))
         <tr><td class="k">กระเป๋าผู้สร้าง <span class="en">/ Creator wallet</span></td><td class="mono">{{ $t->creator_address }}</td></tr>
@@ -152,8 +161,15 @@
     @if ($t->created_at)
         <tr><td class="k">สร้างเมื่อ <span class="en">/ Created</span></td><td>{{ $t->created_at->timezone('Asia/Bangkok')->format('d/m/Y') }}</td></tr>
     @endif
+    {{-- ถาม explorer ตรง (ไม่ใช่ is_verified ในฐานข้อมูล ซึ่งเป็นป้ายที่แอดมินให้) --}}
     <tr><td class="k">ซอร์สโค้ดยืนยันบน explorer <span class="en">/ Source verified</span></td>
-        <td>{{ $t->is_verified ? 'ยืนยันแล้ว / Verified' : 'ยังไม่ยืนยัน / Not verified' }}</td></tr>
+        <td>@if ($sourceVerified === true)
+                @if ($web)<a href="{{ $explorer }}/address/{{ $contract }}?tab=contract" rel="noopener" target="_blank">ยืนยันแล้ว / Verified</a>@else ยืนยันแล้ว / Verified @endif
+            @elseif ($sourceVerified === false)
+                ยังไม่ยืนยัน / Not verified
+            @else
+                <span class="muted">ตรวจกับ explorer ไม่ได้ตอนนี้ / Could not check the explorer right now</span>
+            @endif</td></tr>
 </table>
 
 <h2>{{ ++$n }}. สิทธิ์ควบคุมในสัญญา <span class="en">/ Contract controls</span></h2>
@@ -183,6 +199,11 @@
             <td>@if ($creator['kyc_verified'])<span class="badge">ยืนยันตัวตนผ่าน Thaiprompt แล้ว · Verified through Thaiprompt</span>@else<span class="muted">สถานะการยืนยันตัวตนหมดอายุหรือถูกถอน / Verification lapsed or withdrawn</span>@endif</td></tr>
         <tr><td class="k">ประเภทผู้สร้าง <span class="en">/ Creator type</span></td>
             <td>{{ $creator['applicant_type'] === 'company' ? 'นิติบุคคล / Company' : 'บุคคลธรรมดา / Individual' }}</td></tr>
+        {{-- ใบที่ผูกเหรียญด้วยลิงก์เชิญ — กระเป๋าที่ลงทะเบียนคือกระเป๋ารับเหรียญของโครงการ ไม่ใช่กระเป๋าเจ้าของเหรียญ --}}
+        @if (strtolower((string) $creator['wallet_address']) !== strtolower((string) $t->creator_address))
+            <tr><td class="k">กระเป๋ารับเหรียญของโครงการ <span class="en">/ Project wallet</span></td>
+                <td class="mono">{{ $creator['wallet_address'] }}<br><span class="muted">ลงนามข้อตกลงด้วยกระเป๋านี้ · กระเป๋าเจ้าของเหรียญไม่เปลี่ยน / Signed the agreement with this wallet · token owner wallet unchanged</span></td></tr>
+        @endif
         @foreach ([
             'company_name' => ['ชื่อนิติบุคคล', 'Company'], 'company_name_en' => ['ชื่อนิติบุคคล (อังกฤษ)', 'Company (English)'],
             'registration_number' => ['เลขทะเบียน', 'Registration no.'], 'registration_country' => ['ประเทศที่จดทะเบียน', 'Country'],
