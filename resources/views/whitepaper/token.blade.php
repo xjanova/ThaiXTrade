@@ -199,6 +199,11 @@
             <td>@if ($creator['kyc_verified'])<span class="badge">ยืนยันตัวตนผ่าน Thaiprompt แล้ว · Verified through Thaiprompt</span>@else<span class="muted">สถานะการยืนยันตัวตนหมดอายุหรือถูกถอน / Verification lapsed or withdrawn</span>@endif</td></tr>
         <tr><td class="k">ประเภทผู้สร้าง <span class="en">/ Creator type</span></td>
             <td>{{ $creator['applicant_type'] === 'company' ? 'นิติบุคคล / Company' : 'บุคคลธรรมดา / Individual' }}</td></tr>
+        {{-- ใบที่ผูกเหรียญด้วยลิงก์เชิญ — กระเป๋าที่ลงทะเบียนคือกระเป๋ารับเหรียญของโครงการ ไม่ใช่กระเป๋าเจ้าของเหรียญ --}}
+        @if (strtolower((string) $creator['wallet_address']) !== strtolower((string) $t->creator_address))
+            <tr><td class="k">กระเป๋ารับเหรียญของโครงการ <span class="en">/ Project wallet</span></td>
+                <td class="mono">{{ $creator['wallet_address'] }}<br><span class="muted">ลงนามข้อตกลงด้วยกระเป๋านี้ · กระเป๋าเจ้าของเหรียญไม่เปลี่ยน / Signed the agreement with this wallet · token owner wallet unchanged</span></td></tr>
+        @endif
         @foreach ([
             'company_name' => ['ชื่อนิติบุคคล', 'Company'], 'company_name_en' => ['ชื่อนิติบุคคล (อังกฤษ)', 'Company (English)'],
             'registration_number' => ['เลขทะเบียน', 'Registration no.'], 'registration_country' => ['ประเทศที่จดทะเบียน', 'Country'],

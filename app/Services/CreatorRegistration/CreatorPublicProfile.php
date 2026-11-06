@@ -5,6 +5,7 @@ namespace App\Services\CreatorRegistration;
 use App\Models\CreatorRegistration;
 use App\Models\CreatorRegistrationDocument;
 use App\Models\FactoryToken;
+use Illuminate\Support\Collection;
 
 /**
  * ข้อมูลผู้สร้าง/โครงการที่เปิดให้คนทั่วไปเห็น — หน้าโครงการสาธารณะและไวท์เปเปอร์มาตรฐานใช้ชุดเดียวกัน.
@@ -40,6 +41,46 @@ class CreatorPublicProfile
         $registration = CreatorRegistration::where('wallet_address', strtolower((string) $wallet))->first();
 
         return $this->isPublic($registration) ? $registration : null;
+    }
+
+    /**
+     * ใบที่เผยแพร่ได้ของเหรียญนี้ — ใบที่ผูกเหรียญด้วยลิงก์เชิญมาก่อน แล้วค่อยใบปกติของกระเป๋าเจ้าของเหรียญ.
+     */
+    public function forToken(FactoryToken $token): ?CreatorRegistration
+    {
+        $bound = CreatorRegistration::query()
+            ->where('factory_token_id', $token->id)
+            ->where('status', CreatorRegistration::STATUS_APPROVED)
+            ->latest('reviewed_at')
+            ->first();
+
+        if ($this->isPublic($bound)) {
+            return $bound;
+        }
+
+        $byWallet = $this->forWallet($token->creator_address);
+
+        // ใบปกติของกระเป๋าเจ้าของที่ไปผูกเหรียญอื่นด้วยลิงก์เชิญ — ไม่ใช่ใบของเหรียญนี้
+        return $byWallet !== null && ($byWallet->factory_token_id === null || $byWallet->factory_token_id === $token->id)
+            ? $byWallet
+            : null;
+    }
+
+    /**
+     * เหรียญของใบนี้ — เหรียญที่ผูกด้วยลิงก์เชิญ + เหรียญที่กระเป๋านี้สร้างเอง.
+     *
+     * @return Collection<int, FactoryToken>
+     */
+    public function tokensFor(CreatorRegistration $registration)
+    {
+        return FactoryToken::query()
+            ->deployed()
+            ->whereNotNull('contract_address')
+            ->where(fn ($q) => $q->where('creator_address', strtolower($registration->wallet_address))
+                ->when($registration->factory_token_id !== null, fn ($q) => $q->orWhere('id', $registration->factory_token_id)))
+            ->orderBy('id')
+            ->limit(20)
+            ->get();
     }
 
     public function build(CreatorRegistration $registration): array
@@ -81,18 +122,15 @@ class CreatorPublicProfile
             ->values()
             ->all();
 
-        $tokens = FactoryToken::query()
-            ->deployed()
-            ->byCreator($registration->wallet_address)
-            ->whereNotNull('contract_address')
-            ->orderBy('id')
-            ->limit(20)
-            ->get()
+        $tokens = $this->tokensFor($registration)
             ->map(fn (FactoryToken $t) => [
                 'id' => $t->id,
                 'name' => $t->name,
                 'symbol' => $t->symbol,
                 'contract_address' => $t->contract_address,
+                // เหรียญที่ผูกด้วยลิงก์เชิญ — กระเป๋าเจ้าของเหรียญต่างจากกระเป๋ารับเหรียญของโครงการ
+                'owner_wallet' => strtolower((string) $t->creator_address),
+                'claimed' => $t->id === $registration->factory_token_id,
                 'whitepaper_url' => route('token-factory.whitepaper', $t->id),
             ])
             ->all();

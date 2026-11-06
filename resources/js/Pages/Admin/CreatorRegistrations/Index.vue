@@ -10,6 +10,7 @@
 import { computed } from 'vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import CreatorClaimLinks from '@/Components/Admin/CreatorClaimLinks.vue';
 import { useTranslation } from '@/Composables/useTranslation';
 import { formatBps } from '@/utils/creatorRegistration';
 
@@ -21,6 +22,7 @@ const props = defineProps({
     counts: { type: Object, default: () => ({}) },
     settings: { type: Object, default: () => ({ required: false, default_starter_bps: 1000, max_starter_bps: 2000 }) },
     canEditSettings: { type: Boolean, default: false },
+    claimTokens: { type: Array, default: () => [] },
 });
 
 const flash = computed(() => usePage().props.flash || {});
@@ -137,6 +139,9 @@ const shortWallet = (w) => (w ? `${w.slice(0, 6)}…${w.slice(-4)}` : '—');
                       class="rounded px-3 py-1 text-sm" :class="l.active ? 'bg-primary-500/30 text-white' : 'text-gray-400'"
                       preserve-scroll v-html="l.label" />
             </nav>
+
+            <!-- เหรียญที่ขึ้นเชนแล้ว — ออกลิงก์เชิญให้ผู้แทนโครงการลงทะเบียนผู้สร้าง -->
+            <CreatorClaimLinks :tokens="claimTokens" :can-create="canEditSettings" />
         </div>
     </AdminLayout>
 </template>

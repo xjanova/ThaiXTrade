@@ -58,7 +58,7 @@ class TokenWhitepaperController extends Controller
     {
         $token = FactoryToken::query()->deployed()->whereNotNull('contract_address')->findOrFail($id);
 
-        $registration = $this->profiles->forWallet($token->creator_address);
+        $registration = $this->profiles->forToken($token);
         $registration?->load(['documents', 'user']);
 
         return [

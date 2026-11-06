@@ -7,6 +7,7 @@ use App\Models\AdminUser;
 use App\Models\AuditLog;
 use App\Models\CreatorRegistration;
 use App\Models\CreatorRegistrationDocument as Document;
+use App\Models\FactoryToken;
 use App\Models\SiteSetting;
 use App\Services\CreatorRegistration\CreatorDocumentService;
 use App\Services\CreatorRegistration\CreatorPublicProfile;
@@ -14,6 +15,7 @@ use App\Services\CreatorRegistration\CreatorRegistrationException;
 use App\Services\CreatorRegistration\CreatorRegistrationPdf;
 use App\Services\CreatorRegistration\CreatorRegistrationService;
 use App\Services\Kyc\KycGate;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -78,7 +80,74 @@ class CreatorRegistrationController extends Controller
                 'max_starter_bps' => CreatorRegistration::MAX_STARTER_BPS,
             ],
             'canEditSettings' => $this->admin()?->isSuperAdmin() ?? false,
+            'claimTokens' => $this->claimTokens(),
         ]);
+    }
+
+    /**
+     * เหรียญที่ขึ้นเชนแล้ว + ใบลงทะเบียนที่ผูกอยู่ (ถ้ามี) — สำหรับออกลิงก์เชิญให้เหรียญที่สร้างก่อนมีระบบลงทะเบียน.
+     */
+    private function claimTokens(): array
+    {
+        $tokens = FactoryToken::query()->deployed()->whereNotNull('contract_address')->latest('id')->limit(100)->get();
+        if ($tokens->isEmpty()) {
+            return [];
+        }
+
+        // ใบที่ผูกด้วย id หรือใบปกติของกระเป๋าเจ้าของเหรียญ — ดึงทีเดียว
+        $regs = CreatorRegistration::query()
+            ->whereIn('factory_token_id', $tokens->pluck('id'))
+            ->orWhere(fn ($q) => $q->whereNull('factory_token_id')
+                ->whereIn('wallet_address', $tokens->pluck('creator_address')->map(fn ($a) => strtolower((string) $a))->unique()))
+            ->orderByRaw("CASE status WHEN 'approved' THEN 0 WHEN 'submitted' THEN 1 WHEN 'draft' THEN 2 ELSE 3 END")
+            ->get(['uuid', 'status', 'wallet_address', 'factory_token_id', 'project_name']);
+
+        return $tokens->map(function (FactoryToken $t) use ($regs) {
+            $reg = $regs->first(fn (CreatorRegistration $r) => $r->factory_token_id === $t->id
+                || ($r->factory_token_id === null && $r->wallet_address === strtolower((string) $t->creator_address)));
+
+            return [
+                'id' => $t->id,
+                'name' => $t->name,
+                'symbol' => $t->symbol,
+                'contract_address' => $t->contract_address,
+                'owner_wallet' => strtolower((string) $t->creator_address),
+                'registration' => $reg ? [
+                    'uuid' => $reg->uuid,
+                    'status' => $reg->status,
+                    'wallet_address' => $reg->wallet_address,
+                    'project_name' => $reg->project_name,
+                ] : null,
+            ];
+        })->values()->all();
+    }
+
+    /**
+     * POST claim-link — ออกลิงก์เชิญ (signed 30 วัน) ให้ผู้แทนโครงการลงทะเบียนผู้สร้างของเหรียญที่ขึ้นเชนแล้ว.
+     */
+    public function claimLink(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['factory_token_id' => ['required', 'integer', 'min:1']]);
+
+        $admin = $this->admin();
+        abort_if($admin === null, 403);
+
+        $token = $this->registrations->claimableToken((int) $validated['factory_token_id']);
+        if ($token === null) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'TOKEN_NOT_FOUND', 'message' => __('ไม่พบเหรียญที่ขึ้นเชนแล้วตัวนี้')],
+            ], 404);
+        }
+
+        if ($this->registrations->tokenTaken($token, approvedOnly: true)) {
+            return response()->json([
+                'success' => false,
+                'error' => ['code' => 'TOKEN_TAKEN', 'message' => __('เหรียญนี้มีผู้สร้างที่อนุมัติแล้ว — ไม่ต้องออกลิงก์ใหม่')],
+            ], 409);
+        }
+
+        return response()->json(['success' => true, 'data' => $this->registrations->claimLink($token, $admin)]);
     }
 
     public function show(string $uuid): InertiaResponse
@@ -123,6 +192,15 @@ class CreatorRegistrationController extends Controller
                     'public' => $d->isPubliclyViewable(),
                 ])->values()->all(),
                 'missing_documents' => $this->registrations->missingDocuments($r),
+                // ใบจากลิงก์เชิญ — ผูกกับเหรียญที่ขึ้นเชนแล้ว กระเป๋าเจ้าของเหรียญต่างจากกระเป๋าของใบ
+                'claimed_token' => ($bound = $this->registrations->boundToken($r)) ? [
+                    'id' => $bound->id,
+                    'name' => $bound->name,
+                    'symbol' => $bound->symbol,
+                    'contract_address' => $bound->contract_address,
+                    'owner_wallet' => strtolower((string) $bound->creator_address),
+                ] : null,
+                'factory_token_id' => $r->factory_token_id,
                 'public_url' => app(CreatorPublicProfile::class)->isPublic($r) ? route('token-creator.projects.show', $r->uuid) : null,
             ],
             'user' => $user ? [
