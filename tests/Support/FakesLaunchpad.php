@@ -77,6 +77,20 @@ trait FakesLaunchpad
             'symbol' => 'IDTC',
             'fed' => '0',
             'launch_of' => [strtolower($this->lpSale) => 1],
+            // ป้ายความเสี่ยง (LaunchpadRiskReader)
+            'raised' => '0',
+            'flags' => ['mint' => false, 'pause' => false, 'blacklist' => false, 'autoburn' => false],
+            'supply' => '125000000000000000000000000000', // 125B: ขาย 100B + สำรองพูล 20B + ผู้สร้าง 5B
+            'pair' => '0x0000000000000000000000000000000000000000',
+            'lp_total' => '0',
+            'pool' => ['0', '0'],
+        ];
+
+        // ยอดเหรียญเริ่มต้น: สัญญาขายถือของที่จะขาย · ตัวป้อนพูลถือสำรอง · ผู้สร้างถือส่วนที่เหลือแบบไม่ล็อก
+        $this->chainState[4289]['balances'][$this->lpToken] = [
+            strtolower($this->lpSale) => '100000000000000000000000000000',
+            $this->lpFeeder => '20000000000000000000000000000',
+            $this->lpCreator => '5000000000000000000000000000',
         ];
 
         $this->callHook = fn (int $chainId, string $to, string $sel, array $args, string $from) => $this->answerLaunchpad($chainId, $to, $sel, $args, $from);
@@ -173,6 +187,8 @@ trait FakesLaunchpad
                 $is('isActive()') => $b(! $this->lp['paused'] && now()->getTimestamp() >= $this->lp['start']
                     && now()->getTimestamp() < $this->lp['end'] && bccomp($this->lp['sold'], $this->lp['cap'], 0) < 0),
                 $is('remaining()') => $u(bcsub($this->lp['cap'], $this->lp['sold'], 0)),
+                $is('sold()') => $u($this->lp['sold']),
+                $is('raised()') => $u($this->lp['raised']),
                 $is('minPurchase()') => $u($this->lp['min_purchase']),
                 $is('maxPerWallet()') => $u($this->lp['max_per_wallet']),
                 $is('purchased(address)') => $u($this->lp['purchased'][$arg(0)] ?? '0'),
@@ -199,6 +215,10 @@ trait FakesLaunchpad
                 $is('lpUnlockTime()') => $u($this->lp['lp_unlock']),
                 $is('pendingQuote()') => $u($pending),
                 $is('feed()') => bccomp($pending, $this->lp['min_feed'], 0) >= 0 ? $u('0') : null,
+                $is('totalQuoteToPool()') => $u($this->lp['fed']),
+                $is('totalTokenToPool()') => $u('0'),
+                $is('pair()') => $a($this->lp['pair']),
+                $is('poolReserves()') => '0x'.Abi::encUint($this->lp['pool'][0]).Abi::encUint($this->lp['pool'][1]),
                 default => null,
             };
         }
@@ -208,8 +228,19 @@ trait FakesLaunchpad
                 $is('name()') => $this->abiString($this->lp['name']),
                 $is('symbol()') => $this->abiString($this->lp['symbol']),
                 $is('decimals()') => $u(18),
+                $is('totalSupply()') => $u($this->lp['supply']),
+                $is('isMintable()') => $b($this->lp['flags']['mint']),
+                $is('isPausable()') => $b($this->lp['flags']['pause']),
+                $is('isBlacklistEnabled()') => $b($this->lp['flags']['blacklist']),
+                $is('isAutoBurnEnabled()') => $b($this->lp['flags']['autoburn']),
+                $is('balanceOf(address)') => false, // ยอดเหรียญอยู่ใน chainState ให้เชนจำลองตอบเอง
                 default => null,
             };
+        }
+
+        // คู่เหรียญในพูล (LP token) — totalSupply ที่นี่ ยอด LP ของแต่ละที่อยู่อยู่ใน chainState
+        if ($this->lp['pair'] !== '0x0000000000000000000000000000000000000000' && $to === $this->lp['pair'] && $is('totalSupply()')) {
+            return $u($this->lp['lp_total']);
         }
 
         return false;
@@ -263,7 +294,9 @@ trait FakesLaunchpad
             $sale = strtolower($this->lpSale);
             $s['balances'][$this->usdtTpix][$tx['from']] = bcsub($s['balances'][$this->usdtTpix][$tx['from']], $pay, 0);
             $s['balances'][$this->usdtTpix][$this->lpFeeder] = bcadd($s['balances'][$this->usdtTpix][$this->lpFeeder] ?? '0', $pay, 0);
+            $s['balances'][$this->lpToken][$sale] = bcsub($s['balances'][$this->lpToken][$sale] ?? '0', $out, 0);
             $s['balances'][$this->lpToken][$arg0] = bcadd($s['balances'][$this->lpToken][$arg0] ?? '0', $out, 0);
+            $this->lp['raised'] = bcadd($this->lp['raised'], $pay, 0);
             $this->lp['allow'][$tx['from']][$sale] = bcsub($this->lp['allow'][$tx['from']][$sale], $pay, 0);
             $this->lp['sold'] = bcadd($this->lp['sold'], $out, 0);
             $this->lp['purchased'][$arg0] = bcadd($this->lp['purchased'][$arg0] ?? '0', $out, 0);

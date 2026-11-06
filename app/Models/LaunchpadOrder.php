@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Bridge\BridgeConfig;
 use App\Support\Wei;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -114,6 +115,21 @@ class LaunchpadOrder extends Model
             'refund_tx_hash' => in_array($this->status, [self::STATUS_REFUNDING, self::STATUS_REFUNDED], true) ? $this->refund_tx_hash : null,
             'settled_at' => $this->settled_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
+            // ยังรอเงิน = บอกปลายทางโอนซ้ำ (เปิดหน้าใหม่/เปลี่ยนเครื่องก็จ่ายต่อได้) — ที่อยู่สาธารณะของสะพานอยู่แล้ว
+            'payment' => $this->status === self::STATUS_AWAITING ? $this->paymentTarget() : null,
+        ];
+    }
+
+    /** @return array{vault: string, usdt_contract: string, usdt_decimals: int}|null */
+    private function paymentTarget(): ?array
+    {
+        $bridge = app(BridgeConfig::class);
+        $chain = $bridge->chain((int) $this->source_chain_id);
+
+        return $chain === null ? null : [
+            'vault' => $bridge->vaultAddress(),
+            'usdt_contract' => strtolower((string) ($chain['usdt']['address'] ?? '')),
+            'usdt_decimals' => (int) ($chain['usdt']['decimals'] ?? 18),
         ];
     }
 }

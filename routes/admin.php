@@ -27,6 +27,7 @@ use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\FoodPassportController;
 use App\Http\Controllers\Admin\KycController as AdminKycController;
 use App\Http\Controllers\Admin\LanguageController;
+use App\Http\Controllers\Admin\LaunchpadAdminController;
 use App\Http\Controllers\Admin\MasterNodeAdminController;
 use App\Http\Controllers\Admin\MasternodeAllowlistController;
 use App\Http\Controllers\Admin\MemberController;
@@ -504,6 +505,19 @@ Route::prefix('admin')->name('admin.')->group(function () {
                     Route::post('/transfers/{id}/approve', [WtpixBridgeAdminController::class, 'approve'])->whereNumber('id')->middleware('throttle:30,1')->name('transfers.approve');
                     Route::post('/transfers/{id}/reject', [WtpixBridgeAdminController::class, 'reject'])->whereNumber('id')->middleware('throttle:30,1')->name('transfers.reject');
                 });
+            });
+
+        /*
+         * Launchpad — อนุมัติหน้าขายเหรียญลูก (ขึ้นเว็บ = รับคำสั่งซื้อที่ผูกกับเงินจริงของผู้ใช้) จึงเฉพาะ super_admin
+         * หน้านี้ไม่มีปุ่มเคลื่อนเงิน — ตัวแทนขายส่งเหรียญ/คืนเงินฝั่ง CLI (launchpad:deliver) เท่านั้น
+         */
+        Route::prefix('launchpad')->name('launchpad.')
+            ->middleware('admin.role:super_admin')
+            ->group(function () {
+                Route::get('/', [LaunchpadAdminController::class, 'index'])->name('index');
+                Route::post('/register', [LaunchpadAdminController::class, 'register'])->middleware('throttle:20,1')->name('register');
+                Route::post('/sales/{id}/status', [LaunchpadAdminController::class, 'setStatus'])->whereNumber('id')->middleware('throttle:30,1')->name('sales.status');
+                Route::post('/reports/{id}', [LaunchpadAdminController::class, 'updateReport'])->whereNumber('id')->middleware('throttle:60,1')->name('reports.update');
             });
 
         // Audit Logs (super_admin only)
