@@ -9,8 +9,14 @@
 import { ref, computed } from 'vue';
 import th from '@/i18n/th.json';
 import en from '@/i18n/en.json';
+import thLaunchpad from '@/i18n/launchpad/th.json';
+import enLaunchpad from '@/i18n/launchpad/en.json';
 
-const messages = { th, en };
+// Launchpad แยกไฟล์ (t('launchpad.…')) — ไฟล์หลักสองไฟล์ใหญ่และหลายงานแก้พร้อมกัน แยกไว้ไม่ให้ชนกันตอน merge
+const messages = {
+    th: { ...th, launchpad: thLaunchpad },
+    en: { ...en, launchpad: enLaunchpad },
+};
 
 // ภาษาปัจจุบัน — อ่านจาก localStorage ก่อน ถ้าไม่มีใช้ admin default จาก meta tag
 function getInitialLocale() {

@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\LaunchpadOrder;
+use App\Models\LaunchpadReport;
 use App\Models\LaunchpadSale;
 use App\Services\Launchpad\LaunchpadOrderException;
 use App\Services\Launchpad\LaunchpadOrderService;
+use App\Services\Launchpad\LaunchpadRiskReader;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 /**
  * TPIX Launchpad — API ของหน้าขายเหรียญลูก.
@@ -44,6 +47,57 @@ class LaunchpadApiController extends Controller
         return $sale
             ? response()->json(['success' => true, 'data' => $sale->toPublicArray()])
             : $this->error('SALE_NOT_FOUND', 'ไม่พบหน้าขายนี้', 404);
+    }
+
+    /** GET /api/v1/launchpad/sales/{id}/risk — ป้ายความเสี่ยงที่อ่านสดจากเชน (แคช 60 วินาที) */
+    public function risk(string $id, LaunchpadRiskReader $reader): JsonResponse
+    {
+        $sale = $this->findSale($id);
+        if (! $sale) {
+            return $this->error('SALE_NOT_FOUND', 'ไม่พบหน้าขายนี้', 404);
+        }
+
+        return $this->guard(fn () => response()->json(['success' => true, 'data' => $reader->read($sale)]));
+    }
+
+    /**
+     * POST /api/v1/launchpad/sales/{id}/report — แจ้งเหรียญน่าสงสัย.
+     * ไม่ต้องเชื่อมกระเป๋า (คนที่โดนหลอกอาจไม่มีกระเป๋าแล้ว) · IP เดิมแจ้งหน้าเดิมซ้ำใน 24 ชม. = นับเป็นรายการเดิม
+     */
+    public function report(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string', Rule::in(LaunchpadReport::REASONS)],
+            'details' => 'nullable|string|max:1000',
+            'wallet' => ['nullable', 'string', 'regex:/^0x[0-9a-fA-F]{40}$/'],
+        ]);
+
+        $sale = $this->findSale($id);
+        if (! $sale) {
+            return $this->error('SALE_NOT_FOUND', 'ไม่พบหน้าขายนี้', 404);
+        }
+
+        return $this->guard(function () use ($request, $data, $sale) {
+            $ip = $request->ip();
+            $recent = LaunchpadReport::where('launchpad_sale_id', $sale->id)
+                ->where('client_ip', $ip)
+                ->where('created_at', '>=', now()->subDay())
+                ->exists();
+
+            if (! $recent) {
+                LaunchpadReport::create([
+                    'launchpad_sale_id' => $sale->id,
+                    'reason' => $data['reason'],
+                    // เก็บเป็นข้อความล้วน — หลังบ้านแสดงด้วย {{ }} ของ Vue (escape เอง) ไม่มี v-html
+                    'details' => isset($data['details']) ? mb_substr(trim($data['details']), 0, 1000) : null,
+                    'reporter_wallet' => isset($data['wallet']) ? strtolower($data['wallet']) : null,
+                    'client_ip' => $ip,
+                    'status' => LaunchpadReport::STATUS_OPEN,
+                ]);
+            }
+
+            return response()->json(['success' => true, 'data' => ['received' => true]], $recent ? 200 : 201);
+        });
     }
 
     /** POST /api/v1/launchpad/orders/prepare — ตรวจทุกข้อแล้วคืนข้อความให้กระเป๋าเซ็น */

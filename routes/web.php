@@ -247,6 +247,10 @@ Route::get('/token-sale', [TokenSaleController::class, 'index'])->name('token-sa
 // Launch — Bonding Curve fair launch (on-chain TPIX sale)
 Route::get('/launch', [LaunchController::class, 'index'])->name('launch');
 
+// Launchpad — ขายเหรียญลูกบน TPIX Chain จ่าย USDT บน BSC (เฉพาะหน้าขายที่แอดมินอนุมัติ)
+Route::get('/launchpad', [\App\Http\Controllers\LaunchpadPageController::class, 'index'])->name('launchpad');
+Route::get('/launchpad/{symbol}', [\App\Http\Controllers\LaunchpadPageController::class, 'show'])->name('launchpad.show');
+
 // Token Factory — สร้างเหรียญบน TPIX Chain
 Route::get('/token-factory', [TokenFactoryController::class, 'index'])->name('token-factory');
 

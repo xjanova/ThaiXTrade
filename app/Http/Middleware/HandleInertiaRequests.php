@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\LaunchpadSale;
 use App\Models\SiteSetting;
 use App\Models\User;
 use App\Services\Kyc\KycGate;
@@ -85,6 +86,9 @@ class HandleInertiaRequests extends Middleware
 
                 return app(KycGate::class)->statusFor($user instanceof User ? $user : null);
             },
+            // ลิงก์ /launchpad ในเมนู — ซ่อนจนกว่าจะเปิดระบบและมีหน้าขายที่อนุมัติแล้ว
+            // (ไม่ใช้ชื่อ 'launchpad' — หน้า Launchpad/* ส่ง prop ชื่อนั้นเอง แล้วจะทับค่านี้จนเมนูหายบนหน้าขาย)
+            'launchpad_nav' => fn () => LaunchpadSale::showInNav(),
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
