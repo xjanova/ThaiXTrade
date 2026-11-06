@@ -1136,5 +1136,11 @@
     "กระเป๋านี้เป็นเจ้าของเหรียญอื่นอยู่แล้ว — ใช้กระเป๋าใหม่สำหรับรับเหรียญของโครงการนี้": "This wallet already owns another token. Use a new wallet to receive this project's tokens.",
     "ใบลงทะเบียนนี้เปลี่ยนสถานะไปแล้ว — โหลดหน้าใหม่": "This registration has changed status. Please reload the page.",
     "เหรียญนี้มีใบลงทะเบียนผู้สร้างที่ส่งตรวจหรืออนุมัติแล้ว — ติดต่อทีมงาน": "This token already has a submitted or approved creator registration. Please contact the team.",
-    "ไม่พบเหรียญที่ใบนี้ผูกไว้ — ติดต่อทีมงาน": "The token this registration is linked to was not found. Please contact the team."
+    "ไม่พบเหรียญที่ใบนี้ผูกไว้ — ติดต่อทีมงาน": "The token this registration is linked to was not found. Please contact the team.",
+    "ยังไม่ได้ตั้ง GITHUB_TOKEN บนเซิร์ฟเวอร์": "GITHUB_TOKEN is not set on the server",
+    "GITHUB_RELEASE_KEEP ต้องเป็นจำนวนเต็มบวก": "GITHUB_RELEASE_KEEP must be a positive whole number",
+    "ไม่มีรุ่นเก่าให้ลบ (เก็บแอปละ :keep รุ่นล่าสุด)": "Nothing old to delete (keeping the newest :keep per app)",
+    "ลบรุ่นเก่าแล้ว :deleted รุ่น คืนพื้นที่ :mb MB": "Deleted :deleted old releases, freed :mb MB",
+    "เหลืออีก :n รุ่น กดซ้ำได้ หรือรอรอบลบอัตโนมัติ 04:30": ":n more left. Press again, or wait for the automatic run at 04:30",
+    "ลบบางรุ่นไม่สำเร็จ": "Some releases could not be deleted"
 }

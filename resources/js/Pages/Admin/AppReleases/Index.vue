@@ -20,6 +20,7 @@ const props = defineProps({
     activeTag: { type: String, default: null },
     activeTags: { type: Object, default: () => ({}) },
     activeVersions: { type: Object, default: () => ({}) },
+    releaseKeep: { type: Number, default: 5 },
 });
 
 // เช็คว่า release นี้เป็น active ของ type ไหน
@@ -64,6 +65,18 @@ const refresh = () => {
 
 const setActive = (tag, app) => {
     router.post('/admin/app-releases/set-active', { tag, app }, { preserveScroll: true });
+};
+
+// ลบ release เก่าบน GitHub เก็บแอปละ releaseKeep รุ่น — ลบถาวร ต้องยืนยันก่อนเสมอ
+const pruning = ref(false);
+const prune = () => {
+    if (pruning.value) return;
+    if (!confirm(t('admin.appReleases.confirmPrune', { keep: props.releaseKeep }))) return;
+    router.post('/admin/app-releases/prune', {}, {
+        preserveScroll: true,
+        onStart: () => { pruning.value = true; },
+        onFinish: () => { pruning.value = false; },
+    });
 };
 
 // เลิกล็อกรุ่น กลับไปใช้ตัวล่าสุดที่ไฟล์ครบเสมอ
@@ -145,13 +158,24 @@ const filterTabs = computed(() => [
                 <div>
                     <h1 class="text-2xl font-bold text-white">{{ t('admin.appReleases.title') }}</h1>
                     <p class="text-dark-400 text-sm mt-1">{{ t('admin.appReleases.subtitle') }}</p>
+                    <p class="text-dark-500 text-xs mt-1">{{ t('admin.appReleases.retention', { keep: releaseKeep }) }}</p>
                 </div>
-                <button @click="refresh" class="btn-primary flex items-center gap-2">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    {{ t('admin.appReleases.refresh') }}
-                </button>
+                <div class="flex items-center gap-2">
+                    <button type="button" @click="prune" :disabled="pruning || !hasToken"
+                            class="px-4 py-2 rounded-xl text-sm font-medium bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            :title="t('admin.appReleases.pruneTitle', { keep: releaseKeep })">
+                        <svg class="w-5 h-5" :class="{ 'animate-pulse': pruning }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        {{ t('admin.appReleases.prune') }}
+                    </button>
+                    <button @click="refresh" class="btn-primary flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        {{ t('admin.appReleases.refresh') }}
+                    </button>
+                </div>
             </div>
 
             <!-- Error Alert -->

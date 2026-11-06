@@ -85,6 +85,10 @@ return [
         'masternode_repo' => env('GITHUB_MASTERNODE_REPO', 'TPIX-Masternode'),
 
         'token' => env('GITHUB_TOKEN'),
+
+        // หน้า App Releases เก็บแต่ละแอปไว้กี่รุ่นล่าสุด ที่เก่ากว่าลบทิ้งทุกวัน (app-releases:prune)
+        'release_keep' => env('GITHUB_RELEASE_KEEP', 5),
+
         'deploy_secret' => env('GITHUB_DEPLOY_SECRET'),
     ],
 

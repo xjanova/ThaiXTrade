@@ -8877,6 +8877,10 @@
             }
         },
         "appReleases": {
+            "prune": "Delete old releases",
+            "pruneTitle": "Delete old GitHub releases, keep the newest {keep} per app",
+            "confirmPrune": "Permanently delete old releases and keep the newest {keep} per app (TPIX TRADE, Wallet, Master Node and web are counted separately)?\n\nFiles of deleted releases go with them. Tags stay. Pinned releases are never deleted.",
+            "retention": "Keeps the newest {keep} releases per app. Older ones are deleted automatically every day at 04:30.",
             "confirmAuto": "Let {label} use the latest release automatically and unlock the pinned version?",
             "type": {
                 "wallet": "Wallet",
