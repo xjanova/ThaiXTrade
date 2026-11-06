@@ -4,7 +4,8 @@
  *
  *   1. เข้าด้วยกระเป๋า — เซ็นข้อความยืนยันความเป็นเจ้าของ (personal_sign, nonce ใช้ครั้งเดียว)
  *      กระเป๋านี้คือกระเป๋ารับเหรียญส่วนเริ่มโครงการ
- *   2. กรอกข้อมูลผู้สร้าง/โครงการ (เซิร์ฟเวอร์ตรวจ ข้อความ error ตามภาษาที่เลือก)
+ *   2. กรอกข้อมูลผู้สร้าง/โครงการ (เซิร์ฟเวอร์ตรวจ ข้อความ error ตามภาษาที่เลือก) + ยินยอมเผยแพร่ทีละรายการ
+ *      แนบเอกสาร — นิติบุคคลต้องมีหนังสือรับรองบริษัท บุคคลธรรมดาไม่ต้อง · เลือกเผยแพร่ทีละไฟล์ (บัตรไม่เผยแพร่)
  *   3. ยืนยันตัวตนในแอป Thaiprompt (เจ้าของสั่ง: "การตรวจ kyc ให้ส่งไปตรวจที่แอพ thaiprompt ต้องโหลดแอพ thaiprompt ด้วย")
  *      โหลดแอป → ทำ eKYC ในแอป → เชื่อมบัญชี Thaiprompt กับเว็บนี้ (OAuth เดิมของ /kyc) แล้วกลับมาหน้านี้
  *   4. อ่านข้อตกลง (ไทยเป็นหลัก มีอังกฤษกำกับ) แล้วเซ็นด้วยกระเป๋า → ส่งตรวจ
@@ -27,6 +28,8 @@ import {
     blankCreatorForm,
     creatorStep,
     describeCreatorError,
+    documentPublishable,
+    documentTypesFor,
     formatBps,
     signWithWallet,
 } from '@/utils/creatorRegistration';
@@ -38,7 +41,7 @@ const props = defineProps({
     kyc: { type: Object, default: () => ({ approved: false, level: null }) },
     agreement: { type: Object, required: true },
     defaultStarterBps: { type: Number, default: 1000 },
-    options: { type: Object, default: () => ({ categories: [], fund_sources: [] }) },
+    options: { type: Object, default: () => ({ categories: [], fund_sources: [], document_types: {} }) },
 });
 
 const walletStore = useWalletStore();
@@ -72,7 +75,9 @@ const walletMismatch = computed(() => !!registration.value
     && connected.value !== registration.value.wallet_address);
 
 const starterPct = computed(() => formatBps(registration.value?.starter_allocation_bps ?? props.defaultStarterBps));
+const missingDocs = computed(() => registration.value?.missing_documents || []);
 const canSign = computed(() => !busy.value && kycApproved.value && !!registration.value?.form_hash
+    && missingDocs.value.length === 0
     && ack.read && ack.thai && ack.risk && !walletMismatch.value);
 
 const errorText = computed(() => (errorKey.value ? (errorKey.value.startsWith('page.') ? t(errorKey.value) : errorKey.value) : ''));
@@ -158,6 +163,89 @@ async function signAgreement() {
         busy.value = '';
     }
 }
+
+// ─── เอกสารประกอบ ──────────────────────────────────────────────────────────
+
+const docTypes = computed(() => props.options?.document_types || {});
+const allowedDocTypes = computed(() => documentTypesFor(registration.value?.form?.applicant_type, docTypes.value));
+const documents = computed(() => registration.value?.documents || []);
+const docEditable = computed(() => !!registration.value?.form_hash && ['draft', 'rejected'].includes(registration.value?.status));
+const upload = reactive({ type: '', publish: false, file: null });
+const fileInput = ref(null);
+const docBusy = ref('');       // '' | upload | <uuid>
+const docError = ref('');
+
+watch(allowedDocTypes, (types) => {
+    if (!types.includes(upload.type)) upload.type = types[0] || '';
+}, { immediate: true });
+
+const uploadPublishable = computed(() => !!docTypes.value[upload.type]?.public
+    && !!upload.file && String(upload.file.type || '').startsWith('image/'));
+
+function pickFile(e) {
+    upload.file = e.target.files?.[0] || null;
+    if (!uploadPublishable.value) upload.publish = false;
+}
+
+function docErrorText(err) {
+    const key = describeCreatorError(err);
+    return key.startsWith('page.') ? t(key) : key;
+}
+
+async function uploadDocument() {
+    if (docBusy.value || !upload.file || !upload.type) return;
+    docError.value = '';
+    docBusy.value = 'upload';
+    try {
+        const body = new FormData();
+        body.append('type', upload.type);
+        body.append('file', upload.file);
+        body.append('publish', uploadPublishable.value && upload.publish ? '1' : '0');
+        const res = await axios.post('/token-creator/documents', body);
+        registration.value = res.data.data.registration;
+        upload.file = null;
+        upload.publish = false;
+        if (fileInput.value) fileInput.value.value = '';
+        ack.read = ack.thai = ack.risk = false;
+    } catch (err) {
+        docError.value = docErrorText(err);
+    } finally {
+        docBusy.value = '';
+    }
+}
+
+async function togglePublish(doc) {
+    if (docBusy.value) return;
+    docError.value = '';
+    docBusy.value = doc.uuid;
+    try {
+        const res = await axios.patch(`/token-creator/documents/${doc.uuid}`, { publish: !doc.publish });
+        registration.value = res.data.data.registration;
+        ack.read = ack.thai = ack.risk = false;
+    } catch (err) {
+        docError.value = docErrorText(err);
+    } finally {
+        docBusy.value = '';
+    }
+}
+
+async function deleteDocument(doc) {
+    if (docBusy.value) return;
+    if (!window.confirm(t('page.tokenCreator.docs.confirmDelete'))) return;
+    docError.value = '';
+    docBusy.value = doc.uuid;
+    try {
+        const res = await axios.delete(`/token-creator/documents/${doc.uuid}`);
+        registration.value = res.data.data.registration;
+        ack.read = ack.thai = ack.risk = false;
+    } catch (err) {
+        docError.value = docErrorText(err);
+    } finally {
+        docBusy.value = '';
+    }
+}
+
+const fmtSize = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 
 function editAgain() {
     Object.assign(form, blankCreatorForm(registration.value?.form));
@@ -457,6 +545,21 @@ const isCompany = computed(() => form.applicant_type === 'company');
                         <span v-if="errors.declare_true" class="text-xs text-red-400">{{ errors.declare_true }}</span>
                     </fieldset>
 
+                    <!-- ความยินยอมเผยแพร่ (PDPA) ทีละรายการ -->
+                    <fieldset class="space-y-2 text-sm" data-test="consents">
+                        <legend class="text-sm font-semibold text-gray-300 mb-1">{{ t('page.tokenCreator.form.consents') }}</legend>
+                        <p class="text-xs text-gray-400">{{ t('page.tokenCreator.form.consentsHint') }}</p>
+                        <label class="flex items-start gap-2 text-white">
+                            <input v-model="form.consent_publish_project" type="checkbox" class="mt-1" name="consent_publish_project" data-test="consent-project">
+                            <span>{{ t('page.tokenCreator.form.consentProject') }}</span>
+                        </label>
+                        <span v-if="errors.consent_publish_project" class="text-xs text-red-400">{{ errors.consent_publish_project }}</span>
+                        <label class="flex items-start gap-2 text-white">
+                            <input v-model="form.consent_publish_name" type="checkbox" class="mt-1" name="consent_publish_name" data-test="consent-name">
+                            <span>{{ t('page.tokenCreator.form.consentName') }}</span>
+                        </label>
+                    </fieldset>
+
                     <button type="submit" class="btn-primary" data-test="save" :disabled="!!busy">
                         {{ busy === 'save' ? busyLabel : t('page.tokenCreator.form.save') }}
                     </button>
@@ -468,6 +571,60 @@ const isCompany = computed(() => form.applicant_type === 'company');
                         <dd class="text-white break-all">{{ registration.form[f] }}</dd>
                     </template>
                 </dl>
+            </section>
+
+            <!-- 2b. เอกสารประกอบ -->
+            <section v-if="registration && registration.form_hash && step !== 'status'" class="glass-card p-5 space-y-4" data-test="step-documents">
+                <h2 class="text-lg font-semibold text-white">{{ t('page.tokenCreator.docs.title') }}</h2>
+                <p class="text-sm text-gray-400">
+                    {{ registration.form?.applicant_type === 'company' ? t('page.tokenCreator.docs.companyIntro') : t('page.tokenCreator.docs.individualIntro') }}
+                </p>
+                <p class="text-xs text-gray-500">{{ t('page.tokenCreator.docs.publicNote') }}</p>
+                <p v-if="missingDocs.length" class="text-sm text-amber-300" data-test="docs-missing">
+                    {{ t('page.tokenCreator.docs.missing', { types: missingDocs.map((d) => t(`page.tokenCreator.docs.types.${d}`)).join(', ') }) }}
+                </p>
+                <p v-if="docError" class="text-sm text-red-300" data-test="docs-error">{{ docError }}</p>
+                <p v-if="registration.signed && docEditable" class="text-xs text-amber-300">{{ t('page.tokenCreator.docs.resignWarning') }}</p>
+
+                <ul v-if="documents.length" class="divide-y divide-white/10 text-sm" data-test="docs-list">
+                    <li v-for="doc in documents" :key="doc.uuid" class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1" data-test="doc-row">
+                        <span class="text-white">{{ t(`page.tokenCreator.docs.types.${doc.type}`) }}</span>
+                        <span class="text-gray-500 break-all">{{ doc.original_name }} · {{ fmtSize(doc.size) }}</span>
+                        <span class="ml-auto flex items-center gap-3">
+                            <label v-if="doc.publishable" class="flex items-center gap-1 text-xs text-gray-300">
+                                <input type="checkbox" :checked="doc.publish" :disabled="!docEditable || !!docBusy" data-test="doc-publish" @change="togglePublish(doc)">
+                                {{ t('page.tokenCreator.docs.publish') }}
+                            </label>
+                            <span v-else class="text-xs text-gray-500" data-test="doc-private">{{ t('page.tokenCreator.docs.private') }}</span>
+                            <a :href="`/token-creator/documents/${doc.uuid}`" target="_blank" rel="noopener" class="text-xs text-primary-400 hover:underline">{{ t('page.tokenCreator.docs.view') }}</a>
+                            <button v-if="docEditable" type="button" class="text-xs text-red-400 hover:underline" :disabled="!!docBusy" data-test="doc-delete" @click="deleteDocument(doc)">
+                                {{ t('page.tokenCreator.docs.delete') }}
+                            </button>
+                        </span>
+                    </li>
+                </ul>
+                <p v-else class="text-sm text-gray-500" data-test="docs-empty">{{ t('page.tokenCreator.docs.empty') }}</p>
+
+                <form v-if="docEditable && allowedDocTypes.length" class="grid md:grid-cols-3 gap-3 items-end" data-test="doc-upload" @submit.prevent="uploadDocument">
+                    <label class="block text-sm">
+                        <span class="text-gray-400">{{ t('page.tokenCreator.docs.type') }}</span>
+                        <select v-model="upload.type" class="trading-input w-full" data-test="doc-type">
+                            <option v-for="type in allowedDocTypes" :key="type" :value="type">{{ t(`page.tokenCreator.docs.types.${type}`) }}</option>
+                        </select>
+                    </label>
+                    <label class="block text-sm md:col-span-2">
+                        <span class="text-gray-400">{{ t('page.tokenCreator.docs.file', { mb: Math.round((options.document_max_kb || 10240) / 1024) }) }}</span>
+                        <input ref="fileInput" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" class="block w-full text-sm text-gray-300" data-test="doc-file" @change="pickFile">
+                    </label>
+                    <label v-if="docTypes[upload.type]?.public" class="flex items-start gap-2 text-sm text-white md:col-span-2">
+                        <input v-model="upload.publish" type="checkbox" class="mt-1" :disabled="!uploadPublishable" data-test="doc-upload-publish">
+                        <span>{{ uploadPublishable ? t('page.tokenCreator.docs.publishUpload') : t('page.tokenCreator.docs.publishImageOnly') }}</span>
+                    </label>
+                    <p v-else class="text-xs text-gray-500 md:col-span-2">{{ t('page.tokenCreator.docs.adminOnly') }}</p>
+                    <button type="submit" class="btn-primary" :disabled="!upload.file || !!docBusy" data-test="doc-upload-btn">
+                        {{ docBusy === 'upload' ? t('page.tokenCreator.docs.uploading') : t('page.tokenCreator.docs.upload') }}
+                    </button>
+                </form>
             </section>
 
             <!-- 3. KYC -->
@@ -567,6 +724,7 @@ const isCompany = computed(() => form.applicant_type === 'company');
                 </div>
 
                 <p v-if="!kycApproved" class="text-xs text-amber-300">{{ t('page.tokenCreator.agreement.needKyc') }}</p>
+                <p v-if="missingDocs.length" class="text-xs text-amber-300" data-test="need-docs">{{ t('page.tokenCreator.agreement.needDocs') }}</p>
 
                 <div class="flex flex-wrap items-center gap-3">
                     <button type="button" class="btn-success" data-test="sign-agreement" :disabled="!canSign" @click="signAgreement">
@@ -585,7 +743,10 @@ const isCompany = computed(() => form.applicant_type === 'company');
                 <template v-else-if="registration.status === 'approved'">
                     <h2 class="text-lg font-semibold text-trading-green">{{ t('page.tokenCreator.status.approvedTitle') }}</h2>
                     <p class="text-sm text-gray-300" data-test="approved-desc">{{ t('page.tokenCreator.status.approvedDesc', { pct: starterPct }) }}</p>
-                    <Link href="/token-factory" class="btn-primary inline-block">{{ t('page.tokenCreator.status.approvedCta') }}</Link>
+                    <div class="flex flex-wrap gap-3">
+                        <Link href="/token-factory" class="btn-primary inline-block">{{ t('page.tokenCreator.status.approvedCta') }}</Link>
+                        <a v-if="registration.public_url" :href="registration.public_url" class="btn-secondary inline-block" data-test="public-page">{{ t('page.tokenCreator.status.publicPage') }}</a>
+                    </div>
                 </template>
                 <template v-else-if="registration.status === 'rejected'">
                     <h2 class="text-lg font-semibold text-trading-red">{{ t('page.tokenCreator.status.rejectedTitle') }}</h2>

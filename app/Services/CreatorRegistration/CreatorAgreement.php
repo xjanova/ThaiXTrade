@@ -17,11 +17,13 @@ use RuntimeException;
  */
 class CreatorAgreement
 {
-    public const CURRENT = '2026-11-06';
+    public const CURRENT = '2026-11-06.2';
 
     /** ฉบับ => SHA-256 ที่ล็อกไว้ (เพิ่มฉบับใหม่ได้ ห้ามแก้ของเดิม) */
     public const VERSIONS = [
         '2026-11-06' => '452b395d5dc9ca9814e27670b6de06bcac942cff002c53fbff98723077fe2958',
+        // หน้าที่ 10 หมวด + กติกากันลักพูลชั้น 1/2 + เอกสารและการเผยแพร่ (ตัวเลขจาก App\Support\LaunchpadRules)
+        '2026-11-06.2' => '1c19f25b02dbd766413398258a185ebc6ffb90ccb78463202f219b3256af6b0c',
     ];
 
     /** @var array<string, array> */

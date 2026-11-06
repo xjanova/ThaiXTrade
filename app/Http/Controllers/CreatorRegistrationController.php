@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\SaveCreatorRegistrationRequest;
 use App\Models\CreatorRegistration;
+use App\Models\CreatorRegistrationDocument as Document;
 use App\Models\User;
 use App\Services\CreatorRegistration\CreatorAgreement;
+use App\Services\CreatorRegistration\CreatorDocumentService;
+use App\Services\CreatorRegistration\CreatorPublicProfile;
 use App\Services\CreatorRegistration\CreatorRegistrationException;
 use App\Services\CreatorRegistration\CreatorRegistrationPdf;
 use App\Services\CreatorRegistration\CreatorRegistrationService;
@@ -15,6 +18,7 @@ use App\Services\WalletIdentityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -29,6 +33,10 @@ use Symfony\Component\HttpFoundation\Response;
  *   POST /token-creator/agreement/challenge   ขอข้อความลงนามข้อตกลง               (auth)
  *   POST /token-creator/submit                ส่งลายเซ็นข้อตกลง → รอแอดมินตรวจ    (auth)
  *   GET  /token-creator/pdf                   ดาวน์โหลดข้อตกลงที่กรอก+เซ็นแล้ว   (auth)
+ *   POST   /token-creator/documents           แนบเอกสารประกอบ                     (auth)
+ *   PATCH  /token-creator/documents/{uuid}    เปลี่ยนความยินยอมเผยแพร่ของไฟล์     (auth)
+ *   DELETE /token-creator/documents/{uuid}    ลบไฟล์                              (auth)
+ *   GET    /token-creator/documents/{uuid}    เปิดไฟล์ต้นฉบับของตัวเอง             (auth)
  *
  * ใบลงทะเบียนผูกกับ "กระเป๋าของบัญชีที่ล็อกอิน" เสมอ — ไม่รับเลขกระเป๋าจากคำขอหลังขั้นเริ่ม
  * ไม่งั้นใครล็อกอินอยู่ก็แก้/ดาวน์โหลดใบของกระเป๋าคนอื่นได้ด้วยการพิมพ์เลขกระเป๋า
@@ -43,6 +51,8 @@ class CreatorRegistrationController extends Controller
         private readonly WalletIdentityService $identities,
         private readonly KycGate $kyc,
         private readonly ThaipromptKycService $thaiprompt,
+        private readonly CreatorDocumentService $documents,
+        private readonly CreatorPublicProfile $profiles,
     ) {}
 
     public function show(Request $request): InertiaResponse
@@ -68,6 +78,9 @@ class CreatorRegistrationController extends Controller
             'options' => [
                 'categories' => SaveCreatorRegistrationRequest::CATEGORIES,
                 'fund_sources' => SaveCreatorRegistrationRequest::FUND_SOURCES,
+                'document_types' => Document::TYPES,
+                'document_max_kb' => Document::MAX_KB,
+                'document_max_files' => Document::MAX_FILES,
             ],
         ]);
     }
@@ -228,6 +241,100 @@ class CreatorRegistrationController extends Controller
     }
 
     // =========================================================================
+    // เอกสารประกอบ
+    // =========================================================================
+
+    public function uploadDocument(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'type' => ['required', 'string', Rule::in(array_keys(Document::TYPES))],
+            'file' => ['required', 'file', 'max:'.Document::MAX_KB, 'mimetypes:'.implode(',', array_keys(Document::MIMES))],
+            'publish' => ['nullable', 'boolean'],
+        ], [
+            'file.mimetypes' => __('รับเฉพาะไฟล์ JPG, PNG, WebP หรือ PDF'),
+            'file.max' => __('ไฟล์ใหญ่เกิน 10 MB'),
+            'type.in' => __('ไม่รู้จักประเภทเอกสารนี้'),
+        ], [
+            'file' => __('ไฟล์เอกสาร'),
+            'type' => __('ประเภทเอกสาร'),
+        ]);
+
+        $registration = $this->registrationFor($request->user('web'));
+        if ($registration === null) {
+            return $this->noRegistration();
+        }
+
+        try {
+            $this->documents->upload($registration, $request->file('file'), $validated['type'], $request->boolean('publish'));
+        } catch (CreatorRegistrationException $e) {
+            return response()->json($e->toResponseArray(), $e->status);
+        }
+
+        return response()->json(['success' => true, 'data' => ['registration' => $this->payload($registration->refresh())]]);
+    }
+
+    public function updateDocument(Request $request, string $document): JsonResponse
+    {
+        $validated = $request->validate(['publish' => ['required', 'boolean']]);
+
+        $registration = $this->registrationFor($request->user('web'));
+        $doc = $this->ownDocument($registration, $document);
+        if ($doc === null) {
+            return $this->noDocument();
+        }
+
+        try {
+            $this->documents->setPublish($registration, $doc, (bool) $validated['publish']);
+        } catch (CreatorRegistrationException $e) {
+            return response()->json($e->toResponseArray(), $e->status);
+        }
+
+        return response()->json(['success' => true, 'data' => ['registration' => $this->payload($registration->refresh())]]);
+    }
+
+    public function deleteDocument(Request $request, string $document): JsonResponse
+    {
+        $registration = $this->registrationFor($request->user('web'));
+        $doc = $this->ownDocument($registration, $document);
+        if ($doc === null) {
+            return $this->noDocument();
+        }
+
+        try {
+            $this->documents->delete($registration, $doc);
+        } catch (CreatorRegistrationException $e) {
+            return response()->json($e->toResponseArray(), $e->status);
+        }
+
+        return response()->json(['success' => true, 'data' => ['registration' => $this->payload($registration->refresh())]]);
+    }
+
+    public function showDocument(Request $request, string $document): Response
+    {
+        $doc = $this->ownDocument($this->registrationFor($request->user('web')), $document);
+        abort_if($doc === null, 404);
+
+        return $this->documents->originalResponse($doc);
+    }
+
+    private function ownDocument(?CreatorRegistration $registration, string $uuid): ?Document
+    {
+        if ($registration === null || ! preg_match('/^[0-9a-f\-]{36}$/', $uuid)) {
+            return null;
+        }
+
+        return $registration->documents()->where('uuid', $uuid)->first();
+    }
+
+    private function noDocument(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'error' => ['code' => 'NO_DOCUMENT', 'message' => __('ไม่พบเอกสารนี้')],
+        ], 404);
+    }
+
+    // =========================================================================
 
     private function registrationFor(?User $user): ?CreatorRegistration
     {
@@ -260,6 +367,19 @@ class CreatorRegistrationController extends Controller
             'wallet_address' => $registration->wallet_address,
             'form' => $registration->form_data,
             'form_hash' => $registration->form_hash,
+            'documents' => $registration->documents()->get()->map(fn (Document $d) => [
+                'uuid' => $d->uuid,
+                'type' => $d->type,
+                'mime' => $d->mime,
+                'size' => $d->size,
+                'sha256' => $d->sha256,
+                'original_name' => $d->original_name,
+                'publish' => $d->publish,
+                'publishable' => Document::typeIsPublic($d->type) && $d->isImage(),
+            ])->values()->all(),
+            'documents_hash' => $registration->documents_hash,
+            'missing_documents' => $this->registrations->missingDocuments($registration),
+            'public_url' => $this->profiles->isPublic($registration) ? route('token-creator.projects.show', $registration->uuid) : null,
             'ownership_signed_at' => $registration->ownership_signed_at?->toIso8601String(),
             'signed' => $registration->isSigned(),
             'agreement_version' => $registration->agreement_version,

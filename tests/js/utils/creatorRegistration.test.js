@@ -12,6 +12,8 @@ import {
     blankCreatorForm,
     creatorStep,
     describeCreatorError,
+    documentPublishable,
+    documentTypesFor,
     formatBps,
     signWithWallet,
 } from '@/utils/creatorRegistration';
@@ -126,5 +128,32 @@ describe('describeCreatorError', () => {
         expect(describeCreatorError({ response: { status: 429 } })).toBe('page.tokenCreator.errors.rateLimited');
         expect(describeCreatorError({ response: { status: 419 } })).toBe('page.tokenCreator.errors.sessionExpired');
         expect(describeCreatorError(new Error('Network Error'))).toBe('page.tokenCreator.errors.network');
+    });
+});
+
+describe('เอกสารประกอบ', () => {
+    const TYPES = {
+        company_certificate: { public: true, company: true, max: 3 },
+        project_photo: { public: true, company: false, max: 6 },
+        signatory_id: { public: false, company: false, max: 2 },
+    };
+
+    it('documentTypesFor — บุคคลธรรมดาไม่เห็นประเภทบริษัท', () => {
+        expect(documentTypesFor('company', TYPES)).toEqual(['company_certificate', 'project_photo', 'signatory_id']);
+        expect(documentTypesFor('individual', TYPES)).toEqual(['project_photo', 'signatory_id']);
+        expect(documentTypesFor(undefined, undefined)).toEqual([]);
+    });
+
+    it('documentPublishable — เฉพาะประเภทสาธารณะที่เป็นภาพ', () => {
+        expect(documentPublishable('project_photo', 'image/png', TYPES)).toBe(true);
+        expect(documentPublishable('project_photo', 'application/pdf', TYPES)).toBe(false);
+        expect(documentPublishable('signatory_id', 'image/jpeg', TYPES)).toBe(false);
+        expect(documentPublishable('unknown', 'image/jpeg', TYPES)).toBe(false);
+    });
+
+    it('describeCreatorError — 413 และ 422 ของ Laravel', () => {
+        expect(describeCreatorError({ response: { status: 413 } })).toBe('page.tokenCreator.errors.fileTooLarge');
+        expect(describeCreatorError({ response: { status: 422, data: { errors: { file: ['รับเฉพาะไฟล์ JPG'] } } } })).toBe('รับเฉพาะไฟล์ JPG');
+        expect(describeCreatorError({ response: { status: 422, data: { error: { message: 'ข้อความจากบริการ' } } } })).toBe('ข้อความจากบริการ');
     });
 });

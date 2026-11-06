@@ -109,6 +109,11 @@ class SaveCreatorRegistrationRequest extends FormRequest
             'pep_details' => ['required_if_accepted:is_pep', 'nullable', 'string', 'max:500'],
             'declare_not_sanctioned' => ['accepted'],
             'declare_true' => ['accepted'],
+
+            // ความยินยอมเผยแพร่ทีละรายการ (PDPA) — ข้อมูลติดต่อ (อีเมล เบอร์ ที่อยู่) ไม่เผยแพร่เลย
+            // เอกสารแนบเลือกเผยแพร่ทีละไฟล์ในขั้นเอกสาร
+            'consent_publish_project' => ['accepted'],
+            'consent_publish_name' => ['required', 'boolean'],
         ];
     }
 
@@ -168,6 +173,8 @@ class SaveCreatorRegistrationRequest extends FormRequest
             'pep_details' => __('รายละเอียดสถานภาพทางการเมือง'),
             'declare_not_sanctioned' => __('คำรับรองว่าไม่อยู่ในรายชื่อคว่ำบาตร'),
             'declare_true' => __('คำรับรองว่าข้อมูลเป็นความจริง'),
+            'consent_publish_project' => __('ความยินยอมให้เผยแพร่ข้อมูลโครงการ'),
+            'consent_publish_name' => __('ความยินยอมให้เผยแพร่ชื่อผู้สร้าง'),
         ];
     }
 
@@ -192,6 +199,8 @@ class SaveCreatorRegistrationRequest extends FormRequest
         }
         $data['declare_not_sanctioned'] = true;
         $data['declare_true'] = true;
+        $data['consent_publish_project'] = true;
+        $data['consent_publish_name'] = filter_var($data['consent_publish_name'], FILTER_VALIDATE_BOOLEAN);
 
         foreach (array_keys($this->rules()) as $key) {
             if (! in_array($key, $drop, true)) {

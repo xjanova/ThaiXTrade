@@ -45,6 +45,8 @@ trait CreatorRegistrationHelpers
             'is_pep' => false,
             'declare_not_sanctioned' => true,
             'declare_true' => true,
+            'consent_publish_project' => true,
+            'consent_publish_name' => false,
         ], $overrides);
     }
 

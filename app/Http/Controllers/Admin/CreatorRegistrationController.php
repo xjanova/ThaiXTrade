@@ -6,7 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\AdminUser;
 use App\Models\AuditLog;
 use App\Models\CreatorRegistration;
+use App\Models\CreatorRegistrationDocument as Document;
 use App\Models\SiteSetting;
+use App\Services\CreatorRegistration\CreatorDocumentService;
+use App\Services\CreatorRegistration\CreatorPublicProfile;
 use App\Services\CreatorRegistration\CreatorRegistrationException;
 use App\Services\CreatorRegistration\CreatorRegistrationPdf;
 use App\Services\CreatorRegistration\CreatorRegistrationService;
@@ -108,6 +111,19 @@ class CreatorRegistrationController extends Controller
                 'reviewed_at' => $r->reviewed_at?->toIso8601String(),
                 'reviewer' => $r->reviewer?->name,
                 'rejection_reason' => $r->rejection_reason,
+                'documents_hash' => $r->documents_hash,
+                'documents' => $r->documents->map(fn (Document $d) => [
+                    'uuid' => $d->uuid,
+                    'type' => $d->type,
+                    'mime' => $d->mime,
+                    'size' => $d->size,
+                    'sha256' => $d->sha256,
+                    'original_name' => $d->original_name,
+                    'publish' => $d->publish,
+                    'public' => $d->isPubliclyViewable(),
+                ])->values()->all(),
+                'missing_documents' => $this->registrations->missingDocuments($r),
+                'public_url' => app(CreatorPublicProfile::class)->isPublic($r) ? route('token-creator.projects.show', $r->uuid) : null,
             ],
             'user' => $user ? [
                 'id' => $user->id,
@@ -166,6 +182,24 @@ class CreatorRegistrationController extends Controller
         return back()->with('success', __('ปฏิเสธใบลงทะเบียนแล้ว'));
     }
 
+    /**
+     * เปิดไฟล์ต้นฉบับ (รวมบัตรผู้มีอำนาจลงนาม) — แอดมินทุกระดับที่เข้าหน้านี้ได้ บันทึกว่าใครเปิดไฟล์ไหน.
+     */
+    public function document(string $uuid, string $document, CreatorDocumentService $documents): Response
+    {
+        $r = $this->find($uuid);
+        $doc = $r->documents->firstWhere('uuid', $document);
+        abort_if($doc === null, 404);
+
+        AuditLog::log('creator_registration.document_view', $r, null, [
+            'uuid' => $r->uuid,
+            'document' => $doc->uuid,
+            'type' => $doc->type,
+        ]);
+
+        return $documents->originalResponse($doc);
+    }
+
     public function pdf(string $uuid, CreatorRegistrationPdf $pdf): Response
     {
         $r = $this->find($uuid);
@@ -199,7 +233,7 @@ class CreatorRegistrationController extends Controller
 
     private function find(string $uuid): CreatorRegistration
     {
-        return CreatorRegistration::query()->with(['user', 'reviewer'])->where('uuid', $uuid)->firstOrFail();
+        return CreatorRegistration::query()->with(['user', 'reviewer', 'documents'])->where('uuid', $uuid)->firstOrFail();
     }
 
     private function admin(): ?AdminUser
