@@ -36,7 +36,8 @@ return new class() extends Migration
             $table->unsignedSmallInteger('height')->nullable();
             $table->timestamps();
 
-            $table->index(['creator_registration_id', 'type']);
+            // ตั้งชื่อเอง — ชื่ออัตโนมัติยาว 65 ตัว เกินเพดาน 64 ของ MariaDB/MySQL
+            $table->index(['creator_registration_id', 'type'], 'creator_reg_docs_reg_type_index');
         });
 
         Schema::table('creator_registrations', function (Blueprint $table) {
