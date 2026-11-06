@@ -5,7 +5,7 @@
  */
 
 import { ref } from 'vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { getBaseSymbol } from '@/utils/cryptoLogos';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import { useTranslation } from '@/Composables/useTranslation';
@@ -14,6 +14,7 @@ import { version } from '../../../../version.json';
 import BrandLogo from '@/Components/Brand/BrandLogo.vue';
 
 const { t } = useTranslation();
+const page = usePage();
 const emit = defineEmits(['navigate']);
 
 // โลโก้ท้ายเมนู: กดแล้วกลับหน้าแรก "บนสุด"
@@ -147,6 +148,12 @@ function agoLabel(trade) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                     </svg>
                     <span>{{ t('footer.fairLaunch') }}</span>
+                </Link>
+                <Link v-if="page.props.launchpad_nav" href="/launchpad" class="nav-link text-primary-400">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.63 8.41m5.96 5.96a14.93 14.93 0 01-5.84 2.58m0 0a6 6 0 01-7.38-5.84h4.8m2.58 5.84a14.93 14.93 0 01-2.58-5.84m0 0a6 6 0 01-.12-1.07"/>
+                    </svg>
+                    <span>{{ t('launchpad.title') }}</span>
                 </Link>
                 <Link href="/token-factory" class="nav-link">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -297,6 +297,12 @@ const handleAddTpixAssets = async () => {
                                 </svg>
                                 {{ t('ui.navigationNavBar.fairLaunch') }}
                             </Link>
+                            <Link v-if="page.props.launchpad_nav" href="/launchpad" class="flex items-center gap-2 px-4 py-2 text-sm text-primary-400 hover:text-primary-300 hover:bg-primary-500/10">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.63 8.41m5.96 5.96a14.93 14.93 0 01-5.84 2.58m0 0a6 6 0 01-7.38-5.84h4.8m2.58 5.84a14.93 14.93 0 01-2.58-5.84m0 0a6 6 0 01-.12-1.07"/>
+                                </svg>
+                                {{ t('launchpad.title') }}
+                            </Link>
                             <Link href="/carbon-credits" class="flex items-center gap-2 px-4 py-2 text-sm text-dark-300 hover:text-white hover:bg-white/5">
                                 {{ t('nav.carbonCredit') }}
                             </Link>
