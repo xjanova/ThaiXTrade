@@ -41,6 +41,7 @@ vi.mock('@/Layouts/AdminLayout.vue', () => ({ default: { template: '<div><slot /
 
 import Index from '@/Pages/Admin/CreatorRegistrations/Index.vue';
 import Show from '@/Pages/Admin/CreatorRegistrations/Show.vue';
+import { t } from '@/Composables/useTranslation';
 
 const $ = (w, sel) => w.find(`[data-test="${sel}"]`);
 
@@ -157,6 +158,39 @@ describe('Admin/CreatorRegistrations/Show', () => {
 
         expect($(w, 'error').text()).toBe('ผู้สร้างยังไม่ผ่าน KYC');
         expect($(w, 'pdf').attributes('href')).toBe('/admin/creator-registrations/11111111-2222-3333-4444-555555555555/pdf');
+    });
+});
+
+describe('Admin/CreatorRegistrations/Show — เอกสารประกอบ', () => {
+    const doc = (overrides = {}) => ({
+        uuid: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', type: 'company_certificate', mime: 'application/pdf',
+        size: 4096, sha256: 'e'.repeat(64), original_name: 'cert.pdf', publish: false, public: false, ...overrides,
+    });
+
+    it('แสดงรายการ ลิงก์เปิดไฟล์ผ่านหลังบ้าน และบอกว่าเผยแพร่หรือไม่', () => {
+        const w = mountShow({
+            registration: registration({ documents: [doc(), doc({ uuid: 'ffffffff-bbbb-cccc-dddd-eeeeeeeeeeee', type: 'project_photo', public: true })], public_url: '/token-creator/projects/x' }),
+        });
+
+        const rows = w.findAll('[data-test="document-row"]');
+        expect(rows).toHaveLength(2);
+        expect(rows[0].find('[data-test="document-open"]').attributes('href'))
+            .toBe('/admin/creator-registrations/11111111-2222-3333-4444-555555555555/documents/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
+        expect(rows[1].text()).toContain(t('admin.creatorRegistrations.show.docPublic'));
+        expect($(w, 'public-url').attributes('href')).toBe('/token-creator/projects/x');
+    });
+
+    it('ขาดเอกสารที่จำเป็น → เตือน · ไม่มีเอกสาร → ข้อความว่าง', () => {
+        const w = mountShow({ registration: registration({ documents: [], missing_documents: ['company_certificate'] }) });
+
+        expect($(w, 'documents-missing').text()).toContain(t('page.tokenCreator.docs.types.company_certificate'));
+        expect($(w, 'documents-empty').exists()).toBe(true);
+    });
+
+    it('เอกสารไม่ตรงกับที่ลงนาม → ปุ่มอนุมัติปิด', () => {
+        const w = mountShow({ evidence: { ...goodEvidence, documents_hash_matches: false } });
+
+        expect($(w, 'approve').attributes('disabled')).toBeDefined();
     });
 });
 

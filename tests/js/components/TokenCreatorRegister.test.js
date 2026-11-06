@@ -19,6 +19,8 @@ const routerPost = vi.fn();
 const routerReload = vi.fn();
 const axiosPost = vi.fn();
 const axiosPut = vi.fn();
+const axiosPatch = vi.fn();
+const axiosDelete = vi.fn();
 const WALLET = '0xabcdef0000000000000000000000000000000001';
 const wallet = reactive({
     address: null,
@@ -37,7 +39,15 @@ vi.mock('@inertiajs/vue3', async () => {
         Link: { props: ['href'], template: '<a :href="href"><slot /></a>' },
     };
 });
-vi.mock('axios', () => ({ default: { post: (...a) => axiosPost(...a), put: (...a) => axiosPut(...a), get: vi.fn() } }));
+vi.mock('axios', () => ({
+    default: {
+        post: (...a) => axiosPost(...a),
+        put: (...a) => axiosPut(...a),
+        patch: (...a) => axiosPatch(...a),
+        delete: (...a) => axiosDelete(...a),
+        get: vi.fn(),
+    },
+}));
 vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn(() => Promise.resolve('data:image/png;base64,QR')) } }));
 vi.mock('@/Layouts/AppLayout.vue', () => ({ default: { template: '<div><slot /></div>' } }));
 vi.mock('@/Stores/walletStore', () => ({ useWalletStore: () => wallet }));
@@ -103,6 +113,8 @@ beforeEach(() => {
     routerReload.mockReset();
     axiosPost.mockReset();
     axiosPut.mockReset();
+    axiosPatch.mockReset();
+    axiosDelete.mockReset();
     wallet.address = null;
     wallet.signer = null;
     wallet.openConnectModal.mockReset();
@@ -363,5 +375,131 @@ describe('TokenCreator/Register — สถานะ', () => {
         const w = mountPage({ registration: draft({ status: 'approved', starter_allocation_bps: 1500, signed: true }) });
 
         expect($(w, 'approved-desc').text()).toContain('15');
+    });
+});
+
+describe('TokenCreator/Register — ความยินยอมและเอกสาร', () => {
+    const DOC_TYPES = {
+        company_certificate: { public: true, company: true, max: 3 },
+        project_photo: { public: true, company: false, max: 6 },
+        signatory_id: { public: false, company: false, max: 2 },
+    };
+    const docOptions = { categories: ['utility'], fund_sources: ['own_funds'], document_types: DOC_TYPES, document_max_kb: 10240 };
+    const photo = (overrides = {}) => ({
+        uuid: 'd-1', type: 'project_photo', mime: 'image/jpeg', size: 2048, sha256: 'e'.repeat(64),
+        original_name: 'farm.jpg', publish: false, publishable: true, ...overrides,
+    });
+    const pickFile = async (w, file) => {
+        const input = $(w, 'doc-file');
+        Object.defineProperty(input.element, 'files', { value: [file], configurable: true });
+        await input.trigger('change');
+    };
+
+    it('ฟอร์มมีช่องยินยอมเผยแพร่แยกรายการ', () => {
+        const w = mountPage({ registration: draft({ form_hash: null }) });
+
+        expect($(w, 'consents').exists()).toBe(true);
+        expect($(w, 'consent-project').exists()).toBe(true);
+        expect($(w, 'consent-name').exists()).toBe(true);
+    });
+
+    it('บุคคลธรรมดาไม่เห็นประเภทเอกสารบริษัท', () => {
+        const w = mountPage({ registration: draft({ form: { applicant_type: 'individual' }, documents: [] }), options: docOptions });
+
+        const options = $(w, 'doc-type').findAll('option').map((o) => o.element.value);
+        expect(options).toEqual(['project_photo', 'signatory_id']);
+        expect($(w, 'docs-empty').exists()).toBe(true);
+    });
+
+    it('นิติบุคคลยังไม่มีหนังสือรับรอง → เตือนและปิดปุ่มเซ็น', async () => {
+        wallet.address = WALLET;
+        const w = mountPage({
+            registration: draft({ form: { applicant_type: 'company' }, documents: [], missing_documents: ['company_certificate'] }),
+            kyc: { approved: true, level: 'basic', thaiprompt: thaiprompt() },
+            options: docOptions,
+        });
+        await $(w, 'ack-read').setValue(true);
+        await $(w, 'ack-thai').setValue(true);
+        await $(w, 'ack-risk').setValue(true);
+
+        expect($(w, 'docs-missing').text()).toContain(t('page.tokenCreator.docs.types.company_certificate'));
+        expect($(w, 'need-docs').exists()).toBe(true);
+        expect($(w, 'sign-agreement').attributes('disabled')).toBeDefined();
+    });
+
+    it('แนบภาพ ติ๊กเผยแพร่ได้ แล้วส่ง FormData', async () => {
+        axiosPost.mockResolvedValueOnce({ data: { data: { registration: draft({ form: { applicant_type: 'individual' }, documents: [photo({ publish: true })] }) } } });
+        const w = mountPage({ registration: draft({ form: { applicant_type: 'individual' }, documents: [] }), options: docOptions });
+
+        await pickFile(w, new File(['x'], 'farm.jpg', { type: 'image/jpeg' }));
+        expect($(w, 'doc-upload-publish').attributes('disabled')).toBeUndefined();
+        await $(w, 'doc-upload-publish').setValue(true);
+        await $(w, 'doc-upload').trigger('submit');
+        await flushPromises();
+
+        const [url, body] = axiosPost.mock.calls[0];
+        expect(url).toBe('/token-creator/documents');
+        expect(body.get('type')).toBe('project_photo');
+        expect(body.get('publish')).toBe('1');
+        expect($(w, 'doc-row').exists()).toBe(true);
+    });
+
+    it('ไฟล์ PDF → ติ๊กเผยแพร่ไม่ได้ ส่ง publish=0', async () => {
+        axiosPost.mockResolvedValueOnce({ data: { data: { registration: draft({ documents: [] }) } } });
+        const w = mountPage({ registration: draft({ form: { applicant_type: 'individual' }, documents: [] }), options: docOptions });
+
+        await pickFile(w, new File(['%PDF-'], 'plan.pdf', { type: 'application/pdf' }));
+        expect($(w, 'doc-upload-publish').attributes('disabled')).toBeDefined();
+        expect(w.text()).toContain(t('page.tokenCreator.docs.publishImageOnly'));
+        await $(w, 'doc-upload').trigger('submit');
+        await flushPromises();
+
+        expect(axiosPost.mock.calls[0][1].get('publish')).toBe('0');
+    });
+
+    it('ไฟล์ใหญ่เกิน (413) → ข้อความเข้าใจง่าย', async () => {
+        axiosPost.mockRejectedValueOnce({ response: { status: 413, data: '' } });
+        const w = mountPage({ registration: draft({ form: { applicant_type: 'individual' }, documents: [] }), options: docOptions });
+
+        await pickFile(w, new File(['x'], 'big.jpg', { type: 'image/jpeg' }));
+        await $(w, 'doc-upload').trigger('submit');
+        await flushPromises();
+
+        expect($(w, 'docs-error').text()).toBe(t('page.tokenCreator.errors.fileTooLarge'));
+    });
+
+    it('สลับเผยแพร่และลบ (ต้องยืนยันก่อนลบ)', async () => {
+        axiosPatch.mockResolvedValueOnce({ data: { data: { registration: draft({ documents: [photo({ publish: true })] }) } } });
+        axiosDelete.mockResolvedValueOnce({ data: { data: { registration: draft({ documents: [] }) } } });
+        const confirm = vi.spyOn(window, 'confirm');
+        const w = mountPage({ registration: draft({ form: { applicant_type: 'individual' }, documents: [photo()] }), options: docOptions });
+
+        await $(w, 'doc-publish').trigger('change');
+        await flushPromises();
+        expect(axiosPatch).toHaveBeenCalledWith('/token-creator/documents/d-1', { publish: true });
+
+        confirm.mockReturnValueOnce(false);
+        await $(w, 'doc-delete').trigger('click');
+        expect(axiosDelete).not.toHaveBeenCalled();
+
+        confirm.mockReturnValueOnce(true);
+        await $(w, 'doc-delete').trigger('click');
+        await flushPromises();
+        expect(axiosDelete).toHaveBeenCalledWith('/token-creator/documents/d-1');
+        expect($(w, 'docs-empty').exists()).toBe(true);
+        confirm.mockRestore();
+    });
+
+    it('ส่งตรวจแล้ว → ไม่มีฟอร์มแนบหรือปุ่มลบ', () => {
+        const w = mountPage({ registration: draft({ status: 'submitted', signed: true, documents: [photo()] }), options: docOptions });
+
+        expect($(w, 'doc-upload').exists()).toBe(false);
+        expect($(w, 'doc-delete').exists()).toBe(false);
+    });
+
+    it('อนุมัติแล้วและยินยอมเผยแพร่ → ลิงก์หน้าโครงการสาธารณะ', () => {
+        const w = mountPage({ registration: draft({ status: 'approved', starter_allocation_bps: 1000, signed: true, public_url: '/token-creator/projects/u-1' }) });
+
+        expect($(w, 'public-page').attributes('href')).toBe('/token-creator/projects/u-1');
     });
 });

@@ -35,7 +35,8 @@ const pending = computed(() => r.value.status === 'submitted');
 
 const evidenceOk = computed(() => !!(props.evidence.agreement_signature_valid
     && props.evidence.agreement_hash_matches
-    && props.evidence.form_hash_matches));
+    && props.evidence.form_hash_matches
+    && props.evidence.documents_hash_matches !== false));
 const canApprove = computed(() => props.canDecide && pending.value && props.kyc.approved && evidenceOk.value);
 
 const approveForm = useForm({ starter_pct: props.defaultStarterBps / 100 });
@@ -80,6 +81,7 @@ const evidenceRows = computed(() => [
     ['agreementSig', props.evidence.agreement_signature_valid],
     ['agreementHash', props.evidence.agreement_hash_matches],
     ['formHash', props.evidence.form_hash_matches],
+    ['documentsHash', props.evidence.documents_hash_matches],
 ]);
 </script>
 
@@ -149,6 +151,33 @@ const evidenceRows = computed(() => [
                         </div>
                     </dl>
                 </div>
+            </section>
+
+            <!-- เอกสารประกอบ -->
+            <section class="glass-card p-5 space-y-3 text-sm" data-test="documents">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h2 class="text-lg font-semibold text-white">{{ t('admin.creatorRegistrations.show.documents') }}</h2>
+                    <a v-if="r.public_url" :href="r.public_url" target="_blank" rel="noopener" class="text-xs text-primary-400 hover:underline" data-test="public-url">
+                        {{ t('admin.creatorRegistrations.show.publicPage') }}
+                    </a>
+                </div>
+                <p v-if="(r.missing_documents || []).length" class="text-trading-red" data-test="documents-missing">
+                    ✗ {{ t('admin.creatorRegistrations.show.documentsMissing', { types: r.missing_documents.map((d) => t(`page.tokenCreator.docs.types.${d}`)).join(', ') }) }}
+                </p>
+                <ul v-if="(r.documents || []).length" class="divide-y divide-white/10">
+                    <li v-for="doc in r.documents" :key="doc.uuid" class="py-2 flex flex-wrap items-center gap-x-4 gap-y-1" data-test="document-row">
+                        <span class="text-white">{{ t(`page.tokenCreator.docs.types.${doc.type}`) }}</span>
+                        <span class="text-gray-500 break-all">{{ doc.original_name }} · {{ Math.max(1, Math.round(doc.size / 1024)) }} KB</span>
+                        <span class="text-xs" :class="doc.public ? 'text-amber-300' : 'text-gray-500'">
+                            {{ doc.public ? t('admin.creatorRegistrations.show.docPublic') : t('admin.creatorRegistrations.show.docPrivate') }}
+                        </span>
+                        <span class="font-mono text-[10px] text-gray-600 break-all">{{ doc.sha256 }}</span>
+                        <a :href="`/admin/creator-registrations/${r.uuid}/documents/${doc.uuid}`" target="_blank" rel="noopener"
+                           class="ml-auto text-xs text-primary-400 hover:underline" data-test="document-open">{{ t('admin.creatorRegistrations.show.docOpen') }}</a>
+                    </li>
+                </ul>
+                <p v-else class="text-gray-500" data-test="documents-empty">{{ t('admin.creatorRegistrations.show.documentsEmpty') }}</p>
+                <p class="text-xs text-gray-500">{{ t('admin.creatorRegistrations.show.docAudit') }}</p>
             </section>
 
             <!-- ข้อความที่เซ็น -->

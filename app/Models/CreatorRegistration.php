@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -29,6 +30,7 @@ use Illuminate\Support\Str;
  * @property string|null $token_symbol
  * @property array|null $form_data
  * @property string|null $form_hash
+ * @property string|null $documents_hash
  * @property string|null $ownership_message
  * @property string|null $ownership_signature
  * @property Carbon|null $ownership_signed_at
@@ -85,6 +87,7 @@ class CreatorRegistration extends Model
         'token_symbol',
         'form_data',
         'form_hash',
+        'documents_hash',
         'ownership_message',
         'ownership_signature',
         'ownership_signed_at',
@@ -131,6 +134,16 @@ class CreatorRegistration extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(CreatorRegistrationDocument::class)->orderBy('id');
+    }
+
+    public function isCompany(): bool
+    {
+        return $this->applicant_type === self::TYPE_COMPANY;
     }
 
     public function reviewer(): BelongsTo

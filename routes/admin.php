@@ -171,6 +171,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->middleware('admin.role:super_admin')->name('settings');
             Route::get('{uuid}', [AdminCreatorRegistrationController::class, 'show'])->whereUuid('uuid')->name('show');
             Route::get('{uuid}/pdf', [AdminCreatorRegistrationController::class, 'pdf'])->whereUuid('uuid')->name('pdf');
+            Route::get('{uuid}/documents/{document}', [AdminCreatorRegistrationController::class, 'document'])
+                ->whereUuid('uuid')->whereUuid('document')->name('document');
             // อนุมัติ = เปิดสิทธิ์สร้างเหรียญ + กำหนดส่วนเริ่มโครงการ → super_admin จนกว่าเจ้าของจะสั่งเปิดให้ระดับอื่น
             Route::post('{uuid}/approve', [AdminCreatorRegistrationController::class, 'approve'])
                 ->whereUuid('uuid')->middleware('admin.role:super_admin')->name('approve');

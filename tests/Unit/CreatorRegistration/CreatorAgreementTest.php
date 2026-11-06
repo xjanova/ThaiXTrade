@@ -4,6 +4,7 @@ namespace Tests\Unit\CreatorRegistration;
 
 use App\Services\CreatorRegistration\CreatorAgreement;
 use App\Services\CreatorRegistration\CreatorRegistrationService;
+use App\Support\LaunchpadRules;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -112,5 +113,44 @@ class CreatorAgreementTest extends TestCase
         $this->assertStringContainsString('Application SHA-256: '.str_repeat('f', 64), $message);
         $this->assertStringContainsString('Registration: 11111111-2222-3333-4444-555555555555', $message);
         $this->assertStringContainsString('Thai text prevails', $message);
+        $this->assertStringNotContainsString('Documents SHA-256', $message);   // ไม่มีเอกสาร = ข้อความแบบรอบแรกเป๊ะ
+    }
+
+    #[Test]
+    public function ข้อความข้อตกลงผูกแฮชรายการเอกสารเมื่อมีเอกสาร(): void
+    {
+        $args = ['0x'.str_repeat('ab', 20), '11111111-2222-3333-4444-555555555555', '2026-11-06.2',
+            str_repeat('a', 64), str_repeat('f', 64), str_repeat('c', 32), '2026-11-06T00:00:00Z'];
+
+        $with = CreatorRegistrationService::agreementMessage(...[...$args, str_repeat('d', 64)]);
+        $without = CreatorRegistrationService::agreementMessage(...$args);
+
+        $this->assertTrue(mb_check_encoding($with, 'ASCII'));
+        $this->assertStringContainsString('Documents SHA-256: '.str_repeat('d', 64), $with);
+        $this->assertSame($without, CreatorRegistrationService::agreementMessage(...[...$args, null]));
+    }
+
+    #[Test]
+    public function ฉบับสองมีหน้าที่ครบ_ใช้ตัวเลขกติกากันรักจากโค้ด_และไม่อ้างว่าอายัดบนเชนได้(): void
+    {
+        $agreement = app(CreatorAgreement::class);
+        $this->assertSame('2026-11-06.2', CreatorAgreement::CURRENT);
+        $this->assertTrue($agreement->exists('2026-11-06'));   // ฉบับเก่ายังเปิดได้ — ใบที่ลงนามไว้ตรวจย้อนได้
+
+        $doc = $agreement->document('2026-11-06.2');
+        $ids = array_column($doc['sections'], 'id');
+        foreach (['information', 'buyer-duties', 'prohibited', 'fees', 'liability', 'compliance',
+            'platform-rights', 'onchain-rules', 'web-rules', 'documents-publication', 'term', 'signature-record'] as $required) {
+            $this->assertContains($required, $ids);
+        }
+
+        $all = json_encode($doc, JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString((string) LaunchpadRules::MIN_LP_LOCK_DAYS, $all);
+        $this->assertStringContainsString(LaunchpadRules::percent(LaunchpadRules::MIN_LOCKED_SUPPLY_BPS), $all);
+
+        // ข้อ platform-rights ต้องบอกชัดว่าแพลตฟอร์มอายัด/ยึดเหรียญบนเชนไม่ได้ — ห้ามมีข้อไหนอ้างว่าทำได้
+        $rights = json_encode($doc['sections'][array_search('platform-rights', $ids, true)], JSON_UNESCAPED_UNICODE);
+        $this->assertStringContainsString('no right and no ability to stop, halt, freeze or seize', $rights);
+        $this->assertStringContainsString('ไม่มีสิทธิ์และไม่สามารถ', $rights);
     }
 }

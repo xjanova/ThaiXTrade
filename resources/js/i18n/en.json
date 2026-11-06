@@ -5011,7 +5011,11 @@
                 "editWarning": "Editing the details requires signing the agreement again; the old signature only covers the old data",
                 "pep": "I am a politically exposed person (PEP) or a family member or close associate of one",
                 "notSanctioned": "I declare that I, my major shareholders and controlling persons are not on any designated-person or sanctions list",
-                "declareTrue": "I declare that all information is true and complete"
+                "declareTrue": "I declare that all information is true and complete",
+                "consents": "Publication consent (PDPA)",
+                "consentsHint": "Email, phone, address, date of birth and ID are never published. You choose which documents to publish one by one in the documents step.",
+                "consentProject": "I consent to publishing the project information (name, description, team, use of funds, links) and the company name/registration number on the public project page and whitepaper (required)",
+                "consentName": "I consent to publishing the creator's name (individual) or the authorised signatory's name (company) — optional"
             },
             "fields": {
                 "full_name": "Full name",
@@ -5104,7 +5108,8 @@
                 "needForm": "Save the step 2 details first",
                 "needKyc": "Complete step 3 identity verification first",
                 "sign": "Sign the agreement with your wallet and submit",
-                "downloadDraft": "Download draft PDF"
+                "downloadDraft": "Download draft PDF",
+                "needDocs": "Attach the required documents before signing the agreement"
             },
             "status": {
                 "submittedTitle": "Submitted — awaiting review",
@@ -5116,7 +5121,8 @@
                 "reason": "Reason",
                 "resubmit": "Edit and resubmit",
                 "downloadPdf": "Download the signed agreement (PDF)",
-                "signedAt": "Signed at {at}"
+                "signedAt": "Signed at {at}",
+                "publicPage": "View public project page"
             },
             "stage": {
                 "challenge": "Requesting message…",
@@ -5132,7 +5138,68 @@
                 "rateLimited": "Too many requests — wait a moment and try again",
                 "network": "Could not reach the server",
                 "failed": "Something went wrong — please try again",
-                "sessionExpired": "Your session expired — sign with your wallet again"
+                "sessionExpired": "Your session expired — sign with your wallet again",
+                "fileTooLarge": "The file is larger than the server accepts — keep it under 10 MB"
+            },
+            "docs": {
+                "title": "Supporting documents",
+                "companyIntro": "Companies must attach at least one company certificate, and may add the VAT registration, shareholder list, project photos or the signatory's ID.",
+                "individualIntro": "Individuals do not need company documents. You may attach project photos or your ID for the review team (optional).",
+                "publicNote": "Documents marked \"Publish\" are shown to buyers as resized images watermarked \"For project verification on tpix.online only\" with the date; nobody gets the original file. IDs are visible to admins only.",
+                "missing": "Still missing: {types}",
+                "resignWarning": "Changing documents means signing the agreement again, because the signature covers the document list.",
+                "publish": "Publish",
+                "private": "Not published",
+                "view": "View",
+                "delete": "Delete",
+                "confirmDelete": "Delete this file? It cannot be recovered and you will need to sign the agreement again.",
+                "empty": "No documents yet",
+                "type": "Document type",
+                "file": "File (JPG, PNG, WebP or PDF, up to {mb} MB)",
+                "publishUpload": "Publish this file on the project page (as a watermarked image)",
+                "publishImageOnly": "Only image files can be published — PDFs stay with the review team",
+                "adminOnly": "This document type is visible to admins only and is never published",
+                "upload": "Attach file",
+                "uploading": "Uploading…",
+                "types": {
+                    "company_certificate": "Company certificate",
+                    "vat_certificate": "VAT registration (Por Por 20)",
+                    "shareholder_list": "Shareholder list",
+                    "company_other": "Other company document",
+                    "project_photo": "Project photo",
+                    "signatory_id": "Signatory ID (admin only)"
+                }
+            }
+        },
+        "creatorProject": {
+            "headTitle": "Project information | TPIX TRADE",
+            "kicker": "Token creator project page",
+            "kycBadge": "Verified through Thaiprompt",
+            "company": "Company",
+            "individual": "Individual",
+            "approvedAt": "Registration reviewed {date}",
+            "notEndorsement": "Passing review is not an endorsement or investment advice. The creator supplied this information and consented to publish it.",
+            "risksTitle": "Read before you buy",
+            "creatorTitle": "Project creator",
+            "aboutTitle": "About the project",
+            "starter": "The creator receives a {pct}% unlocked starter allocation of the supply",
+            "linksNote": "These links are supplied by the creator; the platform has not reviewed their content.",
+            "tokensTitle": "Project tokens",
+            "whitepaper": "Standard whitepaper",
+            "documentsTitle": "Documents disclosed by the creator",
+            "documentsNote": "Images are watermarked \"For project verification on tpix.online only\" with the date — do not reuse them elsewhere.",
+            "agreement": "The creator signed the Token Creator Agreement version {version} with their wallet",
+            "wallet": "Creator wallet",
+            "back": "Back to Token Factory",
+            "entity": {
+                "company_name": "Company name",
+                "company_name_en": "Company name (English)",
+                "registration_number": "Registration number",
+                "registration_country": "Country of registration",
+                "signatory_name": "Authorised signatory",
+                "signatory_position": "Position",
+                "full_name": "Creator name",
+                "full_name_en": "Creator name (English)"
             }
         }
     },
@@ -10069,7 +10136,16 @@
                 "pep": "PEP",
                 "yes": "Yes",
                 "no": "No",
-                "superOnly": "Only a super admin can approve or reject"
+                "superOnly": "Only a super admin can approve or reject",
+                "documentsHash": "Documents match signed hash",
+                "documents": "Supporting documents",
+                "publicPage": "Open public project page",
+                "documentsMissing": "Required documents missing: {types}",
+                "docPublic": "Published (watermarked)",
+                "docPrivate": "Not published",
+                "docOpen": "Open original file",
+                "documentsEmpty": "No documents attached",
+                "docAudit": "Every time an original file is opened, the admin's name is recorded in the audit log."
             }
         }
     },

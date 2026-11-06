@@ -5,6 +5,7 @@ namespace App\Services\CreatorRegistration;
 use App\Models\AdminUser;
 use App\Models\AuditLog;
 use App\Models\CreatorRegistration;
+use App\Models\CreatorRegistrationDocument;
 use App\Models\SiteSetting;
 use App\Models\User;
 use App\Services\AdminNotificationService;
@@ -22,7 +23,8 @@ use Throwable;
  *      → เข้าสู่ระบบด้วยกระเป๋า + เปิดใบลงทะเบียน กระเป๋านี้คือกระเป๋ารับเหรียญ
  *   2. กรอกข้อมูลผู้สร้าง/โครงการ (SaveCreatorRegistrationRequest)
  *   3. ต้องผ่าน KYC (ระบบ Thaiprompt ที่มีอยู่ — อ่านผ่าน KycGate::approvedLevel)
- *   4. เซ็นข้อตกลง — ข้อความผูก hash ของข้อตกลงฉบับนั้น + hash ของข้อมูลที่กรอก + nonce
+ *   4. เซ็นข้อตกลง — ข้อความผูก hash ของข้อตกลงฉบับนั้น + hash ของข้อมูลที่กรอก
+ *      + hash ของรายการเอกสารแนบ (ถ้ามี) + nonce
  *   5. แอดมินอนุมัติ (กำหนดส่วนเริ่มโครงการ) หรือปฏิเสธพร้อมเหตุผล
  *
  * ⚠️ ไม่เคยรับ private key ของใคร — ทุกขั้นที่ต้องพิสูจน์ตัวใช้ลายเซ็นจากกระเป๋าของผู้สร้างเอง
@@ -142,13 +144,34 @@ class CreatorRegistrationService
             throw new CreatorRegistrationException('NOT_EDITABLE', __('ใบลงทะเบียนนี้ส่งตรวจแล้ว แก้ไขไม่ได้'), 409);
         }
 
-        $registration->update([
-            'status' => CreatorRegistration::STATUS_DRAFT,
+        // เปลี่ยนจากบริษัทเป็นบุคคลธรรมดาทั้งที่ยังมีเอกสารบริษัทค้าง — ไม่ลบให้เงียบๆ ให้ผู้สร้างลบเอง
+        if ($data['applicant_type'] !== CreatorRegistration::TYPE_COMPANY) {
+            $companyTypes = array_keys(array_filter(CreatorRegistrationDocument::TYPES, fn ($t) => $t['company']));
+            if ($registration->documents()->whereIn('type', $companyTypes)->exists()) {
+                throw new CreatorRegistrationException('COMPANY_DOCUMENTS_PRESENT', __('ยังมีเอกสารบริษัทแนบอยู่ — ลบเอกสารบริษัทก่อนเปลี่ยนเป็นบุคคลธรรมดา'), 409);
+            }
+        }
+
+        $this->clearSignature($registration, [
             'applicant_type' => $data['applicant_type'],
             'project_name' => $data['project_name'],
             'token_symbol' => $data['token_symbol'],
             'form_data' => $data,
             'form_hash' => self::formHash($data),
+        ]);
+
+        return $registration->refresh();
+    }
+
+    /**
+     * ข้อมูลหรือเอกสารเปลี่ยน — ลายเซ็นข้อตกลงเดิมไม่ครอบแล้ว ล้างทิ้ง และใบที่ถูกปฏิเสธกลับเป็นร่าง.
+     *
+     * เรียกได้เฉพาะใบที่แก้ได้ (ผู้เรียกตรวจ isEditable แล้ว)
+     */
+    public function clearSignature(CreatorRegistration $registration, array $changes = []): void
+    {
+        $registration->update(array_merge($changes, [
+            'status' => CreatorRegistration::STATUS_DRAFT,
             'agreement_version' => null,
             'agreement_hash' => null,
             'agreement_message' => null,
@@ -156,9 +179,19 @@ class CreatorRegistrationService
             'agreement_signed_at' => null,
             'agreement_ip' => null,
             'agreement_user_agent' => null,
-        ]);
+        ]));
+    }
 
-        return $registration->refresh();
+    /** ประเภทเอกสารที่นิติบุคคลยังขาด (บุคคลธรรมดา = ว่างเสมอ) */
+    public function missingDocuments(CreatorRegistration $registration): array
+    {
+        if (! $registration->isCompany()) {
+            return [];
+        }
+
+        $have = $registration->documents()->pluck('type')->all();
+
+        return array_values(array_diff(CreatorRegistrationDocument::REQUIRED_FOR_COMPANY, $have));
     }
 
     public static function formHash(array $data): string
@@ -186,7 +219,7 @@ class CreatorRegistrationService
     // =========================================================================
 
     /**
-     * @return array{message: string, nonce: string, agreement_version: string, agreement_hash: string, form_hash: string}
+     * @return array{message: string, nonce: string, agreement_version: string, agreement_hash: string, form_hash: string, documents_hash: ?string}
      *
      * @throws CreatorRegistrationException
      */
@@ -202,6 +235,7 @@ class CreatorRegistrationService
         Cache::put($this->agreementKey($registration, $nonce), [
             'issued' => $issued,
             'form_hash' => $registration->form_hash,
+            'documents_hash' => $registration->documents_hash,
             'version' => $version,
         ], self::NONCE_TTL);
 
@@ -214,11 +248,13 @@ class CreatorRegistrationService
                 (string) $registration->form_hash,
                 $nonce,
                 $issued,
+                $registration->documents_hash,
             ),
             'nonce' => $nonce,
             'agreement_version' => $version,
             'agreement_hash' => $agreementHash,
             'form_hash' => (string) $registration->form_hash,
+            'documents_hash' => $registration->documents_hash,
         ];
     }
 
@@ -238,7 +274,9 @@ class CreatorRegistrationService
         $this->assertReadyToSign($registration, $user);
 
         // ข้อมูลถูกแก้ระหว่างที่กระเป๋าเปิดหน้าเซ็นอยู่ — ลายเซ็นนี้ครอบข้อมูลชุดเก่า
-        if (! hash_equals((string) $pending['form_hash'], (string) $registration->form_hash)) {
+        $pendingDocs = $pending['documents_hash'] ?? null;
+        if (! hash_equals((string) $pending['form_hash'], (string) $registration->form_hash)
+            || (string) $pendingDocs !== (string) $registration->documents_hash) {
             throw new CreatorRegistrationException('FORM_CHANGED', __('ข้อมูลใบลงทะเบียนเปลี่ยนไประหว่างเซ็น — ตรวจข้อมูลแล้วเซ็นใหม่อีกครั้ง'), 409);
         }
 
@@ -251,6 +289,7 @@ class CreatorRegistrationService
             $pending['form_hash'],
             $nonce,
             $pending['issued'],
+            $pendingDocs,
         );
 
         if (! $this->signatures->verify($message, $signature, $registration->wallet_address)) {
@@ -262,6 +301,7 @@ class CreatorRegistrationService
             ->whereKey($registration->id)
             ->whereIn('status', [CreatorRegistration::STATUS_DRAFT, CreatorRegistration::STATUS_REJECTED])
             ->where('form_hash', $pending['form_hash'])
+            ->where(fn ($q) => $pendingDocs === null ? $q->whereNull('documents_hash') : $q->where('documents_hash', $pendingDocs))
             ->update([
                 'status' => CreatorRegistration::STATUS_SUBMITTED,
                 'agreement_version' => $pending['version'],
@@ -312,7 +352,7 @@ class CreatorRegistrationService
         }
 
         $evidence = $this->verifyEvidence($registration);
-        if (! $evidence['agreement_signature_valid'] || ! $evidence['form_hash_matches'] || ! $evidence['agreement_hash_matches']) {
+        if (! $evidence['agreement_signature_valid'] || ! $evidence['form_hash_matches'] || ! $evidence['agreement_hash_matches'] || ! $evidence['documents_hash_matches']) {
             throw new CreatorRegistrationException('EVIDENCE_INVALID', __('หลักฐานการลงนามตรวจไม่ผ่าน — อนุมัติไม่ได้'), 409);
         }
 
@@ -368,7 +408,7 @@ class CreatorRegistrationService
     /**
      * ตรวจหลักฐานซ้ำจากสิ่งที่เก็บไว้ — แอดมินเห็นผลนี้ก่อนกดอนุมัติ และ PDF พิมพ์ผลนี้.
      *
-     * @return array{ownership_signature_valid: bool, agreement_signature_valid: bool, agreement_hash_matches: bool, form_hash_matches: bool}
+     * @return array{ownership_signature_valid: bool, agreement_signature_valid: bool, agreement_hash_matches: bool, form_hash_matches: bool, documents_hash_matches: bool}
      */
     public function verifyEvidence(CreatorRegistration $registration): array
     {
@@ -395,11 +435,19 @@ class CreatorRegistrationService
             && hash_equals(self::formHash($data), (string) $registration->form_hash)
             && (! $registration->isSigned() || str_contains((string) $registration->agreement_message, 'Application SHA-256: '.$registration->form_hash));
 
+        // ไฟล์ที่อยู่ตอนนี้ต้องตรงกับรายการที่เซ็น · ใบที่ไม่มีเอกสาร (รวมใบรอบแรก) ข้อความต้องไม่มีบรรทัดเอกสาร
+        $docsNow = CreatorDocumentService::manifestHash($registration->documents()->get());
+        $docsHash = (string) $docsNow === (string) $registration->documents_hash
+            && (! $registration->isSigned() || ($docsNow === null
+                ? ! str_contains((string) $registration->agreement_message, 'Documents SHA-256:')
+                : str_contains((string) $registration->agreement_message, 'Documents SHA-256: '.$docsNow)));
+
         return [
             'ownership_signature_valid' => $ownership,
             'agreement_signature_valid' => $agreementSig,
             'agreement_hash_matches' => $agreementHash,
             'form_hash_matches' => $formHash,
+            'documents_hash_matches' => $docsHash,
         ];
     }
 
@@ -460,8 +508,9 @@ class CreatorRegistrationService
         string $formHash,
         string $nonce,
         string $issued,
+        ?string $documentsHash = null,
     ): string {
-        return implode("\n", [
+        return implode("\n", array_filter([
             'TPIX Token Creator Agreement',
             '',
             'I have read, understood and agree to the TPIX Token Creator Agreement',
@@ -473,9 +522,11 @@ class CreatorRegistrationService
             'Agreement version: '.$version,
             'Agreement SHA-256: '.$agreementHash,
             'Application SHA-256: '.$formHash,
+            // เอกสารแนบ (ถ้ามี) — ใบที่ไม่มีเอกสารได้ข้อความแบบเดิมทุกตัวอักษร
+            $documentsHash !== null ? 'Documents SHA-256: '.$documentsHash : null,
             'Nonce: '.$nonce,
             'Issued: '.$issued,
-        ]);
+        ], fn ($line) => $line !== null));
     }
 
     // =========================================================================
@@ -493,6 +544,10 @@ class CreatorRegistrationService
 
         if (blank($registration->form_hash) || ! is_array($registration->form_data)) {
             throw new CreatorRegistrationException('FORM_INCOMPLETE', __('กรอกและบันทึกข้อมูลผู้สร้างให้ครบก่อนเซ็นข้อตกลง'));
+        }
+
+        if ($this->missingDocuments($registration) !== []) {
+            throw new CreatorRegistrationException('DOCUMENTS_REQUIRED', __('นิติบุคคลต้องแนบหนังสือรับรองบริษัทก่อนเซ็นข้อตกลง'));
         }
 
         if (! $this->hasKyc($user)) {

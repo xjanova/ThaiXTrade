@@ -43,7 +43,7 @@ const FIELDS = [
     'project_name', 'token_name', 'token_symbol', 'planned_supply', 'category', 'description', 'website',
     'whitepaper_url', 'twitter', 'telegram_group', 'facebook', 'github', 'team_description', 'use_of_funds',
     'source_of_funds', 'source_of_funds_note', 'prior_projects', 'is_pep', 'pep_details',
-    'declare_not_sanctioned', 'declare_true',
+    'declare_not_sanctioned', 'declare_true', 'consent_publish_project', 'consent_publish_name',
 ];
 
 /** ฟอร์มตั้งต้น — ใส่ค่าจากใบเดิมถ้ามี (ผู้สร้างกลับมาแก้ต่อ) */
@@ -55,6 +55,8 @@ export function blankCreatorForm(existing = null) {
     form.is_pep = false;
     form.declare_not_sanctioned = false;
     form.declare_true = false;
+    form.consent_publish_project = false;
+    form.consent_publish_name = false;
 
     if (existing && typeof existing === 'object') {
         for (const f of FIELDS) {
@@ -129,9 +131,31 @@ export function describeCreatorError(err) {
     if (err?.code === 'SIGN_TIMEOUT') return 'page.tokenCreator.errors.signTimeout';
 
     const res = err?.response;
+    if (res?.status === 413) return 'page.tokenCreator.errors.fileTooLarge';
     if (res?.status === 429) return 'page.tokenCreator.errors.rateLimited';
     if (res?.status === 401 || res?.status === 419) return 'page.tokenCreator.errors.sessionExpired';
     if (typeof res?.data?.error?.message === 'string') return res.data.error.message;
+    // 422 ของ Laravel — ข้อความแรกของช่องแรก (แปลตามภาษาที่เลือกแล้ว)
+    if (res?.status === 422 && res.data?.errors && typeof res.data.errors === 'object') {
+        const first = Object.values(res.data.errors)[0];
+        const msg = Array.isArray(first) ? first[0] : first;
+        if (typeof msg === 'string' && msg) return msg;
+    }
     if (res) return 'page.tokenCreator.errors.failed';
     return 'page.tokenCreator.errors.network';
+}
+
+/**
+ * ประเภทเอกสารที่ผู้สมัครแบบนี้แนบได้ — บุคคลธรรมดาไม่เห็นประเภทของบริษัท
+ * types = Document::TYPES จากเซิร์ฟเวอร์ { key: { public, company, max } }
+ */
+export function documentTypesFor(applicantType, types = {}) {
+    return Object.entries(types || {})
+        .filter(([, spec]) => applicantType === 'company' || !spec?.company)
+        .map(([key]) => key);
+}
+
+/** ไฟล์ที่ผู้ซื้อจะเห็นได้: ประเภทสาธารณะ + เป็นภาพ (เซิร์ฟเวอร์วาดลายน้ำได้) */
+export function documentPublishable(type, mime, types = {}) {
+    return !!types?.[type]?.public && String(mime || '').startsWith('image/');
 }
