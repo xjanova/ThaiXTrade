@@ -465,4 +465,45 @@ class ThaipromptKycTest extends TestCase
         $this->assertStringNotContainsString('refresh-1', $html);
         $this->assertStringNotContainsString('"501"', $html);
     }
+
+    // =========================================================================
+    // กลับหน้าลงทะเบียนผู้สร้างเหรียญหลังเชื่อม (KYC ทำในแอป Thaiprompt — 2026-11-06)
+    // =========================================================================
+
+    #[Test]
+    public function กดเชื่อมจากหน้าลงทะเบียนผู้สร้าง_กลับมาที่หน้านั้น(): void
+    {
+        $response = $this->actingAs($this->user)
+            ->post('/kyc/thaiprompt/connect', ['consent' => true, 'return' => 'token-creator'], ['X-Inertia' => 'true']);
+        parse_str((string) parse_url($response->headers->get('X-Inertia-Location'), PHP_URL_QUERY), $q);
+
+        $this->get('/kyc/thaiprompt/callback?code=abc&state='.$q['state'])
+            ->assertRedirect(route('token-creator'))
+            ->assertSessionHas('success');
+
+        // ใช้ครั้งเดียว — รอบถัดไปที่ไม่ส่ง return กลับ /kyc ตามเดิม
+        $state = $this->startConnect();
+        $this->get('/kyc/thaiprompt/callback?code=abc&state='.$state)->assertRedirect(route('kyc.index'));
+    }
+
+    #[Test]
+    public function ปลายทางกลับต้องอยู่ในรายการเท่านั้น_รับ_url_ไม่ได้(): void
+    {
+        foreach (['https://evil.example/phish', '//evil.example', 'admin.dashboard'] as $bad) {
+            $this->actingAs($this->user)
+                ->post('/kyc/thaiprompt/connect', ['consent' => true, 'return' => $bad])
+                ->assertSessionHasErrors('return');
+        }
+    }
+
+    #[Test]
+    public function เชื่อมไม่สำเร็จจากหน้าลงทะเบียนผู้สร้าง_error_กลับไปหน้านั้น(): void
+    {
+        $this->actingAs($this->user)
+            ->post('/kyc/thaiprompt/connect', ['consent' => true, 'return' => 'token-creator'], ['X-Inertia' => 'true']);
+
+        $this->get('/kyc/thaiprompt/callback?code=abc&state=forged-state')
+            ->assertRedirect(route('token-creator'))
+            ->assertSessionHasErrors('kyc');
+    }
 }

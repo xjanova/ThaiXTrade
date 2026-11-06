@@ -11,6 +11,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\SocialController;
 use App\Http\Controllers\CarbonCreditController;
+use App\Http\Controllers\CreatorRegistrationController;
 use App\Http\Controllers\FoodPassportController;
 use App\Http\Controllers\KycController;
 use App\Http\Controllers\KycDocumentController;
@@ -249,6 +250,27 @@ Route::get('/launch', [LaunchController::class, 'index'])->name('launch');
 
 // Token Factory — สร้างเหรียญบน TPIX Chain
 Route::get('/token-factory', [TokenFactoryController::class, 'index'])->name('token-factory');
+
+/*
+ * ลงทะเบียนผู้สร้างเหรียญ — เข้าด้วยกระเป๋า + KYC (Thaiprompt) + เซ็นข้อตกลงด้วยกระเป๋า + PDF
+ * challenge/start อยู่นอก 'auth' เพราะเป็นขั้นที่ใช้ลายเซ็นเข้าสู่ระบบ
+ * ⚠️ throttle ทุกเส้นมีชื่อ (ตัวที่สาม) — ไม่มีชื่อ = ตัวนับเดียวกันทั้งเว็บต่อผู้ใช้
+ */
+Route::get('/token-creator', [CreatorRegistrationController::class, 'show'])->name('token-creator');
+Route::post('/token-creator/challenge', [CreatorRegistrationController::class, 'challenge'])
+    ->middleware('throttle:20,1,creator-reg-challenge')->name('token-creator.challenge');
+Route::post('/token-creator/start', [CreatorRegistrationController::class, 'start'])
+    ->middleware('throttle:10,1,creator-reg-start')->name('token-creator.start');
+Route::middleware('auth:web')->prefix('token-creator')->name('token-creator.')->group(function () {
+    Route::put('/form', [CreatorRegistrationController::class, 'saveForm'])
+        ->middleware('throttle:30,1,creator-reg-form')->name('form');
+    Route::post('/agreement/challenge', [CreatorRegistrationController::class, 'agreementChallenge'])
+        ->middleware('throttle:20,1,creator-reg-agree')->name('agreement.challenge');
+    Route::post('/submit', [CreatorRegistrationController::class, 'submit'])
+        ->middleware('throttle:10,1,creator-reg-submit')->name('submit');
+    Route::get('/pdf', [CreatorRegistrationController::class, 'pdf'])
+        ->middleware('throttle:20,1,creator-reg-pdf')->name('pdf');
+});
 
 // Carbon Credits — ระบบ Carbon Credit
 Route::get('/carbon-credits', [CarbonCreditController::class, 'index'])->name('carbon-credits');

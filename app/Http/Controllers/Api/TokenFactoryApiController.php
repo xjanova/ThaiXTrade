@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\FactoryToken;
 use App\Models\KycSubmission;
+use App\Services\CreatorRegistration\CreatorRegistrationService;
 use App\Services\Kyc\KycGate;
 use App\Services\TokenFactory\SourceVerifyPurchases;
 use App\Services\TokenFactory\TokenFactoryException;
@@ -23,6 +24,7 @@ class TokenFactoryApiController extends Controller
     public function __construct(
         private TokenFactoryService $tokenFactoryService,
         private KycGate $kycGate,
+        private CreatorRegistrationService $creatorRegistrations,
     ) {}
 
     /**
@@ -80,6 +82,21 @@ class TokenFactoryApiController extends Controller
         $creator = $this->creator($request);
         if ($creator === null) {
             return $this->walletRequired();
+        }
+
+        /*
+         * สร้างเหรียญได้หลังใบลงทะเบียนผู้สร้างอนุมัติแล้วเท่านั้น (เจ้าของตัดสิน 2026-11-06)
+         * บังคับเมื่อหลังบ้านเปิดสวิตช์ — กันที่ใบเสนอราคา เพราะ /create ต้องมีใบเสนอราคาเสมอ
+         */
+        if (! $this->creatorRegistrations->allowsTokenCreation($creator)) {
+            return response()->json([
+                'success' => false,
+                'error' => [
+                    'code' => 'CREATOR_REGISTRATION_REQUIRED',
+                    'message' => __('ต้องลงทะเบียนผู้สร้างเหรียญและได้รับอนุมัติก่อนสร้างเหรียญ'),
+                    'url' => '/token-creator',
+                ],
+            ], 403);
         }
 
         try {
