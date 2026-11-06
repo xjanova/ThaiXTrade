@@ -63,6 +63,15 @@ trait FakesBridgeChains
     /** เรียกตอนสคริปต์ "เซ็น" — ใช้จำลองเหตุการณ์ที่เกิดระหว่างเซ็น (เช่นแอดมินกดปฏิเสธพอดี) */
     protected ?\Closure $onSign = null;
 
+    /**
+     * สัญญาเพิ่มเติมของเทสต์ (เช่น Launchpad) — fn (int $chainId, string $to, string $sel, array $args, string $from)
+     * คืน hex = ผล · null = revert · false = ไม่ใช่ของฉัน (ให้เชนจำลองตอบตามปกติ).
+     */
+    protected ?\Closure $callHook = null;
+
+    /** ผลบนสัญญาเพิ่มเติมตอนธุรกรรมลงบล็อก (ไม่ revert) — fn (array $tx, string $sel, array $args) */
+    protected ?\Closure $mineHook = null;
+
     /** ใบเสร็จของธุรกรรมที่ลงบล็อกแล้ว revert (hash => true) */
     protected array $revertOnMine = [];
 
@@ -441,7 +450,7 @@ trait FakesBridgeChains
                 return $ok($s['gas_price']);
 
             case 'eth_call':
-                $result = $this->answerCall($chainId, strtolower($params[0]['to'] ?? ''), strtolower($params[0]['data'] ?? ''));
+                $result = $this->answerCall($chainId, strtolower($params[0]['to'] ?? ''), strtolower($params[0]['data'] ?? ''), strtolower($params[0]['from'] ?? ''));
 
                 return $result === null ? $err('execution reverted') : $ok($result);
         }
@@ -449,10 +458,17 @@ trait FakesBridgeChains
         return $err('method not found');
     }
 
-    private function answerCall(int $chainId, string $to, string $data): ?string
+    private function answerCall(int $chainId, string $to, string $data, string $from = ''): ?string
     {
         $sel = substr($data, 0, 10);
         $args = str_split(substr($data, 10), 64);
+
+        if ($this->callHook) {
+            $hooked = ($this->callHook)($chainId, $to, $sel, $args, $from);
+            if ($hooked !== false) {
+                return $hooked;
+            }
+        }
         $s = $this->chainState[$chainId];
         $u = fn (string $v) => '0x'.Abi::encUint($v);
         $b = fn (bool $v) => '0x'.Abi::encUint($v ? '1' : '0');
@@ -570,6 +586,8 @@ trait FakesBridgeChains
             $s['supply'] = bcadd($s['supply'], $units, 0);
             $s['minter_total'] = bcadd($s['minter_total'], $units, 0);
             $s['remaining'] = bcsub($s['remaining'], $units, 0);
+            $recipient = '0x'.substr($args[0], 24);
+            $s['balances'][$this->usdtTpix][$recipient] = bcadd($s['balances'][$this->usdtTpix][$recipient] ?? '0', $units, 0);
 
             // USDT_TPIX.Minted(to, amount, depositId) — แบบเดียวกับสัญญาจริง
             $log = $this->mintedLog('0x'.$args[2], '0x'.substr($args[0], 24), $units, $s['latest'], $tx['hash']);
@@ -581,6 +599,8 @@ trait FakesBridgeChains
             $amount = Wei::hexToInt('0x'.$args[1]);
             $balance = $s['balances'][$tx['to']][$tx['from']] ?? '0';
             $s['balances'][$tx['to']][$tx['from']] = bcsub($balance, $amount, 0);
+            $recipient = '0x'.substr($args[0], 24);
+            $s['balances'][$tx['to']][$recipient] = bcadd($s['balances'][$tx['to']][$recipient] ?? '0', $amount, 0);
 
             $log = [
                 'address' => $tx['to'],
@@ -592,6 +612,10 @@ trait FakesBridgeChains
             ];
             $s['logs'][] = $log;
             $s['receipts'][$tx['hash']]['logs'] = [$log];
+        }
+
+        if ($this->mineHook) {
+            ($this->mineHook)($tx, $sel, $args);
         }
 
         if ($sel === Abi::selector('pause()') && $tx['to'] === $this->minter) {

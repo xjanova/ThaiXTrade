@@ -95,6 +95,19 @@ class ContractRegistry
             'label' => 'TPIXBridgeVault (คลังล็อก TPIX ของสะพาน wTPIX)',
             'config' => 'wtpix_bridge.vault_address',
         ],
+        /*
+         * ── Launchpad (ขายเหรียญลูก) ─────────────────────────────────────────────
+         * contracts/scripts/deploy-launchpad.js ของ TPIX-Coin — โรงงานสร้าง sale + feeder + vesting ในธุรกรรมเดียว
+         * หน้าขายรับเฉพาะ sale ที่ launchIdOfSale ของโรงงานตัวนี้รับรอง (สร้างมือ = ไม่รับ)
+         */
+        'launchpad_factory' => [
+            'label' => 'LaunchpadFactory (สร้างหน้าขาย + ตัวเติมพูล)',
+            'config' => null,
+        ],
+        'launchpad_vesting_deployer' => [
+            'label' => 'LaunchVestingDeployer (สร้างสัญญาล็อกเหรียญของ Launchpad)',
+            'config' => null,
+        ],
     ];
 
     /** คีย์ของสัญญาที่ประกอบกันเป็น DEX — ครบทุกตัวถึงเปิดเทรดบนเชน TPIX ได้ */
@@ -257,7 +270,7 @@ class ContractRegistry
 
     /**
      * สถานะสัญญาแบบสามค่า — true มีโค้ด · false เชนยืนยันว่าไม่มีโค้ด (หรือไม่ได้ตั้งที่อยู่)
-     * · null ถามเชนไม่ได้และไม่เคยรู้คำตอบมาก่อน
+     * · null ถามเชนไม่ได้และไม่เคยรู้คำตอบมาก่อน.
      *
      * ⚠️ เดิม isLive() แคช "ถามไม่ได้" (RPC ล้ม/403/429) ว่า false ไว้ 5 นาที
      *    → dexConfig().ready = false → dex:sync เขียนเชน 4289 เป็น coming_soon ทั้งที่สัญญายังอยู่
@@ -302,7 +315,7 @@ class ContractRegistry
 
     /**
      * true มีโค้ด · false เชนตอบว่าว่าง (0x) · null เชนตอบไม่ได้ (timeout/403/429/JSON error)
-     * — ต้องแยกสองอย่างหลังออกจากกัน ไม่งั้น RPC สะดุดครั้งเดียวกลายเป็น "สัญญาหาย"
+     * — ต้องแยกสองอย่างหลังออกจากกัน ไม่งั้น RPC สะดุดครั้งเดียวกลายเป็น "สัญญาหาย".
      */
     public function codeState(string $address): ?bool
     {

@@ -170,6 +170,12 @@ class BridgePolicy
      * สะพานไม่มีการล็อกอิน (ผู้ใช้แค่โอนบนเชน) จึงผูกกระเป๋ากับบัญชีที่ยืนยันตัวตนแล้ว
      * ไม่เจอบัญชี = ไม่ผ่าน → needs_review ให้แอดมินตัดสิน (ไม่ใช่ปฏิเสธทิ้ง เพราะเงินเข้ามาแล้ว)
      */
+    /** ด่าน KYC ของเงินฝากผ่านไหม — Launchpad เช็คก่อนรับคำสั่งซื้อ (ไม่ผ่าน = เงินฝากจะไปรอคนดู ไม่ได้ซื้อ) */
+    public function depositKycPasses(string $address): bool
+    {
+        return $this->kycPasses($address);
+    }
+
     private function kycPasses(string $address): bool
     {
         if (! $this->kyc->requires('bridge')) {

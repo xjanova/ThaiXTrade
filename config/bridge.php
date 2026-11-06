@@ -150,6 +150,12 @@ return [
             'keystore' => env('BRIDGE_GUARDIAN_KEYSTORE', ''),
             'passphrase' => env('BRIDGE_GUARDIAN_PASS'),
         ],
+        // ตัวแทนขายของ Launchpad (config/launchpad.php) — รับ USDT_TPIX ของคำสั่งซื้อ แล้ว buyFor ให้ผู้ซื้อ
+        // ไม่มีสิทธิ์ mint/จ่ายของสะพาน · ว่าง = Launchpad ไม่จับคู่ยอดฝาก (ทุกยอด mint ให้ผู้ฝากตามปกติ)
+        'launchpad_agent' => [
+            'keystore' => env('LAUNCHPAD_AGENT_KEYSTORE', ''),
+            'passphrase' => env('LAUNCHPAD_AGENT_PASS'),
+        ],
     ],
 
     /*
