@@ -344,6 +344,7 @@ const isCompany = computed(() => form.applicant_type === 'company');
             <header class="space-y-2">
                 <h1 class="text-2xl md:text-3xl font-bold text-white">{{ t('page.tokenCreator.title') }}</h1>
                 <p class="text-gray-400">{{ t('page.tokenCreator.subtitle') }}</p>
+                <Link href="/token-creator/projects" class="inline-block text-sm text-primary-400 hover:underline" data-test="all-projects">{{ t('page.creatorProject.allProjects') }} →</Link>
                 <p class="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2" data-test="no-key-warning">
                     {{ t('page.tokenCreator.noKeyWarning') }}
                 </p>
