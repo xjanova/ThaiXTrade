@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
@@ -468,6 +469,7 @@ class CreatorDocumentsTest extends TestCase
     {
         $r = $this->approvedWithDocuments();
         $this->mock(TpixRpcClient::class, fn ($m) => $m->shouldReceive('call')->andThrow(new RuntimeException('down')));
+        Http::fake(['*/v2/smart-contracts/*' => Http::response(['is_verified' => true])]);
         $token = FactoryToken::create([
             'name' => 'Siam Farm Token', 'symbol' => 'SFARM', 'decimals' => 18, 'total_supply' => '1000000',
             'creator_address' => $r->wallet_address, 'contract_address' => '0x'.str_repeat('12', 20),
