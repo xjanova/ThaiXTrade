@@ -225,4 +225,24 @@ class LaunchpadPagesTest extends TestCase
         LaunchpadOrder::query()->update(['status' => LaunchpadOrder::STATUS_CANCELLED]);
         $this->assertNull($this->getJson("/api/v1/launchpad/orders/{$order['id']}")->json('data.payment'));
     }
+
+    #[Test]
+    public function the_menu_link_appears_only_when_live_and_follows_admin_review_at_once(): void
+    {
+        // ตรวจบนหน้า /launchpad เอง — หน้านี้ส่ง prop 'launchpad' ของตัวเอง ต้องไม่ทับค่าเมนู
+        $nav = fn () => $this->get('/launchpad')->assertOk()->inertiaProps('launchpad_nav');
+
+        // setUp อนุมัติ IDTC ไว้แล้ว = ขึ้นเมนู (ค่าถูกแคชไว้ 5 นาทีหลังจากนี้)
+        $this->assertTrue($nav());
+
+        // ซ่อน → ไม่เหลือหน้าขายที่อนุมัติ = เมนูหายทันที ไม่รอแคชหมดอายุ
+        LaunchpadSale::firstOrFail()->update(['status' => LaunchpadSale::STATUS_HIDDEN]);
+        $this->assertFalse($nav(), 'ซ่อนแล้วต้องหายทันที');
+
+        LaunchpadSale::firstOrFail()->update(['status' => LaunchpadSale::STATUS_APPROVED]);
+        $this->assertTrue($nav(), 'อนุมัติกลับแล้วต้องขึ้นทันที');
+
+        config(['launchpad.enabled' => false]);
+        $this->assertFalse($nav(), 'ปิดระบบ (LAUNCHPAD_ENABLED=false) = ซ่อนเมนูแม้มีหน้าขาย');
+    }
 }

@@ -6,6 +6,9 @@ use App\Support\Wei;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * หน้าขายหนึ่งรายการ = หนึ่ง launch ของ LaunchpadFactory บนเชน 4289.
@@ -39,6 +42,36 @@ class LaunchpadSale extends Model
     public const STATUS_REJECTED = 'rejected';
 
     public const STATUS_HIDDEN = 'hidden';
+
+    /** เมนูหน้าเว็บแสดงลิงก์ /launchpad เมื่อเปิดระบบแล้วและมีหน้าขายที่อนุมัติอย่างน้อยหนึ่งรายการ */
+    private const NAV_CACHE = 'launchpad:nav';
+
+    protected static function booted(): void
+    {
+        // อนุมัติ/ซ่อน/ปฏิเสธ (หลังบ้านหรือ launchpad:register) — เมนูเปลี่ยนตามทันที ไม่ต้องรอแคชหมดอายุ
+        // ล้างหลัง commit — ล้างกลางธุรกรรม (setStatus ใช้ lockForUpdate) คำขออื่นจะแคชค่าเก่ากลับไปอีก 5 นาที
+        $forget = fn () => DB::afterCommit(fn () => Cache::forget(self::NAV_CACHE));
+        static::saved($forget);
+        static::deleted($forget);
+    }
+
+    /**
+     * ส่งไปกับทุกหน้า (HandleInertiaRequests) — ห้ามทำให้ทั้งเว็บล่มถ้าฐานข้อมูลสะดุด: พังเมื่อไหร่ = ซ่อนลิงก์.
+     */
+    public static function showInNav(): bool
+    {
+        if (! config('launchpad.enabled')) {
+            return false;
+        }
+
+        try {
+            return Cache::remember(self::NAV_CACHE, 300, fn () => self::query()->where('status', self::STATUS_APPROVED)->exists());
+        } catch (\Throwable $e) {
+            Log::warning('launchpad nav check failed', ['error' => $e::class]);
+
+            return false;
+        }
+    }
 
     protected $fillable = [
         'chain_id', 'factory_address', 'launch_id', 'sale_address', 'feeder_address', 'vesting_address',

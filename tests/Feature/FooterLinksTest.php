@@ -84,6 +84,9 @@ class FooterLinksTest extends TestCase
 
         $th = json_decode(file_get_contents(resource_path('js/i18n/th.json')), true);
         $en = json_decode(file_get_contents(resource_path('js/i18n/en.json')), true);
+        // useTranslation.js รวมคำแปลของ launchpad จากไฟล์แยกไว้ใต้ 'launchpad' — ตรวจแบบเดียวกับที่หน้าเว็บอ่านจริง
+        $th['launchpad'] = json_decode(file_get_contents(resource_path('js/i18n/launchpad/th.json')), true);
+        $en['launchpad'] = json_decode(file_get_contents(resource_path('js/i18n/launchpad/en.json')), true);
 
         foreach ($keys as $key) {
             $this->assertNotNull(data_get($th, $key), "คีย์ {$key} ไม่มีคำแปลภาษาไทย");

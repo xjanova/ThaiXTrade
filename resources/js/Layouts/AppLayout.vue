@@ -60,6 +60,8 @@ const footerColumns = [
         links: [
             { href: '/token-sale', labelKey: 'nav.tokenSale' },
             { href: '/launch', labelKey: 'footer.fairLaunch' },
+            // ขึ้นเมื่อเปิดระบบแล้วและมีหน้าขายที่อนุมัติ (props.launchpad_nav)
+            { href: '/launchpad', labelKey: 'launchpad.title', when: 'launchpad' },
             { href: '/token-factory', labelKey: 'nav.tokenFactory' },
             { href: '/carbon-credits', labelKey: 'nav.carbonCredit' },
             { href: '/food-passport', labelKey: 'footer.foodPassport' },
@@ -256,7 +258,7 @@ onMounted(async () => {
                     <div v-for="column in footerColumns" :key="column.titleKey">
                         <h4 class="text-sm font-semibold text-white mb-3">{{ t(column.titleKey) }}</h4>
                         <ul class="space-y-2">
-                            <li v-for="link in column.links" :key="link.href">
+                            <li v-for="link in column.links.filter((l) => !l.when || page.props.launchpad_nav)" :key="link.href">
                                 <a
                                     v-if="link.external"
                                     :href="link.href"
