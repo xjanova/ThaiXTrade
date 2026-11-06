@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\BugReportAdminController;
 use App\Http\Controllers\Admin\CarbonCreditController as AdminCarbonCreditController;
 use App\Http\Controllers\Admin\ChainController;
 use App\Http\Controllers\Admin\ContentController;
+use App\Http\Controllers\Admin\CreatorRegistrationController as AdminCreatorRegistrationController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DiscordController;
 use App\Http\Controllers\Admin\FeeController;
@@ -159,6 +160,25 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('{uuid}', [AdminKycController::class, 'show'])->name('show');
             Route::post('{uuid}/approve', [AdminKycController::class, 'approve'])->name('approve');
             Route::post('{uuid}/reject', [AdminKycController::class, 'reject'])->name('reject');
+        });
+
+        /*
+         * ทะเบียนผู้สร้างเหรียญ — คิวตรวจ อนุมัติ (กำหนดส่วนเริ่มโครงการ) ปฏิเสธ PDF
+         * settings ต้องมาก่อน {uuid} และล็อก super_admin (สวิตช์นี้ปิด/เปิดการสร้างเหรียญของทุกคน)
+         */
+        Route::prefix('creator-registrations')->name('creator-registrations.')->group(function () {
+            Route::get('/', [AdminCreatorRegistrationController::class, 'index'])->name('index');
+            Route::put('settings', [AdminCreatorRegistrationController::class, 'updateSettings'])
+                ->middleware('admin.role:super_admin')->name('settings');
+            Route::get('{uuid}', [AdminCreatorRegistrationController::class, 'show'])->whereUuid('uuid')->name('show');
+            Route::get('{uuid}/pdf', [AdminCreatorRegistrationController::class, 'pdf'])->whereUuid('uuid')->name('pdf');
+            Route::get('{uuid}/documents/{document}', [AdminCreatorRegistrationController::class, 'document'])
+                ->whereUuid('uuid')->whereUuid('document')->name('document');
+            // อนุมัติ = เปิดสิทธิ์สร้างเหรียญ + กำหนดส่วนเริ่มโครงการ → super_admin จนกว่าเจ้าของจะสั่งเปิดให้ระดับอื่น
+            Route::post('{uuid}/approve', [AdminCreatorRegistrationController::class, 'approve'])
+                ->whereUuid('uuid')->middleware('admin.role:super_admin')->name('approve');
+            Route::post('{uuid}/reject', [AdminCreatorRegistrationController::class, 'reject'])
+                ->whereUuid('uuid')->middleware('admin.role:super_admin')->name('reject');
         });
 
         // Fees

@@ -11,6 +11,8 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\SocialController;
 use App\Http\Controllers\CarbonCreditController;
+use App\Http\Controllers\CreatorProjectController;
+use App\Http\Controllers\CreatorRegistrationController;
 use App\Http\Controllers\FoodPassportController;
 use App\Http\Controllers\KycController;
 use App\Http\Controllers\KycDocumentController;
@@ -20,6 +22,7 @@ use App\Http\Controllers\MasterNodeController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TokenFactoryController;
 use App\Http\Controllers\TokenSaleController;
+use App\Http\Controllers\TokenWhitepaperController;
 use App\Http\Controllers\ValidatorController;
 use App\Http\Controllers\WalletProfileController;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -253,6 +256,45 @@ Route::get('/launchpad/{symbol}', [\App\Http\Controllers\LaunchpadPageController
 
 // Token Factory — สร้างเหรียญบน TPIX Chain
 Route::get('/token-factory', [TokenFactoryController::class, 'index'])->name('token-factory');
+
+/*
+ * ลงทะเบียนผู้สร้างเหรียญ — เข้าด้วยกระเป๋า + KYC (Thaiprompt) + เซ็นข้อตกลงด้วยกระเป๋า + PDF
+ * challenge/start อยู่นอก 'auth' เพราะเป็นขั้นที่ใช้ลายเซ็นเข้าสู่ระบบ
+ * ⚠️ throttle ทุกเส้นมีชื่อ (ตัวที่สาม) — ไม่มีชื่อ = ตัวนับเดียวกันทั้งเว็บต่อผู้ใช้
+ */
+Route::get('/token-creator', [CreatorRegistrationController::class, 'show'])->name('token-creator');
+Route::post('/token-creator/challenge', [CreatorRegistrationController::class, 'challenge'])
+    ->middleware('throttle:20,1,creator-reg-challenge')->name('token-creator.challenge');
+Route::post('/token-creator/start', [CreatorRegistrationController::class, 'start'])
+    ->middleware('throttle:10,1,creator-reg-start')->name('token-creator.start');
+Route::middleware('auth:web')->prefix('token-creator')->name('token-creator.')->group(function () {
+    Route::put('/form', [CreatorRegistrationController::class, 'saveForm'])
+        ->middleware('throttle:30,1,creator-reg-form')->name('form');
+    Route::post('/agreement/challenge', [CreatorRegistrationController::class, 'agreementChallenge'])
+        ->middleware('throttle:20,1,creator-reg-agree')->name('agreement.challenge');
+    Route::post('/submit', [CreatorRegistrationController::class, 'submit'])
+        ->middleware('throttle:10,1,creator-reg-submit')->name('submit');
+    Route::get('/pdf', [CreatorRegistrationController::class, 'pdf'])
+        ->middleware('throttle:20,1,creator-reg-pdf')->name('pdf');
+    Route::post('/documents', [CreatorRegistrationController::class, 'uploadDocument'])
+        ->middleware('throttle:20,1,creator-reg-doc-upload')->name('documents.store');
+    Route::patch('/documents/{document}', [CreatorRegistrationController::class, 'updateDocument'])
+        ->whereUuid('document')->middleware('throttle:30,1,creator-reg-doc')->name('documents.update');
+    Route::delete('/documents/{document}', [CreatorRegistrationController::class, 'deleteDocument'])
+        ->whereUuid('document')->middleware('throttle:30,1,creator-reg-doc')->name('documents.destroy');
+    Route::get('/documents/{document}', [CreatorRegistrationController::class, 'showDocument'])
+        ->whereUuid('document')->middleware('throttle:30,1,creator-reg-doc')->name('documents.show');
+});
+// หน้าโครงการสาธารณะ (ผู้ซื้อดูได้) + ภาพเอกสารลายน้ำ PDPA — ภาพวาดใหม่ทุกครั้ง จึงจำกัดอัตราต่อ IP
+Route::get('/token-creator/projects/{uuid}', [CreatorProjectController::class, 'show'])
+    ->whereUuid('uuid')->middleware('throttle:60,1,creator-project')->name('token-creator.projects.show');
+Route::get('/token-creator/projects/{uuid}/documents/{document}', [CreatorProjectController::class, 'document'])
+    ->whereUuid('uuid')->whereUuid('document')->middleware('throttle:30,1,creator-project-doc')->name('token-creator.projects.document');
+// ไวท์เปเปอร์มาตรฐานของเหรียญจาก Token Factory (หน้าเว็บ + PDF แม่แบบเดียวกัน)
+Route::get('/token-factory/{id}/whitepaper', [TokenWhitepaperController::class, 'show'])
+    ->whereNumber('id')->middleware('throttle:60,1,token-whitepaper')->name('token-factory.whitepaper');
+Route::get('/token-factory/{id}/whitepaper/pdf', [TokenWhitepaperController::class, 'pdf'])
+    ->whereNumber('id')->middleware('throttle:10,1,token-whitepaper-pdf')->name('token-factory.whitepaper.pdf');
 
 // Carbon Credits — ระบบ Carbon Credit
 Route::get('/carbon-credits', [CarbonCreditController::class, 'index'])->name('carbon-credits');

@@ -73,6 +73,18 @@ return [
             'report' => false,
         ],
 
+        /*
+         * เอกสารประกอบใบลงทะเบียนผู้สร้างเหรียญ (หนังสือรับรองบริษัท บัตรผู้มีอำนาจลงนาม ฯลฯ)
+         * private เหมือน disk kyc — ผู้ซื้อเห็นเฉพาะภาพลายน้ำที่เซิร์ฟเวอร์วาดใหม่ ไม่เคยได้ไฟล์จริง
+         */
+        'creator_documents' => [
+            'driver' => 'local',
+            'root' => storage_path('app/creator-documents'),
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
