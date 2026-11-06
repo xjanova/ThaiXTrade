@@ -146,6 +146,7 @@ const navigationSections = computed(() => [
             { name: t('layout.adminLayout.nav.wallets'), href: '/admin/wallets', icon: 'wallet' },
             { name: t('layout.adminLayout.nav.kycReview'), href: '/admin/kyc', icon: 'members' },
             { name: t('layout.adminLayout.nav.dataDeletion'), href: '/admin/kyc/deletions', icon: 'audit' },
+            { name: t('layout.adminLayout.nav.creatorRegistrations'), href: '/admin/creator-registrations', icon: 'members' },
         ],
     },
     {

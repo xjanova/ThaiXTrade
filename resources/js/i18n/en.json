@@ -4974,6 +4974,166 @@
             "theme": "Theme",
             "themeHint": "Changes the whole site. Remembered on this device.",
             "tpixWalletChain": "TPIX Chain (4289) — Gasless"
+        },
+        "tokenCreator": {
+            "headTitle": "Token Creator Registration",
+            "title": "Token Creator Registration",
+            "subtitle": "Register once: sign in with your wallet, fill in your details, verify your identity and sign the agreement with your wallet — you can create a token after admin approval",
+            "noKeyWarning": "We will never ask for your private key or seed phrase. Every step is signed in your own wallet, free and without sending a transaction",
+            "steps": {
+                "wallet": "Wallet",
+                "form": "Details",
+                "kyc": "KYC",
+                "agreement": "Agreement",
+                "review": "Review"
+            },
+            "wallet": {
+                "title": "1. Sign in with the wallet that will receive tokens",
+                "desc": "The wallet you sign with here receives your project starter allocation and represents you in the system",
+                "sign": "Sign to prove wallet ownership",
+                "registered": "Registered wallet",
+                "mismatch": "The connected wallet ({connected}) is not the registered wallet ({registered}) — switch accounts in your wallet before signing"
+            },
+            "form": {
+                "title": "2. Creator and project details",
+                "applicant": "Applicant",
+                "contact": "Contact",
+                "project": "Project",
+                "declarations": "Declarations",
+                "individual": "Individual",
+                "company": "Company",
+                "save": "Save details",
+                "saved": "Details saved",
+                "edit": "Edit details",
+                "checkFields": "Please fix the highlighted fields",
+                "selectCountry": "Select a country",
+                "selectOption": "Select",
+                "editWarning": "Editing the details requires signing the agreement again; the old signature only covers the old data",
+                "pep": "I am a politically exposed person (PEP) or a family member or close associate of one",
+                "notSanctioned": "I declare that I, my major shareholders and controlling persons are not on any designated-person or sanctions list",
+                "declareTrue": "I declare that all information is true and complete"
+            },
+            "fields": {
+                "full_name": "Full name",
+                "full_name_en": "Full name (English)",
+                "date_of_birth": "Date of birth",
+                "nationality": "Nationality",
+                "occupation": "Occupation",
+                "company_name": "Company name",
+                "company_name_en": "Company name (English)",
+                "registration_number": "Company registration number",
+                "registration_country": "Country of registration",
+                "incorporation_date": "Incorporation date",
+                "signatory_name": "Authorised signatory",
+                "signatory_position": "Signatory position",
+                "email": "Email",
+                "phone": "Phone",
+                "address": "Address",
+                "country": "Country of residence",
+                "telegram": "Telegram",
+                "line_id": "LINE ID",
+                "project_name": "Project name",
+                "token_name": "Token name",
+                "token_symbol": "Token symbol",
+                "planned_supply": "Planned supply (optional)",
+                "category": "Project category",
+                "description": "Project description (at least 50 characters)",
+                "website": "Website",
+                "whitepaper_url": "Whitepaper link",
+                "twitter": "X (Twitter)",
+                "telegram_group": "Telegram group",
+                "facebook": "Facebook",
+                "github": "GitHub",
+                "team_description": "Team",
+                "use_of_funds": "Use of funds",
+                "source_of_funds": "Source of funds",
+                "source_of_funds_note": "Source of funds details",
+                "prior_projects": "Prior projects (optional)",
+                "pep_details": "PEP details"
+            },
+            "categories": {
+                "utility": "Utility",
+                "community": "Community",
+                "gaming": "Gaming",
+                "defi": "DeFi",
+                "rwa": "Real-world asset (RWA)",
+                "payment": "Payment",
+                "other": "Other"
+            },
+            "fundSources": {
+                "own_funds": "Own funds",
+                "business_revenue": "Business revenue",
+                "investors": "Investors",
+                "grants": "Grants",
+                "other": "Other"
+            },
+            "kyc": {
+                "title": "3. Identity verification (KYC) in the Thaiprompt app",
+                "approved": "Identity verified",
+                "pending": "Not verified yet — identity checks happen in the Thaiprompt app. Follow the 3 steps below",
+                "go": "Verify identity",
+                "refresh": "Check again",
+                "appStep1": "Download the Thaiprompt app, then sign up or sign in",
+                "download": "Download the Thaiprompt app",
+                "qrAlt": "QR code to download the Thaiprompt app",
+                "qrScan": "Scan with your phone to download the Thaiprompt app",
+                "appStep2": "In the Thaiprompt app, open identity verification (eKYC) and capture your ID card or passport and your face — wait for the result in the app",
+                "openApp": "Open identity verification in the Thaiprompt app",
+                "appStep3": "Link your Thaiprompt account to TPIX TRADE so the verification result reaches this application",
+                "consent": "I consent to TPIX TRADE receiving my identity verification result (status and level) from my Thaiprompt account under the Personal Data Protection Act",
+                "connect": "Link Thaiprompt account",
+                "reconnect": "Link Thaiprompt account again",
+                "linked": "Thaiprompt account linked — status in the app: {status} · After verifying in the app, press \"Check again\"",
+                "tpStatus": {
+                    "none": "Not verified",
+                    "pending": "Under review",
+                    "approved": "Verified",
+                    "rejected": "Not passed — redo it in the app"
+                },
+                "checking": "Checking…"
+            },
+            "agreement": {
+                "title": "4. Read and sign the agreement",
+                "version": "Version {version}",
+                "showEnglish": "Show English translation",
+                "thaiPrevails": "The Thai text prevails over the English text",
+                "ackRead": "I have read and understood the entire agreement",
+                "ackThai": "I accept that the Thai text prevails in case of conflict",
+                "ackRisk": "I understand the platform guarantees no returns and provides no escrow",
+                "starter": "On approval you receive a starter allocation of {pct}% of the token supply (default; admin may adjust up to 20%), minted to this wallet when the token is created",
+                "needForm": "Save the step 2 details first",
+                "needKyc": "Complete step 3 identity verification first",
+                "sign": "Sign the agreement with your wallet and submit",
+                "downloadDraft": "Download draft PDF"
+            },
+            "status": {
+                "submittedTitle": "Submitted — awaiting review",
+                "submittedDesc": "Our team will review your details and KYC result and show the outcome on this page",
+                "approvedTitle": "Approved",
+                "approvedDesc": "Starter allocation {pct}% of supply — you can now create your token in the Token Factory",
+                "approvedCta": "Create token",
+                "rejectedTitle": "Not approved",
+                "reason": "Reason",
+                "resubmit": "Edit and resubmit",
+                "downloadPdf": "Download the signed agreement (PDF)",
+                "signedAt": "Signed at {at}"
+            },
+            "stage": {
+                "challenge": "Requesting message…",
+                "sign": "Waiting for wallet signature…",
+                "submit": "Submitting…",
+                "save": "Saving…"
+            },
+            "errors": {
+                "signCancelled": "You cancelled the signature in your wallet",
+                "noSigner": "Connect your wallet first",
+                "walletChanged": "The wallet changed while signing — try again with the same wallet",
+                "signTimeout": "Your wallet did not respond — please try again",
+                "rateLimited": "Too many requests — wait a moment and try again",
+                "network": "Could not reach the server",
+                "failed": "Something went wrong — please try again",
+                "sessionExpired": "Your session expired — sign with your wallet again"
+            }
         }
     },
     "admin": {
@@ -9837,6 +9997,80 @@
                 "hoursAgo": "{n}h ago",
                 "daysAgo": "{n}d ago"
             }
+        },
+        "creatorRegistrations": {
+            "headTitle": "Token Creator Registrations",
+            "title": "Token Creator Registrations",
+            "subtitle": "Review applications, KYC results and agreement signatures before allowing token creation",
+            "tabs": {
+                "submitted": "Pending",
+                "approved": "Approved",
+                "rejected": "Rejected",
+                "draft": "Draft",
+                "all": "All"
+            },
+            "status": {
+                "draft": "Draft",
+                "submitted": "Pending",
+                "approved": "Approved",
+                "rejected": "Rejected"
+            },
+            "type": {
+                "individual": "Individual",
+                "company": "Company"
+            },
+            "table": {
+                "project": "Project",
+                "type": "Type",
+                "wallet": "Wallet",
+                "submitted": "Submitted",
+                "status": "Status",
+                "starter": "Starter",
+                "view": "View",
+                "empty": "No registrations in this tab"
+            },
+            "settings": {
+                "title": "Settings",
+                "required": "Require an approved registration before token creation",
+                "requiredHelp": "When on, the Token Factory only quotes wallets whose registration is approved",
+                "defaultStarter": "Default starter allocation (% of supply)",
+                "save": "Save settings",
+                "superOnly": "Only a super admin can change these"
+            },
+            "show": {
+                "back": "Back to queue",
+                "account": "Account",
+                "kyc": "KYC result (Thaiprompt)",
+                "kycApproved": "Passed (level {level})",
+                "kycMissing": "Not passed — cannot approve",
+                "evidence": "Signing evidence",
+                "ownershipSig": "Wallet ownership signature",
+                "agreementSig": "Agreement signature",
+                "agreementHash": "Agreement matches the published version",
+                "formHash": "Data matches what was signed",
+                "valid": "Valid",
+                "invalid": "Invalid",
+                "signedMessage": "Signed message",
+                "signature": "Signature",
+                "signedAt": "Signed at",
+                "ip": "IP",
+                "userAgent": "Browser",
+                "pdf": "Download PDF",
+                "decision": "Decision",
+                "starterLabel": "Starter allocation (% of supply)",
+                "starterHelp": "Default {pct}% · maximum {max}%",
+                "approve": "Approve",
+                "reject": "Reject",
+                "reasonLabel": "Rejection reason (shown to the creator)",
+                "confirmApprove": "Approve {project} with a {pct}% starter allocation?",
+                "confirmReject": "Reject {project}?",
+                "reviewed": "Reviewed by {by} at {at}",
+                "notPending": "This registration is not pending, so it cannot be decided",
+                "pep": "PEP",
+                "yes": "Yes",
+                "no": "No",
+                "superOnly": "Only a super admin can approve or reject"
+            }
         }
     },
     "ui": {
@@ -10978,7 +11212,8 @@
                 "admins": "Admins",
                 "notifications": "Notifications",
                 "appReleases": "App Releases",
-                "bugReports": "Bug Reports"
+                "bugReports": "Bug Reports",
+                "creatorRegistrations": "Token creators"
             },
             "sections": {
                 "members": "Members",

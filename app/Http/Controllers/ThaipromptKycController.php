@@ -26,6 +26,11 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class ThaipromptKycController extends Controller
 {
+    /** ชื่อที่หน้าเว็บส่งมาได้ → route ที่จะกลับไปหลังเชื่อมเสร็จ */
+    private const RETURN_ROUTES = ['token-creator' => 'token-creator'];
+
+    private const RETURN_KEY = 'kyc_thaiprompt_return';
+
     public function __construct(
         private readonly ThaipromptKycService $thaiprompt,
         private readonly KycGate $gate,
@@ -34,7 +39,13 @@ class ThaipromptKycController extends Controller
     public function connect(Request $request): Response
     {
         // ยินยอมฝั่งเราก่อน (ว่าจะรับผลจาก Thaiprompt) แล้วลูกค้ายังต้องกดอนุญาตที่ Thaiprompt อีกชั้น
-        $request->validate(['consent' => ['accepted']]);
+        $request->validate([
+            'consent' => ['accepted'],
+            'return' => ['nullable', 'string', 'in:'.implode(',', array_keys(self::RETURN_ROUTES))],
+        ]);
+
+        // กลับหน้าที่กดมาหลังเชื่อมเสร็จ — รับเฉพาะชื่อในรายการ (ไม่รับ URL) จึงพาไปนอกเว็บไม่ได้
+        $request->session()->put(self::RETURN_KEY, $request->input('return'));
 
         try {
             $url = $this->thaiprompt->beginAuthorization($request->user(), $request->session(), $request->ip());
@@ -78,6 +89,8 @@ class ThaipromptKycController extends Controller
             ]);
         }
 
+        $back = self::RETURN_ROUTES[(string) $request->session()->pull(self::RETURN_KEY)] ?? 'kyc.index';
+
         try {
             $link = $this->thaiprompt->completeAuthorization(
                 $request->user(),
@@ -85,14 +98,14 @@ class ThaipromptKycController extends Controller
                 $request->query(),
             );
         } catch (ThaipromptKycException $e) {
-            return redirect()->route('kyc.index')->withErrors(['kyc' => __($e->getMessage())]);
+            return redirect()->route($back)->withErrors(['kyc' => __($e->getMessage())]);
         } catch (RuntimeException $e) {
             $this->thaiprompt->logUnexpected($e, $request->user());
 
-            return redirect()->route('kyc.index')->withErrors(['kyc' => __(ThaipromptKycService::ERR_UNEXPECTED)]);
+            return redirect()->route($back)->withErrors(['kyc' => __(ThaipromptKycService::ERR_UNEXPECTED)]);
         }
 
-        return redirect()->route('kyc.index')->with(
+        return redirect()->route($back)->with(
             'success',
             $link->isApproved()
                 ? __('ยืนยันตัวตนสำเร็จด้วยบัญชี Thaiprompt — ใช้บริการที่ต้องยืนยันตัวตนได้ทันที')
