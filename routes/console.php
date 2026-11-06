@@ -60,6 +60,16 @@ Schedule::command('bridge:reconcile')
     ->name('bridge:reconcile');
 
 /*
+ * Launchpad (config/launchpad.php) — ตัวแทนขาย: ส่งเหรียญ/คืนเงินให้คำสั่งที่สะพาน mint ถึงตัวแทนแล้ว + เติมพูล
+ * การจับคู่เงินฝากกับคำสั่งเกิดใน bridge:scan · ไม่มีงาน = ไม่ถามเชน
+ */
+Schedule::command('launchpad:deliver')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->name('launchpad:deliver');
+
+/*
  * สะพาน TPIX (4289) ⇄ wTPIX (BSC) — config/wtpix_bridge.php · หลังบ้าน /admin/bridge/wtpix
  *
  * wtpix-scan      ทุกนาที — Locked บนเชน TPIX + เผา wTPIX บน BSC และเฝ้า mint/ปล่อย/เพิ่ม minter ที่ระบบไม่ได้สั่ง

@@ -174,6 +174,8 @@ const navigationSections = computed(() => [
             { name: t('layout.adminLayout.nav.usdtBridge'), href: '/admin/bridge', icon: 'swap' },
             // สะพาน TPIX ⇄ wTPIX (BSC) — คลังล็อก TPIX · minter บน BSC · คิวสองทิศ
             { name: t('layout.adminLayout.nav.wtpixBridge'), href: '/admin/bridge/wtpix', icon: 'swap' },
+            // Launchpad — อนุมัติหน้าขายเหรียญลูก · คำสั่งซื้อที่ต้องให้คนดู · รายงานจากผู้ใช้
+            { name: t('launchpad.admin.nav'), href: '/admin/launchpad', icon: 'swap' },
             { name: t('layout.adminLayout.nav.financeDashboard'), href: '/admin/finance', icon: 'transaction' },
             { name: t('layout.adminLayout.nav.fees'), href: '/admin/fees', icon: 'fee' },
             { name: t('layout.adminLayout.nav.orderFees'), href: '/admin/trading-fees', icon: 'fee' },

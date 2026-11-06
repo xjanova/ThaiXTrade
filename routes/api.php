@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\FeeConfigController;
 use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\InfraAlertController;
 use App\Http\Controllers\Api\KycApiController;
+use App\Http\Controllers\Api\LaunchpadApiController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\MasternodeLiveNodesController;
 use App\Http\Controllers\Api\NodeHeartbeatController;
@@ -312,6 +313,23 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/history/{wallet}', [BridgeApiController::class, 'history']);
         Route::get('/status/{chainId}/{txHash}', [BridgeApiController::class, 'status'])->middleware('throttle:30,1,bridge-status');
         Route::get('/withdrawals/{txHash}', [BridgeApiController::class, 'withdrawal'])->middleware('throttle:30,1,bridge-status');
+    });
+
+    /*
+     * Launchpad — ขายเหรียญลูกบนเชน 4289 รับ USDT จาก BSC (config/launchpad.php)
+     * POST มีแค่ "คำสั่งซื้อที่ผู้ซื้อเซ็นในกระเป๋า" — ไม่มี endpoint ที่สั่งส่งเหรียญ/คืนเงิน (ตัวแทนขายทำฝั่ง CLI เท่านั้น)
+     */
+    Route::prefix('launchpad')->group(function () {
+        Route::get('/sales', [LaunchpadApiController::class, 'sales']);
+        Route::get('/sales/{id}', [LaunchpadApiController::class, 'sale']);
+        Route::get('/sales/{id}/risk', [LaunchpadApiController::class, 'risk'])->middleware('throttle:60,1,launchpad-risk');
+        Route::post('/sales/{id}/report', [LaunchpadApiController::class, 'report'])->middleware('throttle:5,60,launchpad-report');
+        Route::post('/orders/prepare', [LaunchpadApiController::class, 'prepare'])->middleware('throttle:20,1,launchpad-prepare');
+        Route::post('/orders', [LaunchpadApiController::class, 'store'])->middleware('throttle:10,1,launchpad-order');
+        Route::get('/orders/{id}', [LaunchpadApiController::class, 'show']);
+        Route::get('/orders/{id}/cancel-message', [LaunchpadApiController::class, 'cancelMessage']);
+        Route::post('/orders/{id}/cancel', [LaunchpadApiController::class, 'cancel'])->middleware('throttle:10,1,launchpad-order');
+        Route::get('/wallet/{wallet}/orders', [LaunchpadApiController::class, 'walletOrders']);
     });
 
     // Staking — read-only public endpoints (legacy)

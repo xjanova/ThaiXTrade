@@ -23,6 +23,8 @@ use Illuminate\Support\Carbon;
  * @property int $log_index
  * @property int $block_number
  * @property string $from_address
+ * @property string|null $mint_to
+ * @property int|null $launchpad_order_id
  * @property string $amount_raw
  * @property string $amount_units
  * @property string $mint_units
@@ -51,7 +53,7 @@ class BridgeDeposit extends Model
 
     protected $fillable = [
         'source_chain_id', 'tx_hash', 'log_index', 'block_number', 'block_hash',
-        'from_address', 'to_address', 'token_address', 'token_decimals',
+        'from_address', 'mint_to', 'launchpad_order_id', 'to_address', 'token_address', 'token_decimals',
         'amount_raw', 'dust_raw', 'amount_units', 'fee_units', 'mint_units', 'deposit_id',
         'status', 'review_reason', 'review_note', 'limits_overridden', 'reviewed_by', 'reviewed_at',
         'mint_tx_hash', 'mint_raw_tx', 'mint_nonce', 'mint_attempts', 'mint_broadcast_at',
@@ -75,7 +77,18 @@ class BridgeDeposit extends Model
             'mint_broadcast_at' => 'datetime',
             'mint_block_number' => 'integer',
             'minted_at' => 'datetime',
+            'launchpad_order_id' => 'integer',
         ];
+    }
+
+    /**
+     * กระเป๋าที่ได้ USDT_TPIX — ผู้ฝากเสมอ ยกเว้นยอดที่จับคู่กับคำสั่งซื้อ Launchpad (mint ให้ตัวแทนขายไปซื้อแทน).
+     */
+    public function recipient(): string
+    {
+        $to = strtolower((string) $this->mint_to);
+
+        return $to !== '' ? $to : strtolower((string) $this->from_address);
     }
 
     public function scopeForWallet(Builder $query, string $wallet): Builder
@@ -111,6 +124,8 @@ class BridgeDeposit extends Model
             'mint_amount' => $this->mintUsdt(),
             'status' => $this->status,
             'review_reason' => $this->review_reason,
+            // ยอดนี้ใช้ซื้อเหรียญบน Launchpad — USDT_TPIX ไปที่ตัวแทนขาย ผู้ฝากได้เหรียญ (หรือได้คืนเป็น USDT_TPIX)
+            'launchpad_order' => $this->launchpad_order_id !== null,
             'mint_tx_hash' => $this->status === self::STATUS_MINTED || $this->status === self::STATUS_MINTING
                 ? $this->mint_tx_hash
                 : null,

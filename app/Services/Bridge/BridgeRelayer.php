@@ -309,11 +309,23 @@ class BridgeRelayer
             return $held;
         }
 
+        // ยอดของคำสั่งซื้อ Launchpad mint ให้ตัวแทนขาย — ต้องเป็นตัวแทนใบปัจจุบันเท่านั้น
+        // (เปลี่ยนกุญแจตัวแทนหลังจับคู่ = mint ไปกระเป๋าที่ไม่มีใครส่งเหรียญต่อให้ — คนดูก่อน)
+        if ($deposit->mint_to !== null && strtolower((string) $deposit->mint_to) !== strtolower((string) $this->config->signerAddress('launchpad_agent'))) {
+            $deposit->update([
+                'status' => BridgeDeposit::STATUS_NEEDS_REVIEW,
+                'review_reason' => 'launchpad_agent_changed',
+                'last_error' => 'ยอดนี้จับคู่กับคำสั่งซื้อ Launchpad แต่กระเป๋าตัวแทนขายเปลี่ยนไปแล้ว — ตรวจก่อนอนุมัติ',
+            ]);
+
+            return 'review';
+        }
+
         $signed = $this->signer->sign(
             'relayer',
             $rpc,
             (string) $this->config->minterAddress(),
-            Abi::mintCalldata($deposit->from_address, $units, $deposit->deposit_id),
+            Abi::mintCalldata($deposit->recipient(), $units, $deposit->deposit_id),
             ['gas_multiplier_bps' => 10000],
         );
 
@@ -365,7 +377,7 @@ class BridgeRelayer
 
         Log::info('bridge: ส่ง mint ขึ้นเชนแล้ว', [
             'deposit' => $deposit->id,
-            'to' => $deposit->from_address,
+            'to' => $deposit->recipient(),
             'units' => $units,
             'tx' => $signed['txHash'],
             'nonce' => $signed['nonce'] ?? null,
@@ -557,7 +569,7 @@ class BridgeRelayer
     /**
      * สัญญาบอกว่า depositId นี้ mint แล้ว — ดู Minted ว่าไปถึงใคร เท่าไร แล้วตัดสิน.
      *
-     *   ตรงกับผู้ฝาก (to = from_address · amount = mint_units) → minted (เช่นธุรกรรมของเราเองที่ RPC ยังไม่เห็นใบเสร็จ
+     *   ตรงกับผู้รับ (to = recipient() · amount = mint_units) → minted (เช่นธุรกรรมของเราเองที่ RPC ยังไม่เห็นใบเสร็จ
      *                                                            หรือธุรกรรมเดิมก่อนแอดมินอนุมัติใหม่)
      *   ไม่ตรง / หาไม่เจอทั้งช่วง                              → held (minted_elsewhere + หยุดสะพาน)
      *   อ่าน log ไม่ได้                                        → unreadable (ไม่ตัดสิน รอบหน้าลองใหม่)
@@ -600,7 +612,7 @@ class BridgeRelayer
     public function mintMatches(BridgeDeposit $deposit, array $mint): bool
     {
         return ($mint['state'] ?? null) === 'found'
-            && strtolower((string) $mint['to']) === strtolower((string) $deposit->from_address)
+            && strtolower((string) $mint['to']) === $deposit->recipient()
             && bccomp((string) $mint['units'], (string) $deposit->mint_units, 0) === 0;
     }
 

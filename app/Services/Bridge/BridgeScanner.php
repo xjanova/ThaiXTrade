@@ -5,6 +5,7 @@ namespace App\Services\Bridge;
 use App\Models\BridgeDeposit;
 use App\Models\BridgeWithdrawal;
 use App\Models\SiteSetting;
+use App\Services\Launchpad\LaunchpadDepositMatcher;
 use App\Support\Wei;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
@@ -29,6 +30,7 @@ class BridgeScanner
     public function __construct(
         private BridgeConfig $config,
         private BridgePolicy $policy,
+        private LaunchpadDepositMatcher $launchpad,
     ) {}
 
     /**
@@ -176,26 +178,40 @@ class BridgeScanner
             $decision = $this->policy->evaluateDeposit($facts);
         }
 
+        // ยอดที่ผ่านด่านแล้วและตรงกับคำสั่งซื้อ Launchpad ของผู้ฝากเอง → mint ให้ตัวแทนขายไปซื้อแทน
+        $match = ['state' => 'none'];
+        if ($decision['status'] === BridgeDeposit::STATUS_CONFIRMED) {
+            $match = $this->launchpad->candidate($chainId, $from, $units, $blockNumber, $rpc);
+
+            if ($match['state'] === 'unreadable') {
+                return null;
+            }
+        }
+
+        $attributes = [
+            'source_chain_id' => $chainId,
+            'tx_hash' => $txHash,
+            'log_index' => $logIndex,
+            'block_number' => $blockNumber,
+            'block_hash' => is_string($log['blockHash'] ?? null) ? strtolower($log['blockHash']) : null,
+            'from_address' => $from,
+            'to_address' => $this->config->vaultAddress(),
+            'token_address' => $token,
+            'token_decimals' => $decimals,
+            'amount_raw' => $amountRaw,
+            'dust_raw' => $dust,
+            'amount_units' => $units,
+            'fee_units' => bccomp($units, '0', 0) > 0 ? bcsub($units, $mint, 0) : '0',
+            'mint_units' => $mint,
+            'deposit_id' => Abi::depositId($chainId, $txHash, $logIndex),
+            'status' => $decision['status'],
+            'review_reason' => $decision['reason'],
+        ];
+
         try {
-            BridgeDeposit::create([
-                'source_chain_id' => $chainId,
-                'tx_hash' => $txHash,
-                'log_index' => $logIndex,
-                'block_number' => $blockNumber,
-                'block_hash' => is_string($log['blockHash'] ?? null) ? strtolower($log['blockHash']) : null,
-                'from_address' => $from,
-                'to_address' => $this->config->vaultAddress(),
-                'token_address' => $token,
-                'token_decimals' => $decimals,
-                'amount_raw' => $amountRaw,
-                'dust_raw' => $dust,
-                'amount_units' => $units,
-                'fee_units' => bccomp($units, '0', 0) > 0 ? bcsub($units, $mint, 0) : '0',
-                'mint_units' => $mint,
-                'deposit_id' => Abi::depositId($chainId, $txHash, $logIndex),
-                'status' => $decision['status'],
-                'review_reason' => $decision['reason'],
-            ]);
+            $match['state'] === 'order'
+                ? $this->launchpad->recordMatched($match['order'], $attributes)
+                : BridgeDeposit::create($attributes);
         } catch (QueryException $e) {
             // อีกโปรเซสบันทึกไปพร้อมกันพอดี — unique (เชน, tx, log) กันไว้แล้ว ไม่ใช่ความผิดพลาด
             if (BridgeDeposit::where('source_chain_id', $chainId)->where('tx_hash', $txHash)->where('log_index', $logIndex)->exists()) {
