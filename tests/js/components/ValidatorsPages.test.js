@@ -101,6 +101,35 @@ describe('Validators/Index', () => {
         expect(w.text()).toContain('Unknown');
     });
 
+    it('shows the real infra site and the bootnode legend when the server sends them', () => {
+        const site = {
+            country_code: 'TH', country_name: 'Thailand', city: 'Bangkok',
+            latitude: 13.75, longitude: 100.5, location_known: true,
+            site_id: 'chain-host-bkk', provider: 'Colodee Digital Network (AS136523)',
+        };
+        const w = mountPage(ValidatorsIndex, {
+            ...props,
+            validators: props.validators.map(v => ({ ...v, ...site })),
+            bootnodes: [{
+                type: 'bootnode', ip: '123.253.62.252', port: 30301,
+                peer_id: '16Uiu2HAm45CAad1Tqb1eqD7WnpVT2g9uYeQeBTP1VWFEUecPhAgd', ...site,
+            }],
+        });
+
+        expect(w.find('[data-test="locations-unknown"]').exists()).toBe(false);
+        expect(w.text()).toContain('Bangkok, Thailand');
+        expect(w.find('[data-test="legend-bootnode"]').text()).toContain('Bootnode (1)');
+        // 3 validator + 1 bootnode บนเครื่องเดียวกัน = วาดเป็นวง และบอกไว้ใต้แผนที่
+        expect(w.find('[data-test="shared-site-note"]').exists()).toBe(true);
+    });
+
+    it('has no bootnode legend when the server lists none', () => {
+        const w = mountPage(ValidatorsIndex, props);
+
+        expect(w.find('[data-test="legend-bootnode"]').exists()).toBe(false);
+        expect(w.find('[data-test="shared-site-note"]').exists()).toBe(false);
+    });
+
     it('shows signing status from the chain — not "online" for everyone', () => {
         const w = mountPage(ValidatorsIndex, props);
 

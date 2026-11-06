@@ -44,6 +44,21 @@ class ValidatorPublicDataTest extends TestCase
 
     private array $fixtures;
 
+    /** ไซต์ทดสอบ — รูปแบบเดียวกับ config/tpix_infra.php */
+    private const SITE = [
+        'id' => 'test-site',
+        'ip' => '203.0.113.10',
+        'city' => 'Bangkok',
+        'country_code' => 'th',
+        'country_name' => 'Thailand',
+        'latitude' => 13.75,
+        'longitude' => 100.5,
+        'provider' => 'Example DC (AS64500)',
+        'runs_validators' => true,
+    ];
+
+    private const PEER_ID = '16Uiu2HAm45CAad1Tqb1eqD7WnpVT2g9uYeQeBTP1VWFEUecPhAgd';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -53,6 +68,8 @@ class ValidatorPublicDataTest extends TestCase
             'masternode.registry.address' => self::REGISTRY,
             'masternode.registry.rpc_url' => 'https://rpc.tpix.test',
             'blockchain.masternode_registry' => self::REGISTRY,
+            'tpix_infra.sites' => [self::SITE],
+            'masternode.public_bootnodes' => [],
         ]);
 
         $this->fixtures = json_decode(
@@ -93,6 +110,8 @@ class ValidatorPublicDataTest extends TestCase
 
     public function test_list_never_invents_location_uptime_or_stake(): void
     {
+        // ไม่มีไซต์ใน config/tpix_infra.php = ไม่รู้ตำแหน่ง ห้ามเดา
+        config(['tpix_infra.sites' => []]);
         $this->chainWithSigners(0b0111); // ลำดับ 3 ไม่เคยเซ็นใน 20 บล็อกล่าสุด
 
         $response = $this->getJson('/api/v1/validators/list')->assertOk();
@@ -179,8 +198,9 @@ class ValidatorPublicDataTest extends TestCase
 
         $this->assertSame(self::VALIDATORS[0], $first['address']);
         $this->assertSame('validator', $first['tier']);
-        $this->assertNull($first['country_code']);
-        $this->assertNull($first['latitude']);
+        // ตำแหน่งมาจาก config/tpix_infra.php เท่านั้น ไม่ใช่ประเทศที่ผู้สมัครกรอก
+        $this->assertSame('TH', $first['country_code']);
+        $this->assertSame(13.75, $first['latitude']);
         $this->assertNull($first['endpoint']);
     }
 
@@ -251,14 +271,140 @@ class ValidatorPublicDataTest extends TestCase
                 fn (Assert $page) => $page
                     ->component('Validators/Index', false)
                     ->has('validators', 4)
-                    ->where('validators.0.country_code', null)
-                    ->where('validators.0.latitude', null)
+                    ->where('validators.0.country_code', 'TH')
+                    ->where('validators.0.latitude', 13.75)
+                    ->where('bootnodes', [])
                     ->where('validators.0.uptime', null)
                     ->where('validators.3.online', false)
                     ->where('stats.active_validators', 3)
                     ->where('stats.total_staked', null)
                     ->where('tiers', [])
             );
+    }
+
+    // =========================================================================
+    //  ตำแหน่งจริงของโครงสร้างเชน (config/tpix_infra.php) + bootnode
+    // =========================================================================
+
+    public function test_validators_are_pinned_at_the_configured_infra_site(): void
+    {
+        $this->chainWithSigners(0b1111);
+
+        $list = $this->getJson('/api/v1/validators/list')->assertOk()->json('data');
+
+        $this->assertCount(4, $list);
+        foreach ($list as $v) {
+            $this->assertTrue($v['location_known']);
+            $this->assertSame('TH', $v['country_code']);
+            $this->assertSame('Thailand', $v['country_name']);
+            $this->assertSame('Bangkok', $v['city']);
+            $this->assertSame(13.75, $v['latitude']);
+            $this->assertSame(100.5, $v['longitude']);
+            $this->assertSame('test-site', $v['site_id']);
+            $this->assertSame('Example DC (AS64500)', $v['provider']);
+        }
+    }
+
+    public function test_site_that_does_not_run_validators_gives_them_no_location(): void
+    {
+        config(['tpix_infra.sites' => [array_merge(self::SITE, ['runs_validators' => false])]]);
+        $this->chainWithSigners(0b1111);
+
+        $first = $this->getJson('/api/v1/validators/list')->assertOk()->json('data.0');
+
+        $this->assertFalse($first['location_known']);
+        $this->assertNull($first['latitude']);
+        $this->assertNull($first['site_id']);
+    }
+
+    public function test_site_with_invalid_coordinates_is_ignored(): void
+    {
+        config(['tpix_infra.sites' => [array_merge(self::SITE, ['latitude' => 123.0])]]);
+        $this->chainWithSigners(0b1111);
+
+        $first = $this->getJson('/api/v1/validators/list')->assertOk()->json('data.0');
+
+        $this->assertFalse($first['location_known']);
+        $this->assertNull($first['latitude']);
+    }
+
+    public function test_infra_lists_bootnodes_located_only_by_a_known_ip(): void
+    {
+        config(['masternode.public_bootnodes' => [
+            '/ip4/203.0.113.10/tcp/30301/p2p/'.self::PEER_ID,
+            '/ip4/198.51.100.7/tcp/30302/p2p/'.self::PEER_ID,   // IP ที่ไม่มีใน config = ไม่ปักหมุด
+            '/ip4/203.0.113.10/tcp/30301/p2p/'.self::PEER_ID,   // ซ้ำ
+            '/dns4/boot.example/tcp/30301/p2p/'.self::PEER_ID,  // รูปแบบอื่น — ข้าม
+            '/ip4/999.1.1.1/tcp/30301/p2p/'.self::PEER_ID,      // IP ผิด — ข้าม
+        ]]);
+
+        $boot = $this->getJson('/api/v1/validators/infra')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->json('data.bootnodes');
+
+        $this->assertCount(2, $boot);
+
+        $this->assertSame('bootnode', $boot[0]['type']);
+        $this->assertSame('203.0.113.10', $boot[0]['ip']);
+        $this->assertSame(30301, $boot[0]['port']);
+        $this->assertSame(self::PEER_ID, $boot[0]['peer_id']);
+        $this->assertTrue($boot[0]['location_known']);
+        $this->assertSame(13.75, $boot[0]['latitude']);
+        $this->assertSame(100.5, $boot[0]['longitude']);
+        $this->assertSame('test-site', $boot[0]['site_id']);
+
+        $this->assertSame('198.51.100.7', $boot[1]['ip']);
+        $this->assertFalse($boot[1]['location_known']);
+        $this->assertNull($boot[1]['latitude']);
+        $this->assertNull($boot[1]['country_code']);
+
+        // bootnode ไม่ใช่ validator — ไม่มีรางวัล/เงินวางค้ำ/ชั้น
+        foreach ($boot as $b) {
+            $this->assertArrayNotHasKey('rewards', $b);
+            $this->assertArrayNotHasKey('stake_amount', $b);
+            $this->assertArrayNotHasKey('tier', $b);
+        }
+    }
+
+    public function test_bootnodes_stay_out_of_the_validator_list(): void
+    {
+        config(['masternode.public_bootnodes' => ['/ip4/203.0.113.10/tcp/30301/p2p/'.self::PEER_ID]]);
+        $this->chainWithSigners(0b1111);
+
+        $this->getJson('/api/v1/validators/list')->assertOk()->assertJsonCount(4, 'data');
+    }
+
+    public function test_validators_page_carries_bootnodes(): void
+    {
+        $this->withoutVite();
+        config(['masternode.public_bootnodes' => ['/ip4/203.0.113.10/tcp/30301/p2p/'.self::PEER_ID]]);
+        $this->chainWithSigners(0b1111);
+
+        $this->get('/validators')
+            ->assertOk()
+            ->assertInertia(
+                fn (Assert $page) => $page
+                    ->component('Validators/Index', false)
+                    ->has('bootnodes', 1)
+                    ->where('bootnodes.0.type', 'bootnode')
+                    ->where('bootnodes.0.latitude', 13.75)
+                    ->where('bootnodes.0.site_id', 'test-site')
+            );
+    }
+
+    public function test_shipped_infra_sites_are_well_formed(): void
+    {
+        $sites = require base_path('config/tpix_infra.php');
+
+        $this->assertNotEmpty($sites['sites']);
+        foreach ($sites['sites'] as $site) {
+            $this->assertNotFalse(filter_var($site['ip'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4));
+            $this->assertMatchesRegularExpression('/^[A-Z]{2}$/', $site['country_code']);
+            $this->assertIsFloat($site['latitude']);
+            $this->assertIsFloat($site['longitude']);
+            $this->assertNotEmpty($site['provider'], 'every site names the datacenter it was checked against');
+        }
     }
 
     // =========================================================================

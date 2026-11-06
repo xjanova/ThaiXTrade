@@ -4519,7 +4519,9 @@
             "popup": {
                 "endpoint": "Endpoint:",
                 "recentSeals": "Recent seals:",
-                "staked": "Staked:"
+                "staked": "Staked:",
+                "datacenter": "Datacenter:",
+                "sharedHost": "Runs on the same host as {n} other node(s) — one datacenter. Pins are spread on a ring so each one can be clicked."
             },
             "rewards": {
                 "invalidAddress": "Invalid wallet address format",
@@ -4574,7 +4576,8 @@
                 "locationsUnknownMany": "Node locations are not reported yet — {n} nodes with unknown location. Locations will appear once nodes report them.",
                 "fallback": "Fallback map (offline)",
                 "zoomIn": "Zoom in",
-                "zoomOut": "Zoom out"
+                "zoomOut": "Zoom out",
+                "sharedSiteNote": "Nodes on one host are drawn on a small ring (dashed circle) around the datacenter’s real location."
             },
             "list": {
                 "searchPlaceholder": "Search by address, country, endpoint...",
@@ -4611,6 +4614,12 @@
                 "applyNow": "Apply Now",
                 "runNode": "Run a Node",
                 "setupGuide": "Setup Guide"
+            },
+            "bootnode": {
+                "label": "Public bootnode",
+                "legend": "Bootnode ({n})",
+                "desc": "Entry point new nodes use to find peers and sync the chain. Not a validator — it does not seal blocks and earns no rewards.",
+                "p2p": "P2P:"
             }
         },
         "validatorsApply": {
