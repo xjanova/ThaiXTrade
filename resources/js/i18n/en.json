@@ -5246,6 +5246,7 @@
             "agreement": "The creator signed the Token Creator Agreement version {version} with their wallet",
             "wallet": "Creator wallet",
             "back": "Back to Token Factory",
+            "allProjects": "See all registered token creators",
             "entity": {
                 "company_name": "Company name",
                 "company_name_en": "Company name (English)",
@@ -5257,6 +5258,32 @@
                 "full_name_en": "Creator name (English)"
             },
             "claimedNote": "Token launched before registration. Token owner wallet:"
+        },
+        "creatorProjects": {
+            "headTitle": "Registered token creators | TPIX TRADE",
+            "kicker": "Token Factory",
+            "title": "Who is behind this token?",
+            "subtitle": "Projects and companies that registered as token creators, passed review and agreed to be listed, with the Token Factory tokens each one created",
+            "notEndorsement": "Passing review is not an endorsement or investment advice. Creator details are supplied and published with the creator's consent — read the warnings on the project page before you buy",
+            "searchPlaceholder": "Search project, company, symbol or token contract (0x…)",
+            "search": "Search",
+            "clear": "Clear",
+            "total": "{n} projects",
+            "nameHidden": "Creator chose not to publish a name",
+            "registrationNumber": "Reg. no. {no}",
+            "noTokens": "No finished token from this project's wallet yet",
+            "tokensLabel": "Project tokens",
+            "explorer": "View contract on Explorer",
+            "viewProject": "View project page",
+            "emptyTitle": "No published projects yet",
+            "emptyDesc": "No token creator has passed review and agreed to publish their project yet. They will appear here once they do",
+            "noResults": "No project matches \"{q}\"",
+            "notListedNote": "If a token is not on this list, its creator has not registered, has not passed review, or did not agree to be listed — check carefully before buying",
+            "registerCta": "Register as a token creator",
+            "prev": "Previous",
+            "next": "Next",
+            "claimed": "Launched before registration",
+            "pageOf": "Page {page} / {last}"
         }
     },
     "admin": {

@@ -289,6 +289,8 @@ Route::middleware('auth:web')->prefix('token-creator')->name('token-creator.')->
         ->whereUuid('document')->middleware('throttle:30,1,creator-reg-doc')->name('documents.show');
 });
 // หน้าโครงการสาธารณะ (ผู้ซื้อดูได้) + ภาพเอกสารลายน้ำ PDPA — ภาพวาดใหม่ทุกครั้ง จึงจำกัดอัตราต่อ IP
+Route::get('/token-creator/projects', [CreatorProjectController::class, 'index'])
+    ->middleware('throttle:60,1,creator-projects')->name('token-creator.projects.index');
 Route::get('/token-creator/projects/{uuid}', [CreatorProjectController::class, 'show'])
     ->whereUuid('uuid')->middleware('throttle:60,1,creator-project')->name('token-creator.projects.show');
 Route::get('/token-creator/projects/{uuid}/documents/{document}', [CreatorProjectController::class, 'document'])

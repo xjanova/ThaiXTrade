@@ -132,7 +132,10 @@ const riskText = (risk) => (locale.value === 'th' ? risk.th : risk.en);
                 <p class="font-mono break-all">{{ t('page.creatorProject.wallet') }}: {{ p.wallet_address }}</p>
             </section>
 
-            <Link href="/token-factory" class="text-sm text-primary-400 hover:underline">← {{ t('page.creatorProject.back') }}</Link>
+            <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                <Link href="/token-creator/projects" class="text-primary-400 hover:underline" data-test="all-projects">← {{ t('page.creatorProject.allProjects') }}</Link>
+                <Link href="/token-factory" class="text-primary-400 hover:underline">← {{ t('page.creatorProject.back') }}</Link>
+            </div>
         </div>
     </AppLayout>
 </template>

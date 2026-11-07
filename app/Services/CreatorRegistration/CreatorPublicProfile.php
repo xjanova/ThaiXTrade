@@ -6,6 +6,7 @@ use App\Models\CreatorRegistration;
 use App\Models\CreatorRegistrationDocument;
 use App\Models\FactoryToken;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * ข้อมูลผู้สร้าง/โครงการที่เปิดให้คนทั่วไปเห็น — หน้าโครงการสาธารณะและไวท์เปเปอร์มาตรฐานใช้ชุดเดียวกัน.
@@ -86,22 +87,7 @@ class CreatorPublicProfile
     public function build(CreatorRegistration $registration): array
     {
         $form = (array) $registration->form_data;
-        $isCompany = $registration->isCompany();
-        $showName = ($form['consent_publish_name'] ?? false) === true;
-
-        $entity = $isCompany
-            ? array_filter([
-                'company_name' => $form['company_name'] ?? null,
-                'company_name_en' => $form['company_name_en'] ?? null,
-                'registration_number' => $form['registration_number'] ?? null,
-                'registration_country' => $form['registration_country'] ?? null,
-                'signatory_name' => $showName ? ($form['signatory_name'] ?? null) : null,
-                'signatory_position' => $showName ? ($form['signatory_position'] ?? null) : null,
-            ], fn ($v) => filled($v))
-            : array_filter([
-                'full_name' => $showName ? ($form['full_name'] ?? null) : null,
-                'full_name_en' => $showName ? ($form['full_name_en'] ?? null) : null,
-            ], fn ($v) => filled($v));
+        $entity = $this->entity($registration);
 
         $links = [];
         foreach (self::LINK_FIELDS as $key) {
@@ -157,5 +143,121 @@ class CreatorPublicProfile
             'documents' => $documents,
             'tokens' => $tokens,
         ];
+    }
+
+    /**
+     * แถวสั้นสำหรับหน้ารวมโครงการ — ชื่อโครงการ ชื่อที่เผยแพร่ ประเภท วันที่ผ่านการตรวจ (ไม่มีรายละเอียด/เอกสาร/กระเป๋า).
+     * เหรียญแนบทีหลังด้วย tokensForRegistrations() เพื่อไม่ยิงคิวรีทีละใบ.
+     */
+    public function summary(CreatorRegistration $registration): array
+    {
+        $form = (array) $registration->form_data;
+        $entity = $this->entity($registration);
+
+        $displayName = $registration->isCompany()
+            ? ($entity['company_name'] ?? $entity['company_name_en'] ?? null)
+            : ($entity['full_name'] ?? $entity['full_name_en'] ?? null);
+
+        return [
+            'uuid' => $registration->uuid,
+            'url' => route('token-creator.projects.show', $registration->uuid),
+            'applicant_type' => $registration->applicant_type,
+            'display_name' => $displayName,
+            'display_name_en' => $registration->isCompany() ? ($entity['company_name_en'] ?? null) : ($entity['full_name_en'] ?? null),
+            'registration_number' => $entity['registration_number'] ?? null,
+            'project_name' => $form['project_name'] ?? $registration->project_name,
+            'token_symbol' => $form['token_symbol'] ?? $registration->token_symbol,
+            'category' => $form['category'] ?? null,
+            'approved_at' => $registration->reviewed_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * ใบที่อนุมัติและยอมเผยแพร่ทั้งหมด (ใหม่สุดก่อน) — form_data เข้ารหัสอยู่ กรองความยินยอมใน SQL ไม่ได้ ต้องถอดทีละใบ.
+     *
+     * @return Collection<int, CreatorRegistration>
+     */
+    public function publishedRegistrations(): Collection
+    {
+        return CreatorRegistration::query()
+            ->where('status', CreatorRegistration::STATUS_APPROVED)
+            ->orderByDesc('reviewed_at')
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn (CreatorRegistration $r) => $this->isPublic($r))
+            ->values();
+    }
+
+    /**
+     * เหรียญของแต่ละใบสำหรับหน้ารวม — ชุดเดียวกับ tokensFor()/build()['tokens'] แต่คิวรีเดียวทั้งหน้า:
+     * เหรียญที่ผูกด้วยลิงก์เชิญ (factory_token_id — กระเป๋าเจ้าของเหรียญต่างจากกระเป๋าของใบได้)
+     * + เหรียญที่กระเป๋าของใบสร้างเอง (จับคู่แบบไม่สนตัวพิมพ์) เรียงตาม id สูงสุด 20 ต่อใบ.
+     *
+     * @param  Collection<int, CreatorRegistration>  $registrations
+     * @return array<int, array<int, array<string, mixed>>> registration id => เหรียญ
+     */
+    public function tokensForRegistrations(Collection $registrations): array
+    {
+        $wallets = $registrations
+            ->map(fn (CreatorRegistration $r) => strtolower((string) $r->wallet_address))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $boundIds = $registrations->pluck('factory_token_id')->filter()->unique()->values()->all();
+        if ($wallets === [] && $boundIds === []) {
+            return [];
+        }
+
+        $tokens = FactoryToken::query()
+            ->deployed()
+            ->whereNotNull('contract_address')
+            ->where(fn ($q) => $q->whereIn(DB::raw('LOWER(creator_address)'), $wallets)->orWhereIn('id', $boundIds))
+            ->orderBy('id')
+            ->get(['id', 'name', 'symbol', 'contract_address', 'creator_address']);
+
+        $explorer = rtrim((string) config('blockchain.explorer_url', 'https://explorer.tpix.online'), '/');
+
+        return $registrations
+            ->mapWithKeys(function (CreatorRegistration $r) use ($tokens, $explorer) {
+                $wallet = strtolower((string) $r->wallet_address);
+
+                return [$r->id => $tokens
+                    ->filter(fn (FactoryToken $t) => $t->id === $r->factory_token_id || strtolower((string) $t->creator_address) === $wallet)
+                    ->take(20)
+                    ->map(fn (FactoryToken $t) => [
+                        'id' => $t->id,
+                        'name' => $t->name,
+                        'symbol' => $t->symbol,
+                        'contract_address' => $t->contract_address,
+                        'claimed' => $t->id === $r->factory_token_id,
+                        'whitepaper_url' => route('token-factory.whitepaper', $t->id),
+                        'explorer_url' => $explorer.'/address/'.$t->contract_address,
+                    ])
+                    ->values()
+                    ->all()];
+            })
+            ->all();
+    }
+
+    /** ชื่อผู้สร้าง/นิติบุคคลที่เผยแพร่ได้ — ชื่อบุคคลออกเฉพาะเมื่อติ๊ก consent_publish_name */
+    private function entity(CreatorRegistration $registration): array
+    {
+        $form = (array) $registration->form_data;
+        $showName = ($form['consent_publish_name'] ?? false) === true;
+
+        return $registration->isCompany()
+            ? array_filter([
+                'company_name' => $form['company_name'] ?? null,
+                'company_name_en' => $form['company_name_en'] ?? null,
+                'registration_number' => $form['registration_number'] ?? null,
+                'registration_country' => $form['registration_country'] ?? null,
+                'signatory_name' => $showName ? ($form['signatory_name'] ?? null) : null,
+                'signatory_position' => $showName ? ($form['signatory_position'] ?? null) : null,
+            ], fn ($v) => filled($v))
+            : array_filter([
+                'full_name' => $showName ? ($form['full_name'] ?? null) : null,
+                'full_name_en' => $showName ? ($form['full_name_en'] ?? null) : null,
+            ], fn ($v) => filled($v));
     }
 }
