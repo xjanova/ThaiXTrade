@@ -21,6 +21,8 @@ const { t, locale } = useTranslation();
  */
 const props = defineProps({
     validators: { type: Array, default: () => [] },
+    // bootnode สาธารณะ (config masternode.public_bootnodes) + ตำแหน่งจริงจาก config/tpix_infra.php
+    bootnodes: { type: Array, default: () => [] },
     stats: { type: Object, default: () => ({}) },
     // ค่าชั้นจาก NodeRegistryV2 (ชื่อชั้นตัวเล็ก => min_stake / reward_share_bps / ...) — อ่านไม่ได้ = {}
     tiers: { type: [Object, Array], default: () => ({}) },
@@ -38,6 +40,7 @@ const filterCountry = ref('all');
 const searchQuery = ref('');
 const isLoading = ref(false);
 const validators = ref(props.validators || []);
+const bootnodes = ref(props.bootnodes || []);
 const networkStats = ref(props.stats || {});
 
 // Map state
@@ -96,6 +99,12 @@ const tierCounts = computed(() => {
 
 const hasLocation = v => v.latitude != null && v.longitude != null;
 
+// bootnode ขึ้นแผนที่เมื่อไม่ได้กรองชั้น/ค้นหา และประเทศตรงตัวกรอง
+const visibleBootnodes = computed(() => {
+    if (filterTier.value !== 'all' || searchQuery.value) return [];
+    return bootnodes.value.filter(b => filterCountry.value === 'all' || b.country_code === filterCountry.value);
+});
+
 // โหนดที่รู้ตำแหน่งจริง — ยังไม่มีระบบรายงานตำแหน่งจากตัวโหนด จึงเป็น 0 ไปก่อน
 const locatedCount = computed(() => filteredValidators.value.filter(hasLocation).length);
 
@@ -141,6 +150,62 @@ const tierConfig = {
     sentinel:  { label: 'Sentinel',  color: 'text-purple-400', bg: 'bg-purple-500/15 border-purple-500/30', dot: '#a855f7', markerSize: 10, icon: '🛡️' },
     light:     { label: 'Light',     color: 'text-cyan-400',   bg: 'bg-cyan-500/15 border-cyan-500/30',     dot: '#06b6d4', markerSize: 8,  icon: '💡' },
 };
+
+// bootnode ไม่ใช่ชั้นของ validator — ไม่ได้รางวัล ไม่นับในจำนวนโหนด มีสีของตัวเอง
+const bootnodeStyle = { dot: '#f472b6', markerSize: 10, icon: '📡' };
+
+/*
+ * โหนดหลายตัวบนเครื่องเดียวกัน (พิกัดเดียวกัน) — วางเป็นวงรอบจุดจริง
+ * ไม่งั้นหมุดซ้อนกันจนเห็นแค่ตัวเดียว ตำแหน่งบนวงไม่ใช่ตำแหน่งจริงของแต่ละตัว
+ * ป๊อปอัพจึงบอกว่าอยู่เครื่อง/ดาต้าเซ็นเตอร์เดียวกัน
+ *
+ * รัศมีเป็นพิกเซล ไม่ใช่กิโลเมตร — แผนที่ออฟไลน์ซูมได้แค่ระดับ 5 วง 5 กม. ยังเหลือ ~2 px
+ * หมุดจึงยังซ้อนกันอยู่ดี (ลองแล้ว 2026-11-06) พิกเซลคงที่ = แยกกันเห็นทุกระดับซูม
+ */
+const SHARED_SITE_RING_PX = 18;
+
+function siteKey(n) {
+    return `${Number(n.latitude).toFixed(4)},${Number(n.longitude).toFixed(4)}`;
+}
+
+/** ตำแหน่งที่ i จาก n บนวง เป็นพิกเซล [dx, dy] จากจุดจริง (ตัวแรกอยู่บนสุด) */
+function ringOffset(i, n) {
+    if (n < 2) return [0, 0];
+    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+    return [Math.round(SHARED_SITE_RING_PX * Math.cos(angle)), Math.round(SHARED_SITE_RING_PX * Math.sin(angle))];
+}
+
+/** หมุดทั้งหมดบนแผนที่ (validator + bootnode) พร้อมจุดจริง ระยะเลื่อนบนวง และจำนวนโหนดที่อยู่เครื่องเดียวกัน */
+const mapPins = computed(() => {
+    const pins = [
+        ...filteredValidators.value.filter(hasLocation).map(v => ({ kind: 'validator', node: v })),
+        ...visibleBootnodes.value.filter(hasLocation).map(b => ({ kind: 'bootnode', node: b })),
+    ];
+    const groups = {};
+    pins.forEach(p => { (groups[siteKey(p.node)] ||= []).push(p); });
+    return pins.map(p => {
+        const group = groups[siteKey(p.node)];
+        return {
+            ...p,
+            latLng: [Number(p.node.latitude), Number(p.node.longitude)],
+            offset: ringOffset(group.indexOf(p), group.length),
+            shared: group.length,
+        };
+    });
+});
+
+/** ไซต์ที่มีหลายโหนด — วาดวงจาง ๆ ให้เห็นว่าเป็นเครื่องเดียวกัน */
+const sharedSites = computed(() => {
+    const seen = {};
+    mapPins.value.forEach(p => {
+        if (p.shared > 1) seen[siteKey(p.node)] = [Number(p.node.latitude), Number(p.node.longitude)];
+    });
+    return Object.values(seen);
+});
+
+function placeText(n) {
+    return [n.city, n.country_name].filter(Boolean).join(', ');
+}
 
 // Country flag emoji from code
 function flag(code) {
@@ -364,65 +429,47 @@ function addMarkers(recenter = true) {
     // ระบายประเทศใหม่ให้ตรงกับตัวกรองปัจจุบัน
     if (worldLayer) worldLayer.setStyle(countryStyle);
 
-    filteredValidators.value.forEach(v => {
-        // ไม่รู้ตำแหน่ง = ไม่ปักหมุด (เดิมแจกเมืองไทยให้ตามลำดับ)
-        if (!hasLocation(v)) return;
+    // วงจาง ๆ รอบจุดจริงของไซต์ที่มีหลายโหนด
+    sharedSites.value.forEach(center => {
+        L.circleMarker(center, {
+            radius: SHARED_SITE_RING_PX,
+            color: '#94a3b8', weight: 1, opacity: 0.5, dashArray: '3 4',
+            fill: false, interactive: false,
+        }).addTo(markerGroup);
+    });
 
-        const tc = tierConfig[v.tier] || tierConfig.light;
+    // ไม่รู้ตำแหน่ง = ไม่ปักหมุด (เดิมแจกเมืองไทยให้ตามลำดับ) — mapPins มีแค่ตัวที่รู้ตำแหน่ง
+    mapPins.value.forEach(pin => {
+        const v = pin.node;
+        const isBoot = pin.kind === 'bootnode';
+        const tc = isBoot ? bootnodeStyle : (tierConfig[v.tier] || tierConfig.light);
         const color = tc.dot;
         const size = tc.markerSize || 10;
 
-        // Neon glow marker with dual-layer box-shadow (from TPIX-Coin renderer.js)
+        // Neon glow marker with dual-layer box-shadow (from TPIX-Coin renderer.js) — bootnode เป็นข้าวหลามตัด
         const icon = L.divIcon({
-            className: 'validator-marker',
+            className: isBoot ? 'validator-marker bootnode-marker' : 'validator-marker',
             html: `<div style="
-                width: ${size}px; height: ${size}px; border-radius: 50%;
+                width: ${size}px; height: ${size}px; border-radius: ${isBoot ? '2px' : '50%'};
+                ${isBoot ? 'transform: rotate(45deg);' : 'animation: livePulse 2s ease-in-out infinite;'}
                 background: ${color};
                 border: 2px solid ${color}80;
                 box-shadow: 0 0 ${size * 2}px ${color}, 0 0 ${size * 4}px ${color}40;
-                animation: livePulse 2s ease-in-out infinite;
             "></div>`,
             iconSize: [size, size],
-            iconAnchor: [size / 2, size / 2],
+            // หมุดอยู่ที่จุดจริง แต่วาดเลื่อนไปบนวง (iconAnchor) — ซูมแค่ไหนก็ห่างกันเท่าเดิม
+            iconAnchor: [size / 2 - pin.offset[0], size / 2 - pin.offset[1]],
+            popupAnchor: [pin.offset[0], pin.offset[1] - size / 2],
         });
 
-        const marker = L.marker([v.latitude, v.longitude], { icon });
-
-        // Cyberpunk popup (from TPIX-Coin renderer.js)
-        const tierBadge = `<span style="
-            display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 700;
-            background: ${color}20; color: ${color}; border: 1px solid ${color}40;
-        ">${escHtml(tc.icon)} ${escHtml(tc.label)}</span>`;
-
-        marker.bindPopup(`
-            <div style="font-family: system-ui; min-width: 220px; padding: 2px 0;">
-                <div style="font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 8px;">
-                    ${flag(v.country_code)} ${escHtml(v.country_name) || escHtml(t('page.validators.unknownLocation'))}
-                </div>
-                <div style="margin-bottom: 8px;">${tierBadge}</div>
-                <div style="font-size: 10px; color: #06b6d4; font-family: 'Courier New', monospace; word-break: break-all; padding: 6px 8px; background: rgba(6,182,212,0.06); border-radius: 6px; border: 1px solid rgba(6,182,212,0.1);">
-                    ${escHtml(v.address) || '—'}
-                </div>
-                ${v.endpoint ? `<div style="font-size: 10px; color: #6b7280; margin-top: 6px;">${escHtml(t('page.validators.popup.endpoint'))} <span style="color: #9ca3af;">${escHtml(v.endpoint)}</span></div>` : ''}
-                <div style="margin-top: 8px; display: flex; align-items: center; gap: 12px; font-size: 11px;">
-                    <span style="display: flex; align-items: center; gap: 4px; color: ${statusColor(v)};">
-                        <span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor(v)};"></span>
-                        ${escHtml(statusText(v))}
-                    </span>
-                    ${v.seals_signed != null ? `<span style="color: #9ca3af;">${escHtml(t('page.validators.popup.recentSeals'))} <strong style="color: #fff;">${escHtml(sealsText(v))}</strong></span>` : ''}
-                </div>
-                ${v.stake_amount != null ? `<div style="margin-top: 6px; font-size: 11px; color: #9ca3af;">${escHtml(t('page.validators.popup.staked'))} <strong style="color: #fff;">${fmtNum(v.stake_amount)}</strong> TPIX</div>` : ''}
-            </div>
-        `, { className: 'validator-popup' });
-
-        marker.addTo(markerGroup);
+        L.marker(pin.latLng, { icon })
+            .bindPopup(isBoot ? bootnodePopup(v, pin.shared) : validatorPopup(v, tc, pin.shared), { className: 'validator-popup' })
+            .addTo(markerGroup);
     });
 
-    // Center map on markers
-    if (recenter && filteredValidators.value.length > 0) {
-        const coords = filteredValidators.value
-            .filter(hasLocation)
-            .map(v => [v.latitude, v.longitude]);
+    // Center map on markers (จุดจริงของไซต์ ไม่ใช่ตำแหน่งบนวง)
+    if (recenter && mapPins.value.length > 0) {
+        const coords = mapPins.value.map(p => [Number(p.node.latitude), Number(p.node.longitude)]);
         if (coords.length === 1 && leafletMap) {
             // Single marker — setView works better than fitBounds
             leafletMap.setView(coords[0], focusZoom());
@@ -430,6 +477,71 @@ function addMarkers(recenter = true) {
             leafletMap.fitBounds(coords, { padding: [40, 40], maxZoom: focusZoom() });
         }
     }
+}
+
+function placeHtml(n) {
+    return `${flag(n.country_code)} ${escHtml(placeText(n)) || escHtml(t('page.validators.unknownLocation'))}`;
+}
+
+// บรรทัดดาต้าเซ็นเตอร์ + "อยู่เครื่องเดียวกับอีก n โหนด"
+function siteHtml(n, shared) {
+    let html = '';
+    if (n.provider) {
+        html += `<div style="font-size: 10px; color: #6b7280; margin-top: 6px;">${escHtml(t('page.validators.popup.datacenter'))} <span style="color: #9ca3af;">${escHtml(n.provider)}</span></div>`;
+    }
+    if (shared > 1) {
+        html += `<div data-test="shared-host" style="font-size: 10px; color: #cbd5e1; margin-top: 6px; padding: 5px 8px; background: rgba(148,163,184,0.08); border-radius: 6px; border: 1px dashed rgba(148,163,184,0.3);">${escHtml(t('page.validators.popup.sharedHost', { n: shared - 1 }))}</div>`;
+    }
+    return html;
+}
+
+function validatorPopup(v, tc, shared) {
+    const color = tc.dot;
+    // Cyberpunk popup (from TPIX-Coin renderer.js)
+    const tierBadge = `<span style="
+        display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 700;
+        background: ${color}20; color: ${color}; border: 1px solid ${color}40;
+    ">${escHtml(tc.icon)} ${escHtml(tc.label)}</span>`;
+
+    return `
+        <div style="font-family: system-ui; min-width: 220px; max-width: 280px; padding: 2px 0;">
+            <div style="font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 8px;">${placeHtml(v)}</div>
+            <div style="margin-bottom: 8px;">${tierBadge}</div>
+            <div style="font-size: 10px; color: #06b6d4; font-family: 'Courier New', monospace; word-break: break-all; padding: 6px 8px; background: rgba(6,182,212,0.06); border-radius: 6px; border: 1px solid rgba(6,182,212,0.1);">
+                ${escHtml(v.address) || '—'}
+            </div>
+            ${v.endpoint ? `<div style="font-size: 10px; color: #6b7280; margin-top: 6px;">${escHtml(t('page.validators.popup.endpoint'))} <span style="color: #9ca3af;">${escHtml(v.endpoint)}</span></div>` : ''}
+            <div style="margin-top: 8px; display: flex; align-items: center; gap: 12px; font-size: 11px;">
+                <span style="display: flex; align-items: center; gap: 4px; color: ${statusColor(v)};">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor(v)};"></span>
+                    ${escHtml(statusText(v))}
+                </span>
+                ${v.seals_signed != null ? `<span style="color: #9ca3af;">${escHtml(t('page.validators.popup.recentSeals'))} <strong style="color: #fff;">${escHtml(sealsText(v))}</strong></span>` : ''}
+            </div>
+            ${v.stake_amount != null ? `<div style="margin-top: 6px; font-size: 11px; color: #9ca3af;">${escHtml(t('page.validators.popup.staked'))} <strong style="color: #fff;">${fmtNum(v.stake_amount)}</strong> TPIX</div>` : ''}
+            ${siteHtml(v, shared)}
+        </div>
+    `;
+}
+
+// bootnode: ไม่มีสถานะเซ็นบล็อก ไม่มีเงินวางค้ำ/รางวัล — โชว์แค่ว่าเป็นอะไรและต่อที่ไหน
+function bootnodePopup(b, shared) {
+    const color = bootnodeStyle.dot;
+    return `
+        <div style="font-family: system-ui; min-width: 220px; max-width: 280px; padding: 2px 0;">
+            <div style="font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 8px;">${placeHtml(b)}</div>
+            <div style="margin-bottom: 8px;"><span style="
+                display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 700;
+                background: ${color}20; color: ${color}; border: 1px solid ${color}40;
+            ">${escHtml(bootnodeStyle.icon)} ${escHtml(t('page.validators.bootnode.label'))}</span></div>
+            <div style="font-size: 11px; color: #9ca3af; line-height: 1.45;">${escHtml(t('page.validators.bootnode.desc'))}</div>
+            <div style="font-size: 10px; color: #6b7280; margin-top: 6px;">${escHtml(t('page.validators.bootnode.p2p'))} <span style="color: #9ca3af; font-family: 'Courier New', monospace;">${escHtml(b.ip)}:${escHtml(String(b.port))}</span></div>
+            <div style="font-size: 9px; color: ${color}; font-family: 'Courier New', monospace; word-break: break-all; margin-top: 6px; padding: 6px 8px; background: ${color}0d; border-radius: 6px; border: 1px solid ${color}26;">
+                ${escHtml(b.peer_id)}
+            </div>
+            ${siteHtml(b, shared)}
+        </div>
+    `;
 }
 
 function escHtml(str) {
@@ -468,10 +580,16 @@ watch(locale, () => {
 async function refreshData() {
     isLoading.value = true;
     try {
-        const [statsResp, listResp] = await Promise.all([
+        const [statsResp, listResp, infraResp] = await Promise.all([
             fetch('/api/v1/validators/stats'),
             fetch('/api/v1/validators/list'),
+            fetch('/api/v1/validators/infra').catch(() => null),
         ]);
+        // bootnode เป็นของเสริม — อ่านไม่ได้ก็เก็บค่าเดิมไว้ ไม่ให้ขวางการอัปเดตรายชื่อ validator
+        if (infraResp?.ok) {
+            const d = await infraResp.json().catch(() => null);
+            if (d?.success && Array.isArray(d.data?.bootnodes)) bootnodes.value = d.data.bootnodes;
+        }
         if (statsResp.ok) {
             const d = await statsResp.json();
             if (d.success) networkStats.value = d.data;
@@ -718,7 +836,15 @@ onUnmounted(() => {
                                  class="w-3 h-3 rounded-full"></div>
                             <span>{{ tc.icon }} {{ tc.label }}</span>
                         </div>
+                        <div v-if="bootnodes.length" class="flex items-center gap-2" data-test="legend-bootnode">
+                            <div :style="{ background: bootnodeStyle.dot, boxShadow: '0 0 8px ' + bootnodeStyle.dot + '80' }"
+                                 class="w-2.5 h-2.5 rounded-[2px] rotate-45"></div>
+                            <span>{{ bootnodeStyle.icon }} {{ t('page.validators.bootnode.legend', { n: bootnodes.length }) }}</span>
+                        </div>
                     </div>
+                    <p v-if="sharedSites.length" class="text-center text-[11px] text-gray-500" data-test="shared-site-note">
+                        {{ t('page.validators.map.sharedSiteNote') }}
+                    </p>
                 </div>
 
                 <!-- ============================================================ -->
@@ -788,7 +914,7 @@ onUnmounted(() => {
                                         </td>
                                         <td class="px-4 py-3.5 hidden md:table-cell">
                                             <span class="text-xs text-gray-300">
-                                                {{ flag(v.country_code) }} {{ v.country_name || t('page.validators.unknownLocation') }}
+                                                {{ flag(v.country_code) }} {{ placeText(v) || t('page.validators.unknownLocation') }}
                                             </span>
                                         </td>
                                         <td class="px-4 py-3.5 hidden lg:table-cell">

@@ -354,6 +354,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     Route::prefix('validators')->group(function () {
         Route::get('/stats', [ValidatorController::class, 'stats']);
         Route::get('/list', [ValidatorController::class, 'list']);
+        // bootnode สาธารณะ + ตำแหน่งจริง (config/tpix_infra.php) สำหรับแผนที่
+        Route::get('/infra', [ValidatorController::class, 'infra']);
         Route::get('/rewards', [ValidatorController::class, 'checkRewards']);
         // ขอข้อความให้กระเป๋าเซ็นก่อน แล้วค่อยส่งใบสมัครพร้อมลายเซ็น (พิสูจน์ว่าเป็นเจ้าของกระเป๋าจริง)
         // ตัวนับมีชื่อ (AppServiceProvider) — ไม่ปนกับตัวนับไม่มีชื่อที่ API สาธารณะใช้ร่วมกัน

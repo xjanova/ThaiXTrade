@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\SiteSetting;
 use App\Models\ValidatorApplication;
+use App\Services\Infra\InfraSites;
 use App\Services\MasterNode\NodeRegistryContract;
 use App\Services\MasterNode\Web3SignatureService;
 use App\Support\Wei;
@@ -46,6 +47,7 @@ class ValidatorController extends Controller
     public function __construct(
         private NodeRegistryContract $registry,
         private Web3SignatureService $signatures,
+        private InfraSites $infra,
     ) {
         //
     }
@@ -58,6 +60,8 @@ class ValidatorController extends Controller
         return Inertia::render('Validators/Index', [
             'stats' => $this->getValidatorStats(),
             'validators' => $this->getValidatorList(),
+            // public bootnodes pinned at their real site (config/tpix_infra.php) — no rewards, not validators
+            'bootnodes' => $this->infra->bootnodes(),
             'tiers' => $this->chainTiers(),
             'rpcUrl' => config('blockchain.tpix_rpc_url', 'https://rpc1.tpix.online'),
             'chainId' => config('blockchain.tpix_chain_id', 4289),
@@ -149,6 +153,22 @@ class ValidatorController extends Controller
         return response()->json([
             'success' => true,
             'data' => $this->getValidatorList(),
+        ]);
+    }
+
+    /**
+     * API: chain infrastructure the project runs itself (public bootnodes) for the map.
+     *
+     * Kept out of /list on purpose — /list is the IBFT validator set and its length is
+     * counted as "validators" by the home page and the admin dashboard.
+     */
+    public function infra(): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'bootnodes' => $this->infra->bootnodes(),
+            ],
         ]);
     }
 
@@ -450,7 +470,8 @@ class ValidatorController extends Controller
     /**
      * Get list of all validators from chain.
      *
-     * ตำแหน่ง/ประเทศเป็น null จนกว่าจะมีระบบรายงานตำแหน่งจริงจากตัวโหนด
+     * ตำแหน่งมาจาก config/tpix_infra.php ที่เดียว (ไซต์ที่ runs_validators — ตรวจจาก IP จริงของเครื่อง)
+     * ไม่มีไซต์ = null ห้ามเดา
      * ใบสมัครที่แอดมินอนุมัติแล้วไม่ถูกเอามาทับข้อมูลของ validator อีก
      * (ผู้สมัครกรอกประเทศเองและเดิมไม่ต้องเซ็นยืนยันกระเป๋าด้วยซ้ำ)
      */
@@ -472,6 +493,9 @@ class ValidatorController extends Controller
             // IBFT validator ยังไม่ได้ลงทะเบียนในสัญญา (ถึง 2026-10) — ถ้าวันหนึ่งลงทะเบียน ค่าจริงจะขึ้นเอง
             $registryLive = $this->registry->isDeployed();
 
+            // ทั้งชุด validator รันบนเครื่องเดียวกัน (ดู config/tpix_infra.php)
+            $location = $this->infra->locationFields($this->infra->validatorSite());
+
             $validators = [];
             foreach ($addresses as $index => $address) {
                 $node = $registryLive ? $this->registry->nodeInfo($address) : null;
@@ -489,11 +513,7 @@ class ValidatorController extends Controller
                     'last_signed_block' => $chain['last_signed_block'][$address] ?? null,
                     // ยังไม่มีการวัด uptime ของโหนด — ไม่ใส่ตัวเลขแทน
                     'uptime' => null,
-                    'country_code' => null,
-                    'country_name' => null,
-                    'latitude' => null,
-                    'longitude' => null,
-                    'location_known' => false,
+                    ...$location,
                     'endpoint' => ($node['endpoint'] ?? '') !== '' ? $node['endpoint'] : null,
                     'stake_amount' => $node['stake_amount'] ?? null,
                     'registry_status' => $node['status'] ?? null,
