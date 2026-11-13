@@ -1,0 +1,48 @@
+#!/bin/bash
+# DOCKER-USER rule for the TPIX bot signer. usage: tpix-signer-firewall apply|remove|status
+# ติดตั้งที่ /usr/local/sbin/tpix-signer-firewall (0755 root) — ขั้นตอน: docs/BOT_WALLET_SIGNER.md "ขั้นที่ 2"
+#
+# พอร์ตที่ docker publish ข้าม ufw ทั้งหมด (DNAT ใน PREROUTING) — กฎจริงต้องอยู่ใน DOCKER-USER
+# กฎเดียว: ทิ้งทุกการเชื่อมต่อเข้าพอร์ตของตัวเซ็นที่ต้นทางไม่ใช่เครื่องเว็บ
+#
+# ⛔ ลำดับ: ต้อง apply กฎนี้ "ก่อน" เปลี่ยน SIGNER_PUBLISH ให้ออกนอก 127.0.0.1 เสมอ
+#    สลับลำดับ = พอร์ตของตัวเซ็นเปิดสู่อินเทอร์เน็ตจนกว่ากฎจะมา (คำขอยังต้องมีลายเซ็น HMAC แต่ไม่ควรมีใครแตะได้)
+#
+# ⚠️ ตอนบูตเครื่อง docker เปิด container ก่อนที่ unit นี้จะใส่กฎได้ไม่กี่วินาที ช่วงนั้นพอร์ตเปิดอยู่
+#    ยอมรับได้เพราะทุกคำขอต้องมีลายเซ็นและตัวเซ็นบังคับกติกาเอง — ถ้าไม่ยอม ให้ใช้ลิงก์ส่วนตัว (WireGuard) แทน
+set -euo pipefail
+WAN_IF="${WAN_IF:-ens33}"
+SIGNER_PORT="${SIGNER_PORT:-8787}"
+WEB_HOST="${WEB_HOST:-123.253.62.251}"
+CH=DOCKER-USER
+COMMENT=tpix-signer-webonly
+
+spec() {
+  echo "-i $WAN_IF -p tcp --dport $SIGNER_PORT ! -s $WEB_HOST -m comment --comment $COMMENT -j DROP"
+}
+
+wait_for_chain() {   # ตอนบูตต้องรอ dockerd สร้าง DOCKER-USER ก่อน
+  local i
+  for i in $(seq 1 30); do
+    iptables -nL "$CH" >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  echo "tpix-signer-firewall: chain $CH not found — rule NOT applied" >&2; return 1
+}
+
+case "${1:-status}" in
+  apply)
+    wait_for_chain
+    # shellcheck disable=SC2046
+    iptables -C $CH $(spec) 2>/dev/null || iptables -I $CH 1 $(spec)
+    iptables -S $CH | grep -- "--comment $COMMENT" ;;
+  remove)
+    { iptables -S $CH | grep -- "--comment $COMMENT" || true; } | sed 's/^-A /-D /' | while read -r r; do
+      # shellcheck disable=SC2086
+      iptables $r
+    done
+    echo "removed" ;;
+  status)
+    iptables -S $CH | grep -- "--comment $COMMENT" || { echo "rule not present"; exit 3; } ;;
+  *) echo "usage: $0 apply|remove|status" >&2; exit 2 ;;
+esac

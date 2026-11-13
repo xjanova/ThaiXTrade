@@ -272,11 +272,32 @@ return [
     |
     | ⚠️ ไม่มี AIBOT_BOT_WALLET_KEY = สร้างกระเป๋าไม่ได้ (fail-closed) และห้ามเปลี่ยนคีย์นี้
     |    หลังมีกระเป๋าแล้ว — เปลี่ยนแล้วกุญแจทุกใบอ่านไม่ออก เท่ากับเงินหาย
+    |
+    | ── ที่อยู่ของคีย์ห่อ: ตัวเซ็นแยกเครื่อง (signer) ──
+    | เครื่องเว็บ production ใช้ผู้ใช้ระบบตัวเดียวร่วมกับเว็บอื่นหลายสิบเว็บ และผู้ใช้นั้นมีสิทธิ์เทียบเท่า root
+    | เว็บไหนถูกเจาะ คนร้ายอ่าน .env นี้ได้ — คีย์ห่อจึงต้องไม่อยู่บนเครื่องนี้
+    |
+    |   driver = remote  กุญแจถูกสร้าง ห่อ และใช้เซ็นบนเครื่องตัวเซ็น (scripts/blockchain/bot-signer)
+    |                    เครื่องเว็บเก็บแค่ ciphertext และส่ง "เจตนา" ไปให้ตัวเซ็นตัดสินตามกติกาของมันเอง
+    |   driver = local   แบบเดิม (คีย์ห่อใน env นี้) — ใช้ได้เฉพาะนอก production สำหรับเทสต์และเครื่อง dev
+    |                    บน production ถูกปฏิเสธ เว้นแต่ตั้ง AIBOT_BOT_WALLET_ALLOW_LOCAL_KEYS=true ด้วยตัวเอง
+    |
+    | ขั้นตอนติดตั้งตัวเซ็น: docs/BOT_WALLET_SIGNER.md
     */
     'bot_wallet' => [
         'enabled' => (bool) env('AIBOT_BOT_WALLET_ENABLED', false),
         'chain_id' => (int) env('AIBOT_BOT_WALLET_CHAIN_ID', 56),
         'encryption_key' => env('AIBOT_BOT_WALLET_KEY'),
+        'signer' => [
+            'driver' => env('AIBOT_BOT_WALLET_SIGNER', 'local'),
+            // เช่น http://10.8.0.2:8787 — ที่อยู่ของตัวเซ็นบนลิงก์ส่วนตัว (ไม่ใช่ IP สาธารณะ)
+            'url' => env('AIBOT_BOT_WALLET_SIGNER_URL'),
+            // ค่าเดียวกับ SIGNER_HMAC_SECRET ของเครื่องตัวเซ็น (ยาว ≥ 32) — ไม่ใช่คีย์ห่อ ถอดกุญแจไม่ได้
+            'secret' => env('AIBOT_BOT_WALLET_SIGNER_SECRET'),
+            // ตัวเซ็นให้เวลาสคริปต์เซ็น 120 วินาที และสวอปถามเชนก่อนอีกรอบ
+            'timeout' => (int) env('AIBOT_BOT_WALLET_SIGNER_TIMEOUT', 260),
+            'allow_local_in_production' => (bool) env('AIBOT_BOT_WALLET_ALLOW_LOCAL_KEYS', false),
+        ],
         'rpc_user_agent' => env('AIBOT_BOT_WALLET_UA', 'TPIX-BotWallet/1.0'),
         'confirmations' => (int) env('AIBOT_BOT_WALLET_CONFIRMATIONS', 3),
         /*

@@ -23,11 +23,25 @@ use RuntimeException;
  * ทุกครั้งที่ถอด ต้องคำนวณที่อยู่จากกุญแจแล้วเทียบกับที่บันทึกไว้ — ไม่ตรงคือปฏิเสธ
  * (ด่านเดียวกับ TPIX_EXPECT_ADDRESS ของกระเป๋าร้อน)
  *
+ * ── กุญแจสองรุ่น ──
+ *  รุ่น 1 (local)   ห่อด้วย AIBOT_BOT_WALLET_KEY บนเครื่องนี้ ตามที่อธิบายข้างบน
+ *                   ทุกอย่างที่ใช้ถอดอยู่ใน .env ของเครื่องเว็บ — เครื่องที่ใช้ผู้ใช้ระบบร่วมกับเว็บอื่น
+ *                   ถูกเจาะเว็บเดียวก็ถอดได้ทุกใบ จึงยอมให้ใช้เฉพาะนอก production (localKeysAllowed())
+ *  รุ่น 2 (remote)  สร้าง ห่อ และเซ็นบนเครื่องตัวเซ็นแยก (BotWalletRemoteSigner) เครื่องนี้เก็บแค่ ciphertext
+ *                   open() ปฏิเสธรุ่นนี้เสมอ — ไม่มีทางได้กุญแจรุ่น 2 บนเครื่องเว็บ ต่อให้เป็น CLI
+ *
  * Developed by Xman Studio.
  */
 class BotWalletKeyring
 {
     public const KEY_VERSION = 1;
+
+    /** กุญแจที่ตัวเซ็นแยกเครื่องเป็นผู้สร้างและถือคีย์ห่อ */
+    public const KEY_VERSION_REMOTE = 2;
+
+    public const DRIVER_LOCAL = 'local';
+
+    public const DRIVER_REMOTE = 'remote';
 
     /** ลำดับของกลุ่ม secp256k1 (n) — กุญแจส่วนตัวต้องอยู่ใน (0, n) */
     private const CURVE_ORDER = 'fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141';
@@ -36,11 +50,92 @@ class BotWalletKeyring
 
     private const TAG_BYTES = 16;
 
-    /** ระบบพร้อมสร้างกระเป๋าไหม — ต้องเปิดฟีเจอร์และมีคีย์ห่อที่ยาวพอ */
+    /** ระบบพร้อมสร้างกระเป๋าไหม — ต้องเปิดฟีเจอร์ และที่เก็บกุญแจที่เลือกไว้ต้องพร้อม */
     public function available(): bool
     {
-        return (bool) config('aibot.bot_wallet.enabled')
+        if (! config('aibot.bot_wallet.enabled')) {
+            return false;
+        }
+
+        if ($this->driver() === self::DRIVER_REMOTE) {
+            return app(BotWalletRemoteSigner::class)->configured();
+        }
+
+        return $this->localKeysAllowed()
             && strlen((string) config('aibot.bot_wallet.encryption_key')) >= 32;
+    }
+
+    /** ที่เก็บกุญแจของกระเป๋าที่จะสร้างใหม่ — ค่าที่ไม่รู้จักถือเป็น local (ซึ่ง production ปฏิเสธ = fail-closed) */
+    public function driver(): string
+    {
+        return config('aibot.bot_wallet.signer.driver') === self::DRIVER_REMOTE
+            ? self::DRIVER_REMOTE
+            : self::DRIVER_LOCAL;
+    }
+
+    /**
+     * ยอมให้คีย์ห่ออยู่บนเครื่องนี้ไหม.
+     *
+     * production = ไม่ยอม: เครื่องเว็บใช้ผู้ใช้ระบบร่วมกับเว็บอื่น ใครอ่าน .env ได้ก็ถอดกุญแจได้ทุกใบ
+     * เปิดได้ด้วย AIBOT_BOT_WALLET_ALLOW_LOCAL_KEYS=true เท่านั้น — ต้องเป็นการตัดสินใจที่ตั้งใจ ไม่ใช่ค่าปริยาย
+     */
+    public function localKeysAllowed(): bool
+    {
+        return ! app()->environment('production')
+            || (bool) config('aibot.bot_wallet.signer.allow_local_in_production', false);
+    }
+
+    /** กุญแจของกระเป๋าใบนี้อยู่กับตัวเซ็นแยกเครื่องไหม */
+    public function isRemote(AiBotWallet $wallet): bool
+    {
+        return (int) $wallet->key_version === self::KEY_VERSION_REMOTE;
+    }
+
+    /**
+     * สร้างกระเป๋าใหม่ตามที่เก็บกุญแจที่ตั้งไว้ — คืนของที่พร้อมบันทึกลงแถว ไม่คืนกุญแจ.
+     *
+     * @return array{address: string, key_ciphertext: string, key_version: int}
+     *
+     * @throws RuntimeException สร้างไม่ได้ = ไม่มีกระเป๋า (ไม่ถอยไปใช้ที่เก็บอีกแบบเอง)
+     */
+    public function create(string $ownerAddress): array
+    {
+        if ($this->driver() === self::DRIVER_REMOTE) {
+            $made = app(BotWalletRemoteSigner::class)->createWallet($ownerAddress);
+
+            return [
+                'address' => strtolower($made['address']),
+                // ชั้นนอกยังเป็น Crypt ของแอปเหมือนเดิม — ฐานข้อมูลรั่วอย่างเดียวไม่เห็นแม้แต่รูปร่างของ ciphertext
+                'key_ciphertext' => Crypt::encryptString($made['sealed']),
+                'key_version' => self::KEY_VERSION_REMOTE,
+            ];
+        }
+
+        if (! $this->localKeysAllowed()) {
+            throw new RuntimeException('BOT_WALLET_LOCAL_KEYS_FORBIDDEN');
+        }
+
+        $pair = $this->generate();
+        $sealed = $this->seal($pair['private_key'], $ownerAddress);
+        unset($pair['private_key']);
+
+        return [
+            'address' => strtolower($pair['address']),
+            'key_ciphertext' => $sealed,
+            'key_version' => self::KEY_VERSION,
+        ];
+    }
+
+    /**
+     * ciphertext ชั้นในของกระเป๋ารุ่น remote สำหรับส่งให้ตัวเซ็น — ถอดไม่ได้ถ้าไม่มีคีย์ห่อของตัวเซ็น.
+     */
+    public function sealedForSigner(AiBotWallet $wallet): string
+    {
+        if (! $this->isRemote($wallet)) {
+            throw new RuntimeException('BOT_WALLET_KEY_NOT_REMOTE');
+        }
+
+        return Crypt::decryptString($wallet->key_ciphertext);
     }
 
     /** ถอดกุญแจได้เฉพาะฝั่ง CLI เท่านั้น */
@@ -112,6 +207,15 @@ class BotWalletKeyring
     {
         if (! $this->canOpen()) {
             throw new RuntimeException('BOT_WALLET_KEY_CLI_ONLY');
+        }
+
+        // กุญแจรุ่น remote ถอดได้บนเครื่องตัวเซ็นเท่านั้น — เครื่องนี้ไม่มีคีย์ห่อของมัน
+        if ($this->isRemote($wallet)) {
+            throw new RuntimeException('BOT_WALLET_KEY_REMOTE');
+        }
+
+        if (! $this->localKeysAllowed()) {
+            throw new RuntimeException('BOT_WALLET_LOCAL_KEYS_FORBIDDEN');
         }
 
         $blob = base64_decode(Crypt::decryptString($wallet->key_ciphertext), true);

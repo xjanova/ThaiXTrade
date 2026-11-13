@@ -91,3 +91,7 @@ storage/app/aibot/
 # ของเหลือจากเครื่อง dev — โปรแกรม Master Node ย้ายไป repo TPIX-Coin แล้ว · ไฟล์ที่ dex:sync เขียนเองตอนรัน
 /masternode-ui/
 /storage/app/tpix/
+
+# ตัวเซ็นกระเป๋าบอท (รันบนเครื่องแยก) — ของที่เกิดตอนรัน ห้าม commit
+/scripts/blockchain/bot-signer/node_modules
+/scripts/blockchain/bot-signer/state

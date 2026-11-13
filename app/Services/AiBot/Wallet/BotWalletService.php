@@ -83,17 +83,17 @@ class BotWalletService
             throw new RuntimeException(self::ERR_DISABLED);
         }
 
-        $pair = $this->keyring->generate();
-        $sealed = $this->keyring->seal($pair['private_key'], $owner);
-        unset($pair['private_key']);
+        // สร้างตามที่เก็บกุญแจที่ตั้งไว้ (ตัวเซ็นแยกเครื่อง หรือคีย์ห่อบนเครื่องนี้นอก production)
+        // ล้ม = โยน error ออกไป ไม่มีกระเป๋า — ไม่ถอยไปสร้างด้วยอีกแบบเอง
+        $made = $this->keyring->create($owner);
 
         return DB::transaction(fn () => AiBotWallet::firstOrCreate(
             ['owner_address' => $owner],
             [
                 'chain_id' => $this->chainId(),
-                'address' => strtolower($pair['address']),
-                'key_ciphertext' => $sealed,
-                'key_version' => BotWalletKeyring::KEY_VERSION,
+                'address' => $made['address'],
+                'key_ciphertext' => $made['key_ciphertext'],
+                'key_version' => $made['key_version'],
                 'status' => AiBotWallet::STATUS_ACTIVE,
             ],
         ));
