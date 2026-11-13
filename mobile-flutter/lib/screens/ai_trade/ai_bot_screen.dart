@@ -31,6 +31,7 @@ import '../../core/theme/gradients.dart';
 import '../../models/ai_bot_models.dart';
 import '../../providers/accent_provider.dart';
 import '../../providers/ai_bot_provider.dart';
+import '../../providers/config_provider.dart';
 import '../../providers/market_provider.dart';
 import '../../providers/wallet_provider.dart';
 import '../../services/ai_bot_api.dart';
@@ -203,12 +204,11 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
   void _openKyc() => KycNav.open(context);
 
   /// เหตุผลความล้มเหลวล่าสุด แปลเป็นสองภาษาผ่านตารางกลางของโมเดล
-  /// ข้อความไทยจากเซิร์ฟเวอร์เป็นทางลงสุดท้ายเมื่อเจอรหัสที่ยังไม่รู้จัก
-  String _failure(bool th) => AiBotErrorText.of(
-        _bot.errorCode ?? 'UNKNOWN',
-        _bot.errorMessage,
-        th,
-      );
+  /// ข้อความจากเซิร์ฟเวอร์เป็นทางลงสุดท้ายเมื่อเจอรหัสที่ยังไม่รู้จัก และข้อมูลที่ไม่ผ่าน
+  /// การตรวจ (422) ใช้เหตุผลรายช่องของเซิร์ฟเวอร์ — ดู [AiBotProvider.errorText]
+  String _failure(bool th) => _bot.hasError
+      ? _bot.errorText(th)
+      : AiBotErrorText.of('UNKNOWN', null, th);
 
   Future<bool> _confirm({
     required String title,
@@ -459,15 +459,32 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
         _snack(AiBotErrorText.of('LIVE_DISABLED', null, th));
         return;
       }
+      // คู่ที่ยังเทรดเงินจริงไม่ได้ — เซิร์ฟเวอร์ปฏิเสธอยู่แล้ว (LIVE_PAIR_UNSUPPORTED)
+      // บอกก่อนดีกว่าถามยืนยันแล้วเด้ง (ด่านเดียวกับ toggleMode ของหน้าเว็บ)
+      if (_bot.liveExecution && bot.liveSupported == false) {
+        _snack(th
+            ? 'คู่ ${bot.pair} ยังเทรดเงินจริงไม่ได้ — เปลี่ยนเป็นคู่ในรายการของโหมดเงินจริงก่อน'
+            : '${bot.pair} cannot trade real money yet — switch the bot to a supported pair first');
+        return;
+      }
       // เรื่องเงินจริง — ต้องเป็นการกระทำที่ตั้งใจ ไม่ใช่ปัดโดนแล้วเปลี่ยน
       final ok = await _confirm(
         title: th ? 'เปิดโหมดจริง' : 'Switch to live',
         confirmLabel: th ? 'เปิดโหมดจริง' : 'Go live',
         body: [
-          // โหมดจริงใช้กระเป๋าบอทที่ระบบดูแลกุญแจ — ห้ามบอกว่า "ระบบไม่ถือกุญแจ" (ข้อความเดิมผิดจากความจริง)
-          _dialogText(th
-              ? 'โหมดจริงใช้เงินจริงจากกระเป๋าบอทที่คุณโอนทุนเข้าไป — ระบบดูแลกุญแจของกระเป๋าบอทและส่งคำสั่งแทนคุณ โอนเข้าเท่าที่พร้อมรับความเสี่ยงเท่านั้น'
-              : 'Live mode trades real money from the bot wallet you fund. The platform keeps the key of that bot wallet and places orders for you — only move in what you can afford to risk.'),
+          /*
+           * ข้อความต้องตรงกับสิ่งที่เกิดจริง ซึ่งเซิร์ฟเวอร์บอกผ่านธง live_execution
+           *   true  = บอทส่งคำสั่งเองจากกระเป๋าบอทที่ระบบดูแลกุญแจ (ห้ามบอกว่า "ระบบไม่ถือกุญแจ")
+           *   false = โหมดจริงยังเป็นแค่สัญญาณรอยืนยัน ไม่มีเงินขยับ — เดิมจอบอกว่าระบบส่งคำสั่ง
+           *           แทนผู้ใช้ทุกกรณี ผู้ใช้จึงรอไม้ที่ไม่มีวันเกิด
+           */
+          _dialogText(_bot.liveExecution
+              ? (th
+                  ? 'โหมดจริงใช้เงินจริงจากกระเป๋าบอทที่คุณโอนทุนเข้าไป — ระบบดูแลกุญแจของกระเป๋าบอทและส่งคำสั่งแทนคุณ โอนเข้าเท่าที่พร้อมรับความเสี่ยงเท่านั้น'
+                  : 'Live mode trades real money from the bot wallet you fund. The platform keeps the key of that bot wallet and places orders for you — only move in what you can afford to risk.')
+              : (th
+                  ? 'ตอนนี้โหมดจริงยังเป็น "สัญญาณรอยืนยัน" — บอทจะบอกจังหวะเข้า/ออกให้ แต่ยังไม่ส่งคำสั่งเงินจริงเอง และยังไม่มีเงินขยับจากการสลับโหมดนี้'
+                  : 'For now live mode only raises signals for you to confirm — the bot does not place real-money orders itself yet, and no funds move when you switch.')),
           if (bot.position != null) ...[
             const SizedBox(height: 8),
             _dialogText(
@@ -538,9 +555,15 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
       return;
     }
     if (existing == null && !_bot.canCreateBot) {
-      _snack(AiBotErrorText.of('BOT_LIMIT_REACHED', null, th));
+      // บอกเหตุผลจริง — ยังไม่มีแพลน/ยังโหลดสถานะไม่ได้ ไม่ใช่ "โควตาเต็ม" เสมอไป
+      _snack(_bot.createBlock.text(th));
       return;
     }
+
+    // ทะเบียนคู่ (/market/pairs) โหลดไม่สำเร็จตอนเปิดแอพ = ลองใหม่เบื้องหลัง
+    // รอบนี้ใช้รายการสำรองไปก่อน เปิดฟอร์มครั้งถัดไปจะได้ชุดเดียวกับเว็บ
+    final config = context.read<ConfigProvider>();
+    if (!config.pairsLoaded) config.reloadPairs();
 
     /*
      * ⚠️ ชีตเป็นคนยิงบันทึกเอง แล้วปิดตัวเองเมื่อสำเร็จเท่านั้น
@@ -622,20 +645,25 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
 
   List<AiBot> get _bots => _bot.bots;
 
-  List<String> _pairOptions() {
-    final tickers = context.read<MarketProvider>().tickers;
-    final seen = <String>{};
-    final out = <String>[];
-    for (final t in tickers) {
-      final base = t.baseAsset.trim().toUpperCase();
-      final quote = t.quoteAsset.trim().toUpperCase();
-      if (base.isEmpty || quote.isEmpty) continue;
-      final pair = '$base/$quote';
-      if (seen.add(pair)) out.add(pair);
-    }
-    if (out.isEmpty) out.add('BTC/USDT');
-    return out;
-  }
+  /*
+   * คู่เทรดให้เลือกในฟอร์มบอท — ชุดเดียวกับหน้าเว็บ (/market/pairs ที่แอดมินเปิดไว้)
+   *
+   * เดิมอ่านจาก `MarketProvider.tickers` ซึ่งเป็นรายการ "ที่ถูกกรองแล้ว" ของแท็บตลาด:
+   * ผู้ใช้ค้นคำว่า ETH ค้างไว้ในแท็บตลาด ฟอร์มบอทก็เหลือให้เลือกแต่คู่ ETH และรายการนั้น
+   * มาจากคนละแหล่งกับเว็บ (ราคา Binance + พูล DEX) จึงมีคู่ที่เว็บไม่ให้เลือก
+   * รายการราคาทั้งชุด (ไม่กรอง) ใช้เป็นทางสำรองตอน /market/pairs ยังโหลดไม่ได้เท่านั้น
+   */
+  List<String> _pairOptions() => aiBotPairOptions(
+        context
+            .read<ConfigProvider>()
+            .pairs
+            .where((p) => p.isActive)
+            .map((p) => (p.baseAsset, p.quoteAsset)),
+        context
+            .read<MarketProvider>()
+            .allTickers
+            .map((t) => (t.baseAsset, t.quoteAsset)),
+      );
 
   // ── หน้าจอ ──────────────────────────────────────────────────────────────
 
@@ -784,10 +812,13 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
                   _block(_SectionHeader(
                     icon: Icons.smart_toy_rounded,
                     title: th ? 'บอทของฉัน' : 'My bots',
+                    // สร้างไม่ได้ = ปุ่มจาง แต่ยังกดได้เพื่อบอกเหตุผล (หน้าเว็บใช้ tooltip
+                    // ซึ่งจอสัมผัสไม่มี) — ปุ่มเทาที่กดแล้วเงียบคือจอตายที่ไม่บอกอะไร
                     trailing: _MiniAction(
                       icon: Icons.add_rounded,
                       label: th ? 'บอทใหม่' : 'New bot',
-                      enabled: bot.canCreateBot && !bot.isWorking,
+                      enabled: !bot.isWorking,
+                      muted: !bot.canCreateBot,
                       onTap: () => _openEditor(),
                     ),
                   )),
@@ -801,7 +832,7 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
                   else if (_bots.isEmpty)
                     _block(_EmptyBots(
                       th: th,
-                      canCreate: bot.canCreateBot,
+                      block: bot.createBlock,
                       onCreate: () => _openEditor(),
                     ))
                   else
@@ -1656,19 +1687,23 @@ class _MiniAction extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool enabled;
+
+  /// ดูจางเหมือนปิด แต่ยังกดได้ — ให้ผู้เรียกบอกเหตุผลที่ทำไม่ได้ตอนกด
+  final bool muted;
   final VoidCallback onTap;
   const _MiniAction({
     required this.icon,
     required this.label,
     required this.enabled,
     required this.onTap,
+    this.muted = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final accent = context.watch<AccentProvider>();
     return Opacity(
-      opacity: enabled ? 1 : 0.45,
+      opacity: enabled && !muted ? 1 : 0.45,
       child: GestureDetector(
         onTap: enabled ? onTap : null,
         behavior: HitTestBehavior.opaque,
@@ -1852,10 +1887,13 @@ class _BotRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
+              // โหมดจริงยังไม่เปิด = ป้ายจาง แต่ยังแตะได้เพื่อบอกว่า "เร็วๆ นี้" (หน้าเว็บใช้ tooltip)
+              // บอทที่ค้างอยู่โหมดจริงจากก่อนหน้ายังกดกลับมาโหมดทดลองได้เสมอ
               _ModeChip(
                 th: th,
                 live: bot.isLive,
-                enabled: !busy && (bot.isLive || liveEnabled),
+                enabled: !busy,
+                muted: !(bot.isLive || liveEnabled),
                 onTap: onMode,
               ),
             ],
@@ -1874,6 +1912,15 @@ class _BotRow extends StatelessWidget {
                   : (th
                       ? 'ถูกระงับ: ${bot.bannedReason}'
                       : 'Suspended: ${bot.bannedReason}'),
+            ),
+          ] else if (bot.planReasonCode != null) ...[
+            const SizedBox(height: 10),
+            // แพลนไม่ให้เดินแล้ว (หมดอายุ · ไม่รวมกลยุทธ์นี้ · เกินโควตา · กลยุทธ์ถูกถอด)
+            // — บอกว่าต้องทำอะไร เดิมบอทที่ระบบพักไว้ไม่มีเหตุผลอะไรให้เห็นเลย (หน้าเว็บมี)
+            _RowNote(
+              icon: Icons.workspace_premium_rounded,
+              color: accent.g2,
+              text: bot.planReasonText(th)!,
             ),
           ] else if (stale) ...[
             const SizedBox(height: 10),
@@ -2092,19 +2139,23 @@ class _ModeChip extends StatelessWidget {
   final bool th;
   final bool live;
   final bool enabled;
+
+  /// ดูจางเหมือนปิด แต่ยังแตะได้ — ผู้เรียกบอกเหตุผลตอนแตะ (โหมดจริงยังไม่เปิด)
+  final bool muted;
   final VoidCallback onTap;
   const _ModeChip({
     required this.th,
     required this.live,
     required this.enabled,
     required this.onTap,
+    this.muted = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final accent = context.watch<AccentProvider>();
     return Opacity(
-      opacity: enabled ? 1 : 0.5,
+      opacity: enabled && !muted ? 1 : 0.5,
       child: GestureDetector(
         onTap: enabled ? onTap : null,
         behavior: HitTestBehavior.opaque,
@@ -2254,17 +2305,20 @@ class _SquareButton extends StatelessWidget {
 
 class _EmptyBots extends StatelessWidget {
   final bool th;
-  final bool canCreate;
+
+  /// ทำไมยังสร้างไม่ได้ (none = สร้างได้) — ข้อความใต้ปุ่มต้องตรงกับเหตุผลจริง
+  final AiBotCreateBlock block;
   final VoidCallback onCreate;
   const _EmptyBots({
     required this.th,
-    required this.canCreate,
+    required this.block,
     required this.onCreate,
   });
 
   @override
   Widget build(BuildContext context) {
     final accent = context.watch<AccentProvider>();
+    final canCreate = block == AiBotCreateBlock.none;
     return GlassCard(
       variant: GlassVariant.standard,
       borderRadius: 16,
@@ -2313,9 +2367,16 @@ class _EmptyBots extends StatelessWidget {
           SizedBox(
             width: 220,
             child: GradientButton(
-              text: canCreate
-                  ? (th ? 'สร้างบอทตัวแรก' : 'Create first bot')
-                  : (th ? 'โควตาเต็มแล้ว' : 'Quota is full'),
+              text: switch (block) {
+                AiBotCreateBlock.none =>
+                  th ? 'สร้างบอทตัวแรก' : 'Create first bot',
+                AiBotCreateBlock.quotaFull =>
+                  th ? 'โควตาเต็มแล้ว' : 'Quota is full',
+                AiBotCreateBlock.noPlan =>
+                  th ? 'ต้องมีแพลนก่อน' : 'A plan is needed first',
+                AiBotCreateBlock.statusUnavailable =>
+                  th ? 'ยังโหลดสถานะไม่ได้' : 'Status not loaded',
+              },
               icon: Icons.add_rounded,
               height: 46,
               onPressed: canCreate ? onCreate : null,
@@ -2324,9 +2385,7 @@ class _EmptyBots extends StatelessWidget {
           if (!canCreate) ...[
             const SizedBox(height: 8),
             Text(
-              th
-                  ? 'กด "หยุด" บอทตัวเก่าก่อน — การ "พัก" ยังกินโควตาอยู่'
-                  : 'Stop an old bot first — pausing still uses the quota',
+              block.text(th),
               textAlign: TextAlign.center,
               style: AppFonts.ui(
                 fontSize: 10.5,
@@ -3571,6 +3630,26 @@ class _HeroSkeleton extends StatelessWidget {
 // ชีตสร้าง / แก้ไขบอท
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// ชีตสร้าง/แก้บอทสำหรับเทสต์ของฟอร์ม — ตัวชีตเป็นของภายในไฟล์นี้ จึงเปิดช่องให้
+/// เทสต์วาดมันตรงๆ โดยไม่ต้องยกทั้งหน้า AI TRADE (ที่ต้องมีผู้ให้บริการอีกครึ่งโหล)
+@visibleForTesting
+Widget debugBotEditorSheet({
+  required AiBotCatalog catalog,
+  required List<String> unlocked,
+  required Future<AiBot?> Function(AiBotDraft draft) onSave,
+  AiBot? existing,
+  List<String> pairs = const ['BTC/USDT'],
+  String defaultName = 'Bot 1',
+}) =>
+    _BotEditorSheet(
+      catalog: catalog,
+      unlocked: unlocked,
+      existing: existing,
+      pairs: pairs,
+      defaultName: defaultName,
+      onSave: onSave,
+    );
+
 class _BotEditorSheet extends StatefulWidget {
   final AiBotCatalog catalog;
   final List<String> unlocked;
@@ -3626,6 +3705,10 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
   /// กางส่วน "ตั้งค่าขั้นสูง" อยู่ไหม — ปิดไว้ก่อน ผู้ใช้ทั่วไปเห็นเฉพาะช่องหลัก
   bool _showAdvanced = false;
 
+  /// กลยุทธ์ที่เลือกไม่ได้ซึ่งผู้ใช้เพิ่งแตะ — โชว์เหตุผลของมันใต้แถวชิป
+  /// (หน้าเว็บเขียนเหตุผลไว้ในการ์ดทุกใบ ชิปบนจอมือถือไม่มีที่พอ จึงบอกเมื่อแตะ)
+  AiBotStrategy? _blocked;
+
   @override
   void initState() {
     super.initState();
@@ -3654,6 +3737,16 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
     _stopLoss = TextEditingController(text: _plain(_draft.stopLossPct));
     _takeProfit = TextEditingController(text: _plain(_draft.takeProfitPct));
     _dailyLoss = TextEditingController(text: _plain(_draft.maxDailyLossUsd));
+
+    // ป้ายเทมเพลตคิดจากค่าจริงในช่อง — พิมพ์ตัวเลขความเสี่ยงแล้วต้องวาดใหม่
+    for (final c in [_maxPosition, _stopLoss, _takeProfit, _dailyLoss]) {
+      c.addListener(_onTyped);
+    }
+  }
+
+  /// ช่องตัวเลขเปลี่ยน → วาดใหม่ ให้ป้าย "ตรงกับเทมเพลตไหน" ตามค่าที่พิมพ์ทัน
+  void _onTyped() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -3676,11 +3769,69 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
     return widget.catalog.strategies.first;
   }
 
-  /// ปลดล็อกตามแพลน **และ** เปิดใช้จริงได้ — สองเงื่อนไขคนละเรื่องกัน
+  /// ปลดล็อกตามแพลน **และ** เปิดใช้จริงได้ — สองเงื่อนไขคนละเรื่องกัน (เหมือนหน้าเว็บ)
+  /// บวกเงื่อนไขของแอพเอง: ต้องตั้งค่าได้ครบทุกช่อง ([AiBotStrategy.appConfigurable])
   /// (ตอนแก้บอทเดิม กลยุทธ์ของมันเองต้องเลือกได้เสมอ ไม่งั้นแก้ชื่อก็ไม่ได้)
   bool _selectable(AiBotStrategy s) {
     final own = widget.existing?.strategy == s.code;
-    return own || (widget.unlocked.contains(s.code) && s.available);
+    return own || _blockReason(s, true) == null;
+  }
+
+  /// ระดับแพลนขั้นต่ำของกลยุทธ์ในภาษาคน — ว่างเมื่อทุกคนใช้ได้
+  String _tierText(String tier, bool th) => switch (tier) {
+        'basic' => th ? 'Basic ขึ้นไป' : 'Basic and up',
+        'pro' => th ? 'Pro ขึ้นไป' : 'Pro and up',
+        'vip' => th ? 'VIP เท่านั้น' : 'VIP only',
+        _ => '',
+      };
+
+  /// ทำไมสร้างบอทด้วยกลยุทธ์นี้ไม่ได้ — null = เลือกได้
+  ///
+  /// ลำดับเดียวกับ `strategyBlockedTitle()` ของหน้าเว็บ: "ยังเปิดใช้ไม่ได้" มาก่อนเรื่องแพลน
+  /// (อัปเกรดไปก็ยังใช้ไม่ได้อยู่ดี) แล้วแทรก "สร้างได้บนเว็บ" ของแอพไว้ก่อนเรื่องแพลนด้วยเหตุผลเดียวกัน
+  String? _blockReason(AiBotStrategy s, bool th) {
+    switch (s.createBlock(widget.unlocked)) {
+      case StrategyBlock.none:
+        return null;
+      case StrategyBlock.unavailable:
+        return s.blockedReason(th) ??
+            (s.comingSoon
+                ? (th
+                    ? 'เร็วๆ นี้ — กลยุทธ์นี้ยังไม่เปิดให้สร้างบอท'
+                    : 'Coming soon — not open for new bots yet')
+                : (th
+                    ? 'กลยุทธ์นี้ยังไม่เปิดให้สร้างบอท'
+                    : 'This strategy is not open for new bots'));
+      case StrategyBlock.webOnly:
+        return th
+            ? 'กลยุทธ์นี้สร้างได้บนเว็บ (หน้า AI TRADE ของ tpix.online) — แอพรุ่นนี้ยังตั้งค่าของมันไม่ได้ครบ บอทที่สร้างบนเว็บจะมาโผล่ในแอพให้เริ่ม/พัก/ดูผลได้ตามปกติ'
+            : 'Create this one on the web (AI TRADE on tpix.online) — this app version cannot set all of its options yet. Bots made on the web show up here to start, pause and monitor as usual.';
+      case StrategyBlock.planLocked:
+        final tier = _tierText(s.tier, th);
+        if (tier.isEmpty) {
+          return th
+              ? 'แพลนปัจจุบันยังไม่รวมกลยุทธ์นี้'
+              : 'Your current plan does not include this strategy';
+        }
+        return th ? 'ต้องใช้แพลนระดับ $tier' : 'Needs a plan: $tier';
+    }
+  }
+
+  /// ป้ายสั้นบนชิปของกลยุทธ์ที่เลือกไม่ได้ — null = ไม่ต้องติดป้าย
+  String? _blockBadge(AiBotStrategy s, bool th) {
+    switch (s.createBlock(widget.unlocked)) {
+      case StrategyBlock.none:
+        return null;
+      case StrategyBlock.unavailable:
+        return s.comingSoon
+            ? (th ? 'เร็วๆ นี้' : 'SOON')
+            : (th ? 'ยังไม่เปิด' : 'NOT LIVE');
+      case StrategyBlock.webOnly:
+        return th ? 'สร้างได้บนเว็บ' : 'WEB ONLY';
+      case StrategyBlock.planLocked:
+        final tier = _tierText(s.tier, th);
+        return tier.isEmpty ? (th ? 'ล็อก' : 'LOCKED') : tier;
+    }
   }
 
   List<String> _timeframes() {
@@ -3712,8 +3863,21 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
   /// ชุดช่องของกลยุทธ์ที่เลือก — สวิตช์ร่วม (ข่าว/AI เลือกเหรียญ/AI ร่วมตัดสิน) รวมอยู่ด้วย
   List<StrategyParam> _specs() {
     final s = widget.catalog.strategy(_draft.strategy);
-    if (s == null) return widget.catalog.commonParams;
+    if (s == null) {
+      return widget.catalog.commonParams
+          .where((p) => p.isSupported)
+          .toList(growable: false);
+    }
     return s.formSpecs(widget.catalog.commonParams);
+  }
+
+  /// มีช่องที่แอพรุ่นนี้กรอกไม่ได้ไหม (ชนิดใหม่จากแคตตาล็อก) — ต้องบอกผู้ใช้ ไม่ใช่ซ่อนเงียบ
+  bool _hasWebOnlySpecs() {
+    final s = widget.catalog.strategy(_draft.strategy);
+    final list = s == null
+        ? widget.catalog.commonParams.where((p) => !p.isSupported)
+        : s.webOnlySpecs(widget.catalog.commonParams);
+    return list.isNotEmpty;
   }
 
   String _paramText(StrategyParam spec) {
@@ -3725,14 +3889,20 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
   TextEditingController _ctrlFor(StrategyParam spec) =>
       _paramCtrls.putIfAbsent(spec.key, () {
         final c = TextEditingController(text: _paramText(spec));
-        // พิมพ์ค่าต่างจากที่เทมเพลตให้ = ตั้งเองแล้ว (ชิปเทมเพลตต้องเลิกไฮไลต์)
-        c.addListener(() {
-          if (_draft.template != null && c.text != _paramText(spec) && mounted) {
-            setState(() => _draft = _draft.copyWith(clearTemplate: true));
-          }
-        });
+        // พิมพ์ค่าต่างจากที่เทมเพลตให้ = ตั้งเองแล้ว — ป้ายเทมเพลตคิดจากค่าจริง ([_liveDraft])
+        c.addListener(_onTyped);
         return c;
       });
+
+  /// ฟอร์ม "ตามที่เห็นบนจอตอนนี้" — รวมตัวเลขที่ยังพิมพ์ค้างอยู่ในช่อง
+  /// ช่องความเสี่ยงที่อ่านเป็นตัวเลขไม่ได้ = NaN (ไม่ตรงกับเทมเพลตไหนแน่นอน)
+  AiBotDraft _liveDraft() => _draft.copyWith(
+        params: _collectParams(),
+        maxPositionUsd: _read(_maxPosition) ?? double.nan,
+        stopLossPct: _read(_stopLoss) ?? double.nan,
+        takeProfitPct: _read(_takeProfit) ?? double.nan,
+        maxDailyLossUsd: _read(_dailyLoss) ?? double.nan,
+      );
 
   /// draft เปลี่ยนจากข้างนอก (เปลี่ยนกลยุทธ์/กดเทมเพลต) → ช่องตัวเลขต้องตามให้ทัน
   void _syncParamCtrls() {
@@ -3747,7 +3917,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
     final s = widget.catalog.strategy(_draft.strategy);
     if (s == null) return;
     setState(() {
-      _draft = _draft.applyTemplate(t, s, widget.catalog);
+      _draft = _typed().applyTemplate(t, s, widget.catalog);
       _maxPosition.text = _plain(_draft.maxPositionUsd);
       _stopLoss.text = _plain(_draft.stopLossPct);
       _takeProfit.text = _plain(_draft.takeProfitPct);
@@ -3755,6 +3925,18 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
     });
     _syncParamCtrls();
   }
+
+  /// draft ที่รวมตัวเลขซึ่งพิมพ์ค้างอยู่ในช่องแล้ว (ช่องที่อ่านไม่ออกคงค่าเดิม)
+  ///
+  /// ใช้ก่อนกดเทมเพลต/สลับกลยุทธ์: ช่องที่เทมเพลตไม่ได้ระบุต้องคงค่าที่ผู้ใช้เพิ่งพิมพ์
+  /// เหมือนหน้าเว็บ (ที่นั่นช่องผูกกับฟอร์มตรงๆ) ไม่ใช่ย้อนกลับไปค่าก่อนพิมพ์
+  AiBotDraft _typed() => _draft.copyWith(
+        params: _collectParams(),
+        maxPositionUsd: _read(_maxPosition),
+        stopLossPct: _read(_stopLoss),
+        takeProfitPct: _read(_takeProfit),
+        maxDailyLossUsd: _read(_dailyLoss),
+      );
 
   /// อ่านช่องตัวเลขทุกช่องกลับเข้า draft ก่อนบันทึก — clamp ตาม min/max ของแคตตาล็อก
   /// (เซิร์ฟเวอร์ clamp ซ้ำอยู่แล้ว แต่ผู้ใช้ควรเห็นค่าที่จะถูกใช้จริงตั้งแต่ก่อนกด)
@@ -3830,8 +4012,24 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
   /// ช่องของกลยุทธ์เริ่มจากชุด balanced ของกลยุทธ์ใหม่ และดันกรอบเวลาให้อยู่ในชุดที่
   /// กลยุทธ์ใหม่รองรับ (ไม่งั้นโดน 422 ตอนกดบันทึก) — ดู [AiBotDraft.withStrategy]
   void _pickStrategy(AiBotStrategy s) {
+    // แตะชิปที่เลือกอยู่แล้ว = ไม่ทำอะไร (หน้าเว็บก็ไม่รีเซ็ต) — เดิมค่าที่เพิ่งแก้ถูกล้างกลับชุดตั้งต้น
+    if (s.code == _draft.strategy) {
+      if (_blocked != null) setState(() => _blocked = null);
+      return;
+    }
+    final e = widget.existing;
     setState(() {
-      _draft = _draft.withStrategy(s, widget.catalog);
+      _blocked = null;
+      _draft = (e != null && s.code == e.strategy)
+          // กลับมากลยุทธ์เดิมของบอทที่แก้อยู่ = ค่าที่บันทึกไว้ของมันทั้งชุด ไม่ใช่ชุดตั้งต้นใหม่
+          // (รวมช่องที่แอพกรอกไม่ได้ — ต้องกลับไปเท่าเดิม ห้ามหายแล้วถูกแทนด้วยค่าปริยาย)
+          ? AiBotDraft.fromBot(e).copyWith(name: _draft.name, pair: _draft.pair)
+          // บอทใหม่เริ่มจากชุดตั้งต้นของกลยุทธ์ใหม่ · แก้บอทเดิมไม่ทับกรอบเสี่ยงที่ตั้งไว้ (เหมือนเว็บ)
+          : _typed().withStrategy(
+              s,
+              widget.catalog,
+              startFromTemplate: e == null,
+            );
       _maxPosition.text = _plain(_draft.maxPositionUsd);
       _stopLoss.text = _plain(_draft.stopLossPct);
       _takeProfit.text = _plain(_draft.takeProfitPct);
@@ -3869,14 +4067,34 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
       return;
     }
 
-    final draft = _draft.copyWith(
-      name: name,
-      params: _collectParams(),
-      maxPositionUsd: _clamp(pos, limits.maxPositionUsd),
-      stopLossPct: _clamp(sl, limits.stopLossPct),
-      takeProfitPct: _clamp(tp, limits.takeProfitPct),
-      maxDailyLossUsd: _clamp(dl, limits.maxDailyLossUsd),
-    );
+    /*
+     * ด่านสุดท้ายก่อนยิง: กลยุทธ์ที่เลือกอยู่ต้องเป็นตัวที่สร้างจากแอพได้จริง
+     *
+     * ปกติชิปที่เลือกไม่ได้ก็กดไม่ได้อยู่แล้ว แต่ฟอร์มเปิดมาพร้อมกลยุทธ์ตัวแรกของแคตตาล็อก
+     * เมื่อ "ไม่มีตัวไหนเลือกได้เลย" — ถ้าตัวนั้นเป็นกลยุทธ์ที่แอพตั้งค่าไม่ครบ (เช่นตัวสร้างกฎ)
+     * การกดบันทึกจะส่งบอทที่ช่องสำคัญว่างขึ้นไป บอกเหตุผลตรงนี้แทน
+     */
+    final strategy = widget.catalog.strategy(_draft.strategy);
+    if (strategy != null && !_selectable(strategy)) {
+      setState(() {
+        _blocked = strategy;
+        _formError = _blockReason(strategy, th);
+        _formNeedsKyc = false;
+      });
+      return;
+    }
+
+    final draft = _draft
+        .copyWith(
+          name: name,
+          params: _collectParams(),
+          maxPositionUsd: _clamp(pos, limits.maxPositionUsd),
+          stopLossPct: _clamp(sl, limits.stopLossPct),
+          takeProfitPct: _clamp(tp, limits.takeProfitPct),
+          maxDailyLossUsd: _clamp(dl, limits.maxDailyLossUsd),
+        )
+        // รหัสเทมเพลตตามค่าที่จะส่งจริง — ตรงชุดไหนส่งชุดนั้น ไม่ตรงไม่ส่ง (เหมือนหน้าเว็บ)
+        .withMatchedTemplate(strategy);
 
     setState(() {
       _saving = true;
@@ -3945,6 +4163,8 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
     final editing = widget.existing != null;
     final holding = widget.existing?.position != null;
     final selected = widget.catalog.strategy(_draft.strategy);
+    final activeTemplate = _liveDraft().matchingTemplate(selected);
+    final blocked = _blocked;
 
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -4040,6 +4260,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                           border: _border(AppColors.bgCardBorder),
                         ),
                       ),
+                      _fieldIssue('name'),
 
                       const SizedBox(height: 14),
                       _FieldLabel(th ? 'คู่เทรด' : 'Pair'),
@@ -4050,6 +4271,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                         onChanged: (v) =>
                             setState(() => _draft = _draft.copyWith(pair: v)),
                       ),
+                      _fieldIssue('pair'),
                       if (holding) ...[
                         const SizedBox(height: 6),
                         Text(
@@ -4075,11 +4297,24 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                                   strategy: s,
                                   selected: s.code == _draft.strategy,
                                   enabled: _selectable(s),
+                                  badge: _blockBadge(s, th),
                                   onTap: () => _pickStrategy(s),
+                                  // เลือกไม่ได้ก็ยังแตะได้ — เพื่อบอกว่าทำไม และต้องทำอะไร
+                                  onBlockedTap: () =>
+                                      setState(() => _blocked = s),
                                 ))
                             .toList(),
                       ),
-                      if (selected != null) ...[
+                      _fieldIssue('strategy'),
+                      if (blocked != null) ...[
+                        const SizedBox(height: 8),
+                        _RowNote(
+                          icon: Icons.lock_outline_rounded,
+                          color: accent.g2,
+                          text:
+                              '${blocked.label(th)} — ${_blockReason(blocked, th) ?? blocked.describe(th)}',
+                        ),
+                      ] else if (selected != null) ...[
                         const SizedBox(height: 8),
                         Text(
                           selected.blockedReason(th) ?? selected.describe(th),
@@ -4098,41 +4333,50 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                         runSpacing: 8,
                         children: _timeframes()
                             .map((tf) => _SmallChip(
-                                  label: tf,
+                                  // กรอบเวลาที่ backtest แล้วชนะต้นทุน ติดป้ายแนะนำเหมือนหน้าเว็บ
+                                  label: tf == selected?.defaultTimeframe
+                                      ? '$tf · ${th ? 'แนะนำ' : 'recommended'}'
+                                      : tf,
                                   selected: tf == _draft.timeframe,
                                   onTap: () => setState(() =>
                                       _draft = _draft.copyWith(timeframe: tf)),
                                 ))
                             .toList(),
                       ),
+                      _fieldIssue('timeframe'),
 
-                      // เทมเพลตที่ทีมงาน backtest ไว้ — กดครั้งเดียวได้ทั้งกรอบเวลา พารามิเตอร์ กรอบเสี่ยง
+                      /*
+                       * เทมเพลตที่ทีมงาน backtest ไว้ — กดครั้งเดียวได้ทั้งกรอบเวลา พารามิเตอร์ กรอบเสี่ยง
+                       *
+                       * โชว์คำบรรยายของ "ทุกใบ" เหมือนหน้าเว็บ ไม่ใช่เฉพาะใบที่เลือกอยู่ —
+                       * คำบรรยายคือที่ที่บอกว่าชุดไหน backtest แล้วขาดทุน (⚠️ ไม่ชนะต้นทุนเข้า-ออก)
+                       * ผู้ใช้ต้องเห็นคำเตือนนั้นก่อนกดเลือก ไม่ใช่หลังเลือกไปแล้ว
+                       * ใบที่ไฮไลต์คิดจากค่าจริงในฟอร์ม (แก้ช่องใดช่องหนึ่งแล้วป้ายหลุดทันที)
+                       */
                       if (selected != null && selected.templates.isNotEmpty) ...[
                         const SizedBox(height: 14),
-                        _FieldLabel(th ? 'เทมเพลตที่ทีมงานตั้งให้' : 'Team presets'),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: selected.templates
-                              .map((t) => _SmallChip(
-                                    label: t.label(th),
-                                    selected: t.code == _draft.template,
-                                    onTap: () => _applyTemplate(t),
-                                  ))
-                              .toList(),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          selected.template(_draft.template)?.tagline(th) ??
-                              (th
-                                  ? 'ตั้งค่าเอง — แก้ช่องไหนก็ได้ด้านล่าง'
-                                  : 'Custom — tweak any field below'),
-                          style: AppFonts.ui(
-                            fontSize: 11,
-                            color: AppColors.textTertiary,
-                            height: 1.5,
+                        _FieldLabel(th
+                            ? 'เทมเพลตที่ทีมงานตั้งให้ — เลือกแล้วแก้ต่อได้ทุกช่อง'
+                            : 'Team presets — pick one, then tweak anything'),
+                        for (final t in selected.templates)
+                          _TemplateCard(
+                            label: t.label(th),
+                            timeframe: t.timeframe,
+                            tagline: t.tagline(th),
+                            selected: t.code == activeTemplate?.code,
+                            onTap: () => _applyTemplate(t),
                           ),
-                        ),
+                        if (activeTemplate == null)
+                          Text(
+                            th
+                                ? 'กำหนดเอง — ค่าที่ตั้งอยู่ไม่ตรงกับเทมเพลตใด'
+                                : 'Custom — current values do not match any preset',
+                            style: AppFonts.ui(
+                              fontSize: 11,
+                              color: AppColors.textTertiary,
+                              height: 1.5,
+                            ),
+                          ),
                       ],
 
                       const SizedBox(height: 18),
@@ -4226,6 +4470,16 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                       ),
                       const SizedBox(height: 4),
                       ..._paramWidgets(th, advanced: false),
+                      if (_hasWebOnlySpecs()) ...[
+                        const SizedBox(height: 8),
+                        _RowNote(
+                          icon: Icons.language_rounded,
+                          color: AppColors.textTertiary,
+                          text: th
+                              ? 'มีบางช่องที่แอพรุ่นนี้ยังตั้งไม่ได้ (ตั้งได้บนเว็บ) — แอพจะไม่แตะค่าของช่องเหล่านั้น'
+                              : 'Some settings cannot be edited in this app version yet (use the web) — the app leaves them untouched',
+                        ),
+                      ],
                       if (_specs().any((s) => s.isAdvanced)) ...[
                         const SizedBox(height: 10),
                         GestureDetector(
@@ -4396,7 +4650,13 @@ class _StrategyChip extends StatelessWidget {
   final AiBotStrategy strategy;
   final bool selected;
   final bool enabled;
+
+  /// ป้ายเหตุผลสั้นๆ (เร็วๆ นี้ · ยังไม่เปิด · สร้างได้บนเว็บ · ระดับแพลน) — null = ไม่ติด
+  final String? badge;
   final VoidCallback onTap;
+
+  /// แตะชิปที่เลือกไม่ได้ — ให้ฟอร์มโชว์เหตุผลเต็มๆ ใต้แถวชิป
+  final VoidCallback onBlockedTap;
 
   const _StrategyChip({
     required this.th,
@@ -4404,15 +4664,18 @@ class _StrategyChip extends StatelessWidget {
     required this.selected,
     required this.enabled,
     required this.onTap,
+    required this.onBlockedTap,
+    this.badge,
   });
 
   @override
   Widget build(BuildContext context) {
     final accent = context.watch<AccentProvider>();
     return Opacity(
-      opacity: enabled ? 1 : 0.45,
+      // 0.6 ไม่ใช่ 0.45: ป้ายเหตุผลบนชิปต้องยังอ่านออก
+      opacity: enabled ? 1 : 0.6,
       child: GestureDetector(
-        onTap: enabled ? onTap : null,
+        onTap: enabled ? onTap : onBlockedTap,
         behavior: HitTestBehavior.opaque,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -4438,10 +4701,11 @@ class _StrategyChip extends StatelessWidget {
                 ),
               ),
               // "ยังไม่เปิด" สำคัญกว่าป้ายระดับแพลน — อัปเกรดไปก็ยังใช้ไม่ได้
-              if (!strategy.available) ...[
+              // (ลำดับความสำคัญของป้ายคิดไว้ที่ผู้เรียกแล้ว)
+              if (badge != null) ...[
                 const SizedBox(width: 6),
                 Text(
-                  th ? 'ยังไม่เปิด' : 'NOT LIVE',
+                  badge!,
                   style: AppFonts.ui(
                     // ข้อความนี้เปลี่ยนคำตอบว่า "เลือกอันนี้แล้วใช้ได้ไหม"
                     // เล็กและจางกว่าทุกอย่างรอบตัวจนอ่านไม่ทัน = เท่ากับไม่ได้บอก
@@ -4451,6 +4715,93 @@ class _StrategyChip extends StatelessWidget {
                         ? AppColors.goldTextOn
                         : AppColors.textSecondary,
                     letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// เทมเพลตหนึ่งใบ — ชื่อ · กรอบเวลา · คำบรรยาย (รวมผล backtest และคำเตือนชุดที่ขาดทุน)
+class _TemplateCard extends StatelessWidget {
+  final String label;
+  final String timeframe;
+  final String tagline;
+  final bool selected;
+  final VoidCallback onTap;
+  const _TemplateCard({
+    required this.label,
+    required this.timeframe,
+    required this.tagline,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.watch<AccentProvider>();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: selected ? accent.goldTint : AppColors.bgInputStrong,
+            border: Border.all(
+              color: selected ? accent.g2 : AppColors.bgCardBorder,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppFonts.ui(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: selected ? accent.g1 : AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  if (timeframe.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      timeframe,
+                      style: AppTheme.mono(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ],
+                  if (selected) ...[
+                    const Spacer(),
+                    Icon(Icons.check_circle_rounded, size: 15, color: accent.g2),
+                  ],
+                ],
+              ),
+              if (tagline.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  tagline,
+                  style: AppFonts.ui(
+                    fontSize: 10.5,
+                    color: AppColors.textSecondary,
+                    height: 1.5,
                   ),
                 ),
               ],

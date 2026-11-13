@@ -32,6 +32,35 @@ import 'wallet_provider.dart';
 /// ถ้าไม่แยกสองกรณีนี้ จอจะขึ้น "รับ 100 เครดิตแล้ว!" ทุกครั้งที่กด
 enum WelcomeOutcome { granted, alreadyClaimed, failed }
 
+/// เหตุผลที่ยังสร้างบอทใหม่ไม่ได้ — ดู [AiBotProvider.createBlock]
+enum AiBotCreateBlock {
+  /// สร้างได้
+  none,
+
+  /// ยังโหลดสถานะของกระเป๋าไม่สำเร็จ — ดึงจอรีเฟรชก่อน
+  statusUnavailable,
+
+  /// กระเป๋านี้ยังไม่มีแพลน (รวมแพลนฟรี) — หน้าเว็บขึ้น "ต้องมีแพลนก่อน"
+  noPlan,
+
+  /// บอทเต็มโควตาของแพลน — "หยุด" บอทตัวเก่าก่อน ("พัก" ยังกินโควตา)
+  quotaFull;
+
+  /// ข้อความสำหรับผู้ใช้ — ว่างเมื่อสร้างได้
+  String text(bool isThai) => switch (this) {
+    AiBotCreateBlock.none => '',
+    AiBotCreateBlock.statusUnavailable => isThai
+        ? 'ยังโหลดสถานะของกระเป๋าไม่สำเร็จ — ดึงหน้าจอลงเพื่อรีเฟรชแล้วลองใหม่'
+        : 'Your wallet status has not loaded yet — pull down to refresh and try again',
+    AiBotCreateBlock.noPlan => isThai
+        ? 'กระเป๋านี้ยังไม่มีแพลน — เลือกแพลนในหัวข้อ "แพลนเช่าบอท" ด้านล่างก่อนสร้างบอท'
+        : 'This wallet has no plan yet — pick a plan under "Rental plans" below before creating a bot',
+    AiBotCreateBlock.quotaFull => isThai
+        ? 'จำนวนบอทเต็มโควตาของแพลนแล้ว — กด "หยุด" บอทตัวเก่าก่อน (แค่ "พัก" ยังกินโควตาอยู่)'
+        : 'Your plan bot quota is full — Stop an old bot first (Pause still uses the quota)',
+  };
+}
+
 /// คำขอเช่าที่ยังไม่รู้ผล — ดู `AiBotProvider._pendingSubscribe`
 typedef _PendingSubscribe = ({
   String wallet,
@@ -226,7 +255,27 @@ class AiBotProvider extends ChangeNotifier {
   String errorText(bool isThai) {
     final code = _errorCode;
     if (code == null) return '';
+
+    /*
+     * ข้อมูลไม่ผ่านการตรวจ (422) — เซิร์ฟเวอร์บอกเหตุผลจริงรายช่องมาแล้ว ต้องโชว์อันนั้น
+     *
+     * เดิมขึ้นแต่ "ตรวจช่องที่มีข้อความสีแดง" ทั้งที่ช่องที่ผิดจริงของฟอร์มบอท (กลยุทธ์ ·
+     * กรอบเวลา · คู่ · ชื่อ) ไม่เคยมีข้อความสีแดงให้ดู เช่นสร้างบอทด้วยกลยุทธ์ที่เพิ่งถูกปิด
+     * เซิร์ฟเวอร์ตอบ "กลยุทธ์นี้ยังเปิดใช้งานไม่ได้ — เร็วๆ นี้" แต่ผู้ใช้ไม่ได้เห็น (หน้าเว็บโชว์)
+     */
+    if (code == AiBotErrorCodes.validation) {
+      final first = firstFieldError;
+      if (first != null) return first;
+    }
     return AiBotErrorText.of(code, _errorMessage, isThai);
+  }
+
+  /// ข้อความแรกจากช่องแรกที่เซิร์ฟเวอร์บอกว่าผิด — null เมื่อไม่มี (เหมือน `readError` ของเว็บ)
+  String? get firstFieldError {
+    for (final messages in _fieldErrors.values) {
+      if (messages.isNotEmpty) return messages.first;
+    }
+    return null;
   }
 
   /// ต้องให้ผู้ใช้เซ็นยืนยันกระเป๋าใหม่ — หน้าจอต้องโชว์ปุ่ม ไม่ใช่จอเปล่า
@@ -260,7 +309,14 @@ class AiBotProvider extends ChangeNotifier {
   AiBotFeatures get features => _catalog?.features ?? AiBotFeatures.closed;
 
   bool get liveEnabled => features.liveTrading;
-  bool get topupEnabled => features.creditTopup;
+
+  /// บอทส่งคำสั่งเงินจริงเองจากกระเป๋าบอทแล้วหรือยัง — false = โหมดจริงยังเป็นแค่สัญญาณ
+  bool get liveExecution => features.liveExecution;
+
+  /// เติมเครดิตได้ไหม — คนทั่วไป: รางรับเงินพร้อมและเปิดขายแล้ว · ทีมงาน: รางรับเงินพร้อมก็พอ
+  /// (กติกาเดียวกับ `topupEnabled` ของหน้าเว็บ — เซิร์ฟเวอร์ตัดสินซ้ำอีกชั้นเสมอ)
+  bool get topupEnabled =>
+      features.creditTopup || (isAdminWallet && features.creditTopupReady);
   bool get analystEnabled => _catalog?.analystEnabled == true;
 
   /// กระเป๋าทีมงานเช่าได้แม้ปิดขาย (เซิร์ฟเวอร์ยกเว้นให้เพราะราคาเป็น 0)
@@ -272,7 +328,20 @@ class AiBotProvider extends ChangeNotifier {
 
   /// สร้างบอทเพิ่มได้ไหม — โควตาเต็มแล้วต้องปิดปุ่มพร้อมบอกเหตุผล
   /// ไม่ใช่ปล่อยให้กดแล้วเด้ง `BOT_LIMIT_REACHED`
-  bool get canCreateBot => _status != null && !quota.isFull;
+  bool get canCreateBot => createBlock == AiBotCreateBlock.none;
+
+  /// ทำไมยังสร้างบอทไม่ได้ — ด่านเดียวกับปุ่ม "บอทใหม่" ของหน้าเว็บ (มีแพลน + โควตาเหลือ)
+  ///
+  /// แยกเหตุผลให้ออก: เดิมทุกกรณีขึ้นว่า "โควตาเต็มแล้ว — กดหยุดบอทตัวเก่าก่อน" แม้ตอนที่
+  /// ยังโหลดสถานะไม่ได้ หรือกระเป๋ายังไม่มีแพลน (โควตา 0/0) ซึ่งไม่มีบอทให้หยุดเลย
+  AiBotCreateBlock get createBlock {
+    final s = _status;
+    if (s == null) return AiBotCreateBlock.statusUnavailable;
+    if (s.subscription == null || s.quota.maxBots <= 0) {
+      return AiBotCreateBlock.noPlan;
+    }
+    return s.quota.isFull ? AiBotCreateBlock.quotaFull : AiBotCreateBlock.none;
+  }
 
   // ── ลูปเดินบอทของแพลนฟรี ──
 
@@ -1026,6 +1095,16 @@ class AiBotProvider extends ChangeNotifier {
     switch (res) {
       case ApiOk(:final data):
         _clearErrorSilently();
+        /*
+         * ใส่บอทใหม่ลงรายการก่อน แล้วค่อยดึงสถานะจริงมาทับ
+         *
+         * เดิมพึ่งการดึงสถานะอย่างเดียว — รอบนั้นล้ม (เน็ตหลุด/โดนจำกัดอัตรา) บอทที่สร้าง
+         * สำเร็จแล้วจะไม่โผล่จนกว่ารอบ poll ถัดไปจะผ่าน หรือผู้ใช้ดึงจอรีเฟรชเอง
+         * ทั้งที่จอเพิ่งบอกว่า "สร้างบอทแล้ว"
+         */
+        final s = _status;
+        if (s != null) _status = s.withNewBot(data);
+        notifyListeners();
         // โควตากับรายการบอทเปลี่ยน ต้องดึงสถานะใหม่
         await _loadStatus(silent: true);
         notifyListeners();
