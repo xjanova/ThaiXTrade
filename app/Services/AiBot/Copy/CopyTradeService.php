@@ -176,7 +176,8 @@ class CopyTradeService
             // เคยเป็นมาสเตอร์แล้วปิดไป = เปิดใหม่บนแถวเดิม (ประวัติค่าบริการของการเปิดรอบก่อนยังอยู่ครบ)
             $master = $existing ? tap($existing)->update($attributes) : AiCopyMaster::create(['wallet_address' => $wallet] + $attributes);
 
-            return $this->refreshStats($master);
+            // ประเมินระดับทันทีที่เปิดตัว — ไม่ต้องรอรอบตั้งเวลาวันถัดไปถึงจะมีตรา
+            return app(RankService::class)->evaluate($this->refreshStats($master));
         });
     }
 
@@ -253,7 +254,10 @@ class CopyTradeService
             ->values();
 
         $promoted = $masters
-            ->filter(fn (AiCopyMaster $master) => $master->status === AiCopyMaster::STATUS_ACTIVE && ($master->stats['meets_floor'] ?? false))
+            // ผลงานต้องมาก่อนการจ่าย: ต้องยังผ่านเกณฑ์และมีระดับถึงขั้นต่ำ ส่วนแบ่งแพลตฟอร์มถึงจะมีผล
+            ->filter(fn (AiCopyMaster $master) => $master->status === AiCopyMaster::STATUS_ACTIVE
+                && ($master->stats['meets_floor'] ?? false)
+                && (int) $master->rank_tier >= (int) config('aibot.copy_trade.promotion.min_tier', 2))
             ->sortByDesc(fn (AiCopyMaster $master) => [$master->platform_share_pct, (float) ($master->stats['record']['return_pct'] ?? 0)])
             // ส่วนแบ่งขั้นต่ำไม่ได้ซื้ออะไรเพิ่ม — ขึ้นแถบแนะนำได้เฉพาะคนที่ให้แพลตฟอร์มมากกว่าขั้นต่ำ
             ->filter(fn (AiCopyMaster $master) => $master->platform_share_pct > (float) config('aibot.copy_trade.fees.platform_share_pct.min', 20))

@@ -7,7 +7,10 @@ use App\Models\AiBotConfig;
 use App\Models\AiCopyFee;
 use App\Models\AiCopyFollow;
 use App\Models\AiCopyMaster;
+use App\Models\AiCopyReview;
 use App\Services\AiBot\Copy\CopyTradeService;
+use App\Services\AiBot\Copy\RankService;
+use App\Services\AiBot\Copy\ReviewService;
 use App\Services\AiBot\Live\LiveBroker;
 use App\Services\AiBotService;
 use App\Services\Kyc\KycGate;
@@ -47,6 +50,9 @@ class AiCopyTradeController extends Controller
         CopyTradeService::ERR_ALREADY_FOLLOWING => 'คุณตามมาสเตอร์คนนี้อยู่แล้ว',
         CopyTradeService::ERR_PAIR_UNSUPPORTED => 'คู่เหรียญของมาสเตอร์คนนี้ยังเทรดเงินจริงไม่ได้',
         CopyTradeService::ERR_FOLLOW_NOT_FOUND => 'ไม่พบการติดตามนี้',
+        ReviewService::ERR_NOT_ELIGIBLE => 'รีวิวได้เมื่อคุณก๊อปปี้มาสเตอร์คนนี้ด้วยเงินจริงครบระยะขั้นต่ำ และปิดไม้ที่ก๊อปปี้ไปแล้วอย่างน้อยหนึ่งไม้',
+        ReviewService::ERR_NOT_FOUND => 'ไม่พบรีวิวนี้',
+        ReviewService::ERR_OWN_REVIEW => 'รายงานรีวิวของตัวเองไม่ได้',
         AiBotService::ERR_NO_SUBSCRIPTION => 'ยังไม่มีการเช่าที่ใช้งานอยู่ กรุณาเช่าบอทก่อน',
         AiBotService::ERR_BOT_LIMIT => 'จำนวนบอทเต็มโควตาของแพลนนี้แล้ว',
         AiBotService::ERR_STRATEGY_LOCKED => 'กลยุทธ์นี้ต้องใช้แพลนระดับสูงกว่า',
@@ -57,6 +63,8 @@ class AiCopyTradeController extends Controller
         private readonly AiBotService $bots,
         private readonly LiveBroker $live,
         private readonly KycGate $kyc,
+        private readonly RankService $ranks,
+        private readonly ReviewService $reviews,
     ) {}
 
     /** กระดานมาสเตอร์ — สาธารณะ: มีแต่ผลงานเงินจริงที่ปิดแล้ว ไม่มีกฎ ไม่มีที่อยู่กระเป๋าเต็ม */
@@ -110,7 +118,7 @@ class AiCopyTradeController extends Controller
                 'invite' => (! $master || ! $master->isOpen()) && collect($candidates)->contains(fn (array $c) => $c['eligible']),
                 'candidates' => $candidates,
                 'kyc_approved' => $this->kycApproved($request),
-                'follows' => $follows->map(fn (AiCopyFollow $follow) => $this->presentFollow($follow->fresh(['master', 'bot'])))->all(),
+                'follows' => $follows->map(fn (AiCopyFollow $follow) => $this->presentFollow($follow->fresh(['master', 'bot'])) + $this->reviewState($wallet, $follow))->all(),
             ],
         ]);
     }
@@ -222,6 +230,98 @@ class AiCopyTradeController extends Controller
     }
 
     // =========================================================================
+    // ดาวรีวิว
+    // =========================================================================
+
+    /** รีวิวของมาสเตอร์คนหนึ่ง — สาธารณะ: ดาว ข้อความ (ข้อความล้วน) และกระเป๋าแบบย่อ */
+    public function reviewsOf(int $id): JsonResponse
+    {
+        $master = $this->copy->enabled() ? AiCopyMaster::open()->find($id) : null;
+
+        if (! $master) {
+            return $this->failure(CopyTradeService::ERR_MASTER_NOT_FOUND, null, 404);
+        }
+
+        $rows = AiCopyReview::where('ai_copy_master_id', $master->id)->visible()->orderByDesc('updated_at')->limit(50)->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'rating' => ['avg' => $master->rating_avg, 'count' => $master->rating_count],
+                'reviews' => $rows->map(fn (AiCopyReview $review) => $this->presentReview($review))->all(),
+            ],
+        ]);
+    }
+
+    public function review(Request $request, int $id): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+
+        $validated = $request->validate([
+            'stars' => ['required', 'integer', 'min:1', 'max:5'],
+            'comment' => ['sometimes', 'nullable', 'string', 'max:'.(int) config('aibot.copy_trade.reviews.max_comment_length', 500)],
+        ]);
+
+        $master = $this->copy->enabled() ? AiCopyMaster::find($id) : null;
+
+        if (! $master) {
+            return $this->failure(CopyTradeService::ERR_MASTER_NOT_FOUND, null, 404);
+        }
+
+        try {
+            $review = $this->reviews->submit($wallet, $master, (int) $validated['stars'], $validated['comment'] ?? null);
+        } catch (RuntimeException $e) {
+            return $this->serviceFailure($e);
+        }
+
+        return response()->json(['success' => true, 'data' => $this->presentReview($review)]);
+    }
+
+    public function reportReview(Request $request, int $id): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+        $validated = $request->validate(['reason' => ['sometimes', 'nullable', 'string', 'max:200']]);
+
+        $review = AiCopyReview::visible()->find($id);
+
+        if (! $review) {
+            return $this->failure(ReviewService::ERR_NOT_FOUND, null, 404);
+        }
+
+        try {
+            $this->reviews->report($wallet, $review, $validated['reason'] ?? null);
+        } catch (RuntimeException $e) {
+            return $this->serviceFailure($e);
+        }
+
+        // ไม่บอกจำนวนรายงาน — คนรายงานไม่ควรรู้ว่าต้องรุมอีกกี่คน
+        return response()->json(['success' => true, 'data' => ['reported' => true]]);
+    }
+
+    /** สิทธิ์รีวิวและรีวิวที่เคยให้ไว้ของการติดตามนี้ */
+    private function reviewState(string $wallet, AiCopyFollow $follow): array
+    {
+        $master = $follow->master;
+        $mine = $master ? $this->reviews->reviewBy($wallet, $master) : null;
+
+        return [
+            'can_review' => $master !== null && $this->reviews->canReview($wallet, $master),
+            'my_review' => $mine ? ['stars' => $mine->stars, 'comment' => $mine->comment] : null,
+        ];
+    }
+
+    private function presentReview(AiCopyReview $review): array
+    {
+        return [
+            'id' => $review->id,
+            'stars' => $review->stars,
+            'comment' => $review->comment,
+            'reviewer' => substr($review->reviewer_wallet, 0, 6).'…'.substr($review->reviewer_wallet, -4),
+            'updated_at' => $review->updated_at?->toIso8601String(),
+        ];
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 
@@ -301,6 +401,10 @@ class AiCopyTradeController extends Controller
             'record' => $stats['record'] ?? null,
             'meets_floor' => (bool) ($stats['meets_floor'] ?? false),
             'followers' => (int) ($stats['followers'] ?? 0),
+            // ระดับจากผลงานเงินจริง (null = ยังไม่มีระดับ) · ดาวจากผู้ตามที่ก๊อปปี้จริง — สองอย่างนี้ซื้อไม่ได้
+            'rank' => $this->ranks->present((int) $master->rank_tier),
+            'rank_score' => $master->rank_score,
+            'rating' => ['avg' => $master->rating_avg, 'count' => (int) $master->rating_count],
             'stats_at' => $master->stats_at?->toIso8601String(),
             'registered_at' => $master->registered_at?->toIso8601String(),
         ];

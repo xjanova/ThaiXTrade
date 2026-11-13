@@ -28,6 +28,7 @@ class AiCopyMaster extends Model
         'wallet_address', 'ai_bot_config_id', 'display_name', 'bio',
         'fee_rate_pct', 'platform_share_pct', 'status', 'stats', 'stats_at',
         'registered_at', 'closed_at',
+        'rank_tier', 'rank_score', 'rank_below_since', 'rank_evaluated_at', 'rating_avg', 'rating_count',
     ];
 
     protected function casts(): array
@@ -39,6 +40,12 @@ class AiCopyMaster extends Model
             'stats_at' => 'datetime',
             'registered_at' => 'datetime',
             'closed_at' => 'datetime',
+            'rank_tier' => 'integer',
+            'rank_score' => 'float',
+            'rank_below_since' => 'datetime',
+            'rank_evaluated_at' => 'datetime',
+            'rating_avg' => 'float',
+            'rating_count' => 'integer',
         ];
     }
 

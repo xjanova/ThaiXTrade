@@ -29,7 +29,7 @@ const props = defineProps({
 
 const emit = defineEmits(['notify']);
 
-const { t } = useTranslation();
+const { t, locale } = useTranslation();
 
 const board = ref(null);      // { enabled, live_ready, fees, requirements, masters, promoted }
 const mine = ref(null);       // { master, invite, candidates, follows, kyc_approved }
@@ -191,6 +191,68 @@ function splitText(form) {
 function checkText(check) {
     return t(`aiTrade.copy.check_${check.code}`, { need: check.need, have: check.have });
 }
+
+// ── ระดับและดาว ──────────────────────────────────────────────────────────────
+
+/** ชื่อระดับตามภาษา — ชื่อมาจากเซิร์ฟเวอร์ (config) เปลี่ยนได้โดยไม่แตะหน้าเว็บ */
+function rankName(master) {
+    if (!master.rank) return t('aiTrade.copy.rankNone');
+
+    return (locale.value === 'th' ? master.rank.name_th : master.rank.name_en) || master.rank.key;
+}
+
+function ratingText(rating) {
+    if (!rating?.count) return t('aiTrade.copy.ratingNone');
+
+    return t('aiTrade.copy.ratingText', { avg: Number(rating.avg).toFixed(1), count: rating.count });
+}
+
+const openReviews = ref(null);     // รหัสมาสเตอร์ที่กำลังเปิดดูรีวิว
+const reviewList = ref([]);
+const reviewDrafts = ref({});      // { [followId]: { stars, comment } }
+
+async function toggleReviews(master) {
+    if (openReviews.value === master.id) {
+        openReviews.value = null;
+        return;
+    }
+
+    const result = await props.api.loadReviews(master.id);
+    reviewList.value = result.ok ? (result.data?.reviews ?? []) : [];
+    openReviews.value = master.id;
+}
+
+async function reportReview(review) {
+    if (!window.confirm(t('aiTrade.copy.reportConfirm'))) return;
+    if (busy.value) return;
+
+    busy.value = true;
+    try {
+        const result = await props.api.reportReview(review.id);
+        emit('notify', result.ok
+            ? { type: 'success', text: t('aiTrade.copy.reported') }
+            : { type: 'error', text: result.error?.message || t('aiTrade.copy.failed') });
+    } finally {
+        busy.value = false;
+    }
+}
+
+function draftFor(follow) {
+    if (!reviewDrafts.value[follow.id]) {
+        reviewDrafts.value[follow.id] = { stars: follow.my_review?.stars ?? 0, comment: follow.my_review?.comment ?? '' };
+    }
+
+    return reviewDrafts.value[follow.id];
+}
+
+async function submitReview(follow) {
+    const draft = draftFor(follow);
+    if (!draft.stars || !follow.master) return;
+
+    const ok = await act(() => props.api.review(follow.master.id, { stars: draft.stars, comment: draft.comment || null }), t('aiTrade.copy.reviewOk'));
+
+    if (ok) delete reviewDrafts.value[follow.id];
+}
 </script>
 
 <template>
@@ -325,6 +387,14 @@ function checkText(check) {
                             <span class="text-[10px] text-dark-500 font-mono">#{{ index + 1 }}</span>
                             <span class="text-sm font-bold text-white">{{ m.display_name }}</span>
                             <span class="text-[10px] text-dark-500 font-mono">{{ m.wallet_short }}</span>
+                            <span
+                                :class="['text-[10px] px-1.5 py-0.5 rounded font-bold', m.rank ? 'bg-primary-500/15 text-primary-200' : 'bg-dark-700 text-dark-400']"
+                                :title="t('aiTrade.copy.rankNote')"
+                                :data-testid="`copy-rank-${m.id}`"
+                            >
+                                {{ rankName(m) }}
+                            </span>
+                            <span class="text-[10px] text-amber-200/90" :data-testid="`copy-rating-${m.id}`">★ {{ ratingText(m.rating) }}</span>
                             <span v-if="m.promoted" class="text-[9px] px-1 rounded bg-amber-500/15 text-amber-300">{{ t('aiTrade.copy.promotedBadge') }}</span>
                             <span v-if="!m.meets_floor" class="text-[10px] text-amber-300">{{ t('aiTrade.copy.belowFloor') }}</span>
                             <span class="text-[10px] text-dark-400 ml-auto font-mono">{{ m.pair }} · {{ m.timeframe }}</span>
@@ -353,6 +423,31 @@ function checkText(check) {
                             >
                                 {{ t('aiTrade.copy.follow') }}
                             </button>
+                            <button
+                                v-if="m.rating?.count"
+                                type="button"
+                                class="ml-3 text-[11px] text-primary-300 hover:text-primary-200"
+                                :data-testid="`copy-reviews-toggle-${m.id}`"
+                                @click="toggleReviews(m)"
+                            >
+                                {{ openReviews === m.id ? t('aiTrade.copy.hideReviews') : t('aiTrade.copy.showReviews') }}
+                            </button>
+                        </div>
+
+                        <!-- รีวิว — ข้อความแสดงแบบ escape เสมอ (interpolation ธรรมดา ห้ามใช้ v-html กับข้อความจากผู้ใช้) -->
+                        <div v-if="openReviews === m.id" class="mt-2 rounded-lg bg-dark-900/40 p-2.5" :data-testid="`copy-reviews-${m.id}`">
+                            <p class="text-[10px] text-dark-400 mb-1">{{ t('aiTrade.copy.reviewsFrom') }}</p>
+                            <p v-if="!reviewList.length" class="text-[11px] text-dark-400">{{ t('aiTrade.copy.noReviews') }}</p>
+                            <ul v-else class="space-y-1.5">
+                                <li v-for="r in reviewList" :key="r.id" class="text-[11px] leading-relaxed" :data-testid="`copy-review-${r.id}`">
+                                    <span class="text-amber-200">{{ '★'.repeat(r.stars) }}</span>
+                                    <span class="text-dark-500 font-mono ml-1">{{ r.reviewer }}</span>
+                                    <span v-if="r.comment" class="text-dark-200 ml-1">{{ r.comment }}</span>
+                                    <button v-if="wallet" type="button" class="ml-2 text-[10px] text-dark-500 hover:text-trading-red" :disabled="busy" :data-testid="`copy-report-${r.id}`" @click="reportReview(r)">
+                                        {{ t('aiTrade.copy.report') }}
+                                    </button>
+                                </li>
+                            </ul>
                         </div>
 
                         <!-- ยืนยันก่อนตาม: อัตรา · เงื่อนไข · กรอบความเสี่ยงของผู้ตาม · คำเตือนเงินจริง -->
@@ -400,6 +495,28 @@ function checkText(check) {
                                 {{ t('aiTrade.copy.acceptRate', { rate: f.master?.fee_rate_pct }) }}
                             </button>
                         </p>
+                        <form v-if="f.can_review" class="rounded-lg bg-dark-900/40 p-2 space-y-1.5" :data-testid="`copy-review-form-${f.id}`" @submit.prevent="submitReview(f)">
+                            <p class="text-[11px] text-dark-300">{{ f.my_review ? t('aiTrade.copy.reviewEdit') : t('aiTrade.copy.reviewTitle') }}</p>
+                            <div class="flex items-center gap-1">
+                                <button
+                                    v-for="n in 5"
+                                    :key="n"
+                                    type="button"
+                                    :class="['text-lg leading-none', n <= draftFor(f).stars ? 'text-amber-300' : 'text-dark-600']"
+                                    :aria-label="t('aiTrade.copy.reviewStars', { n })"
+                                    :data-testid="`copy-star-${f.id}-${n}`"
+                                    @click="draftFor(f).stars = n"
+                                >
+                                    ★
+                                </button>
+                            </div>
+                            <input v-model="draftFor(f).comment" type="text" maxlength="500" class="trading-input text-xs py-1.5" :placeholder="t('aiTrade.copy.reviewComment')" :data-testid="`copy-review-comment-${f.id}`">
+                            <button type="submit" class="btn-secondary px-3 py-1 text-xs disabled:opacity-50" :disabled="busy || !draftFor(f).stars" :data-testid="`copy-review-submit-${f.id}`">
+                                {{ t('aiTrade.copy.reviewSubmit') }}
+                            </button>
+                        </form>
+                        <p v-else-if="f.status === 'active'" class="text-[10px] text-dark-500">{{ t('aiTrade.copy.reviewLocked') }}</p>
+
                         <button v-if="f.status === 'active'" type="button" class="text-[11px] text-dark-400 hover:text-trading-red" :disabled="busy" :data-testid="`copy-stop-${f.id}`" @click="stopFollow(f)">
                             {{ t('aiTrade.copy.stop') }}
                         </button>

@@ -34,6 +34,7 @@ function master(overrides = {}) {
         id: 1, display_name: 'Alpha', bio: 'Trend on 4h', wallet_short: '0xaaaa…aaaa', fee_rate_pct: 20, platform_share_pct: 20,
         status: 'active', accepting: true, promoted: false, pair: 'BTC/USDT', timeframe: '4h', meets_floor: true, followers: 3,
         record: { mode: 'live', closed: 24, win_rate: 83.3, return_pct: 31, max_drawdown_pct: 2, days: 60.4 },
+        rank: { tier: 3, key: 'tier_3', name_th: 'ระดับ 3', name_en: 'Tier 3' }, rating: { avg: 4.5, count: 12 },
         ...overrides,
     };
 }
@@ -60,6 +61,7 @@ function makeApi(board = boardData(), mine = mineData()) {
         loadMasters: vi.fn(() => Promise.resolve({ ok: true, data: board })),
         loadMine: vi.fn(() => Promise.resolve({ ok: true, data: mine })),
         registerMaster: ok(), updateMaster: ok(), closeMaster: ok(), follow: ok(), stopFollow: ok(), acceptRate: ok(),
+        loadReviews: ok({ rating: { avg: 3.5, count: 2 }, reviews: [] }), review: ok(), reportReview: ok({ reported: true }),
     };
 }
 
@@ -382,5 +384,92 @@ describe('AiCopyTradePanel — switching wallets', () => {
 
         expect(byId(wrapper, 'copy-my-follows').exists()).toBe(false);
         expect(api.loadMine).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('AiCopyTradePanel — rank and stars', () => {
+    const follow = (overrides = {}) => ({
+        id: 9, status: 'active', bot_id: 44, master: { id: 1, display_name: 'Alpha', status: 'active', fee_rate_pct: 20 },
+        fee_rate_pct: 20, rate_changed: false, realized_pnl: 120, fees_usd: 24, fees_tpix: 48, fees_collect: false,
+        can_review: true, my_review: null, ...overrides,
+    });
+
+    it('shows the rank name from the server, the rating, and says a rank cannot be bought', async () => {
+        const { wrapper } = await mountPanel();
+
+        expect(byId(wrapper, 'copy-rank-1').text()).toBe('Tier 3');
+        expect(byId(wrapper, 'copy-rank-1').attributes('title')).toContain('cannot be bought');
+        expect(byId(wrapper, 'copy-rating-1').text()).toBe('★ 4.5 out of 5 (12 reviews)');
+    });
+
+    it('says so when a master has no rank or no reviews', async () => {
+        const board = boardData({ masters: [master({ rank: null, rating: { avg: null, count: 0 } })], promoted: [] });
+        const { wrapper } = await mountPanel(makeApi(board));
+
+        expect(byId(wrapper, 'copy-rank-1').text()).toBe('Unranked');
+        expect(byId(wrapper, 'copy-rating-1').text()).toBe('★ No reviews yet');
+        expect(byId(wrapper, 'copy-reviews-toggle-1').exists()).toBe(false);
+    });
+
+    it('renders review text as text, never as markup', async () => {
+        const api = makeApi();
+        api.loadReviews.mockResolvedValue({ ok: true, data: { reviews: [{ id: 7, stars: 2, comment: '<img src=x onerror=alert(1)>late entries', reviewer: '0xbbbb…bbbb' }] } });
+        const { wrapper } = await mountPanel(api);
+
+        await byId(wrapper, 'copy-reviews-toggle-1').trigger('click');
+        await flushPromises();
+
+        const row = byId(wrapper, 'copy-review-7');
+        expect(row.text()).toContain('★★');
+        expect(row.text()).toContain('<img src=x onerror=alert(1)>late entries');
+        expect(row.find('img').exists()).toBe(false);
+        expect(api.loadReviews).toHaveBeenCalledWith(1);
+    });
+
+    it('asks before reporting a review', async () => {
+        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        const api = makeApi();
+        api.loadReviews.mockResolvedValue({ ok: true, data: { reviews: [{ id: 7, stars: 1, comment: 'x', reviewer: '0xbbbb…bbbb' }] } });
+        const { wrapper } = await mountPanel(api);
+
+        await byId(wrapper, 'copy-reviews-toggle-1').trigger('click');
+        await flushPromises();
+        await byId(wrapper, 'copy-report-7').trigger('click');
+        expect(api.reportReview).not.toHaveBeenCalled();
+
+        confirm.mockReturnValue(true);
+        await byId(wrapper, 'copy-report-7').trigger('click');
+        await flushPromises();
+        expect(api.reportReview).toHaveBeenCalledWith(7);
+        expect(wrapper.emitted('notify').pop()[0]).toEqual({ type: 'success', text: 'Report sent — the team will look at it' });
+    });
+
+    it('lets an eligible follower rate the master and needs a star before sending', async () => {
+        const { wrapper, api } = await mountPanel(makeApi(boardData(), mineData({ follows: [follow()] })));
+
+        expect(byId(wrapper, 'copy-review-submit-9').attributes('disabled')).toBeDefined();
+
+        await byId(wrapper, 'copy-star-9-4').trigger('click');
+        await byId(wrapper, 'copy-review-comment-9').setValue('steady');
+        await byId(wrapper, 'copy-review-form-9').trigger('submit');
+        await flushPromises();
+
+        expect(api.review).toHaveBeenCalledWith(1, { stars: 4, comment: 'steady' });
+    });
+
+    it('prefills an existing review for editing', async () => {
+        const { wrapper } = await mountPanel(makeApi(boardData(), mineData({ follows: [follow({ my_review: { stars: 2, comment: 'worse lately' } })] })));
+
+        expect(byId(wrapper, 'copy-review-form-9').text()).toContain('Edit your review');
+        expect(byId(wrapper, 'copy-review-comment-9').element.value).toBe('worse lately');
+        expect(byId(wrapper, 'copy-star-9-2').classes()).toContain('text-amber-300');
+        expect(byId(wrapper, 'copy-star-9-3').classes()).toContain('text-dark-600');
+    });
+
+    it('explains why a follower cannot review yet', async () => {
+        const { wrapper } = await mountPanel(makeApi(boardData(), mineData({ follows: [follow({ can_review: false })] })));
+
+        expect(byId(wrapper, 'copy-review-form-9').exists()).toBe(false);
+        expect(byId(wrapper, 'copy-follow-row-9').text()).toContain('You can review after copying with real money');
     });
 });

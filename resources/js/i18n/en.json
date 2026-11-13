@@ -1882,7 +1882,25 @@
             "close": "Close master profile",
             "closeConfirm": "Close your master profile? Every follower is released and you earn no fee on trades after this",
             "statusPaused": "Not accepting new followers",
-            "failed": "The request failed"
+            "failed": "The request failed",
+            "rankNone": "Unranked",
+            "rankNote": "Rank comes from real-money results only — it rises with good results, falls when results stay worse, and cannot be bought",
+            "ratingNone": "No reviews yet",
+            "ratingText": "{avg} out of 5 ({count} reviews)",
+            "showReviews": "Show reviews",
+            "hideReviews": "Hide reviews",
+            "reviewsFrom": "Reviews from followers who copied with real money",
+            "noReviews": "No follower reviews yet",
+            "report": "Report",
+            "reportConfirm": "Report this review to the team?",
+            "reported": "Report sent — the team will look at it",
+            "reviewTitle": "Rate this master",
+            "reviewEdit": "Edit your review",
+            "reviewStars": "{n} stars",
+            "reviewComment": "Comment (optional)",
+            "reviewSubmit": "Submit review",
+            "reviewOk": "Review saved",
+            "reviewLocked": "You can review after copying with real money for the minimum period and closing a copied trade"
         }
     },
     "walletProfile": {

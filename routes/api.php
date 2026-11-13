@@ -431,6 +431,7 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     Route::get('/ai-bot/market-view', [AiBotController::class, 'marketView']);
     // กระดานมาสเตอร์ของ Copy Trade — สาธารณะเหมือน catalog: มีแต่ผลงานเงินจริงที่ปิดแล้ว ไม่มีกฎ ไม่มีข้อมูลส่วนตัว
     Route::get('/ai-bot/copy/masters', [AiCopyTradeController::class, 'masters']);
+    Route::get('/ai-bot/copy/masters/{id}/reviews', [AiCopyTradeController::class, 'reviewsOf'])->where('id', '[0-9]+');
     // ความเสี่ยงของคู่เทรด + พาดหัวข่าวที่ทำให้บอทตัดสินใจ — เป็นข้อมูลตลาด ไม่ใช่ข้อมูลส่วนตัว
     Route::get('/ai-bot/risk', [AiBotController::class, 'risk']);
 
@@ -685,6 +686,9 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::post('/copy/follow', [AiCopyTradeController::class, 'follow'])->middleware('kyc:ai_bot');
         Route::post('/copy/follow/{id}/stop', [AiCopyTradeController::class, 'stopFollow'])->where('id', '[0-9]+');
         Route::post('/copy/follow/{id}/accept', [AiCopyTradeController::class, 'acceptRate'])->where('id', '[0-9]+');
+        // ดาวรีวิว: ให้ดาว/แก้รีวิว (เฉพาะผู้ตามเงินจริงที่ครบเงื่อนไข — ตรวจใน ReviewService) · รายงานรีวิว
+        Route::post('/copy/masters/{id}/review', [AiCopyTradeController::class, 'review'])->where('id', '[0-9]+');
+        Route::post('/copy/reviews/{id}/report', [AiCopyTradeController::class, 'reportReview'])->where('id', '[0-9]+');
 
         // โหมดทดลอง — พอร์ตกระดาษที่ใช้ราคาจริง ให้ลองก่อนตัดสินใจเช่า
         // สถิติย้อนหลังของกลยุทธ์ + คำแนะนำจากที่ปรึกษา AI (ตามแพลน)

@@ -934,6 +934,10 @@ export function useAiBot() {
             return result;
         },
         acceptRate: (id) => copyRequest('post', `/follow/${id}/accept`),
+        // ดาวรีวิว — รายการรีวิวเป็นสาธารณะ · ให้ดาว/รายงานต้องเชื่อมกระเป๋า
+        loadReviews: (masterId) => copyRequest('get', `/masters/${masterId}/reviews`, {}, false),
+        review: (masterId, payload) => copyRequest('post', `/masters/${masterId}/review`, payload),
+        reportReview: (id, reason = null) => copyRequest('post', `/reviews/${id}/report`, { reason }),
     };
 
     // ── โหมดทดลอง ────────────────────────────────────────────────────────────
