@@ -228,7 +228,6 @@ app/
 │   ├── Controllers/
 │   │   ├── Controller.php          # Base controller
 │   │   └── Api/
-│   │       ├── AIController.php    # AI analysis endpoints
 │   │       ├── ChainController.php # Blockchain configuration
 │   │       ├── MarketController.php# Market data
 │   │       ├── TradingController.php # Trading operations
@@ -248,7 +247,6 @@ app/
 | `TradingController` | `/api/v1/trading/*`, `/api/v1/swap/*` | Order CRUD, swap quotes, swap execution |
 | `WalletController` | `/api/v1/wallet/*` | Connection, balances, transactions, signing |
 | `ChainController` | `/api/v1/chains/*` | Chain listing, tokens per chain, gas prices |
-| `AIController` | `/api/v1/ai/*` | Market analysis, predictions, suggestions |
 
 ### Service Layer Pattern
 

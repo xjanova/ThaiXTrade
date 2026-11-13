@@ -213,8 +213,7 @@ ThaiXTrade/
 │   │   │       ├── TradingController.php
 │   │   │       ├── SwapApiController.php
 │   │   │       ├── WalletController.php
-│   │   │       ├── ChainController.php
-│   │   │       └── AIController.php
+│   │   │       └── ChainController.php
 │   │   └── Middleware/             # 6 middleware classes
 │   ├── Models/                     # 15 Eloquent models
 │   │   ├── Chain.php
@@ -319,9 +318,7 @@ All API endpoints live under `/api/v1/` and return a consistent JSON envelope:
 | `GET` | `/v1/wallet/balances` | Wallet balances |
 | `GET` | `/v1/wallet/transactions` | Wallet transactions |
 | `POST` | `/v1/swap/execute` | Execute swap transaction |
-| `POST` | `/v1/ai/analyze` | AI market analysis |
-| `POST` | `/v1/ai/predict` | Price prediction |
-| `GET` | `/v1/ai/insights/{symbol}` | Symbol insights |
+| `POST` | `/v1/chatbot` | AI assistant chat (public, 30 messages/min) |
 
 For complete API documentation, see [API.md](API.md).
 
