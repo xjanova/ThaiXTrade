@@ -15,6 +15,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/gradients.dart';
 import '../../core/locale/locale_provider.dart';
+import '../../models/api_models.dart';
 import '../../providers/wallet_provider.dart';
 import '../../providers/accent_provider.dart';
 import '../../services/token_list_service.dart';
@@ -234,21 +235,94 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       return const ShimmerList(itemCount: 4);
     }
 
+    final th = locale.isThai;
+    final state = wallet.historyState;
+    // โหลดไม่ได้ ≠ ไม่มีประวัติ — เดิม 403 / เน็ตหลุด ขึ้น "ไม่มีข้อมูล" ทั้งที่ผู้ใช้มีไม้จริง
+    final needsVerify = state == ListLoadState.needsWalletVerify;
+    final failed = state == ListLoadState.failed;
+
     if (wallet.tradeHistory.isEmpty) {
+      if (needsVerify) {
+        return _EmptyState(
+          icon: Icons.lock_outline_rounded,
+          label: th
+              ? 'ยืนยันกระเป๋าเพื่อดูประวัติการเทรด'
+              : 'Verify your wallet to see your trade history',
+          actionLabel: th ? 'ยืนยันกระเป๋า' : 'Verify wallet',
+          busy: _verifying,
+          onAction: _verifyWallet,
+        );
+      }
+      if (failed) {
+        return _EmptyState(
+          icon: Icons.cloud_off_rounded,
+          label: th
+              ? 'โหลดประวัติไม่สำเร็จ — ตรวจการเชื่อมต่อแล้วลองใหม่'
+              : 'Could not load your history — check your connection and try again',
+          actionLabel: th ? 'ลองใหม่' : 'Retry',
+          busy: wallet.isLoadingPortfolio,
+          onAction: () => wallet.loadPortfolio(),
+        );
+      }
       return _EmptyState(
         icon: Icons.history_rounded,
         label: locale.t('common.no_data'),
       );
     }
 
+    // มีรายการเดิมอยู่แต่รอบล่าสุดโหลดไม่ได้ — โชว์ของเดิม พร้อมบอกว่าอาจไม่ล่าสุด
+    final stale = needsVerify || failed;
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 120),
-      itemCount: wallet.tradeHistory.length,
+      itemCount: wallet.tradeHistory.length + (stale ? 1 : 0),
       itemBuilder: (_, i) {
-        final order = wallet.tradeHistory[i];
-        return _HistoryTile(order: order);
+        if (stale && i == 0) {
+          return _StaleBanner(
+            message: needsVerify
+                ? (th
+                    ? 'ยืนยันกระเป๋าเพื่ออัปเดตประวัติล่าสุด'
+                    : 'Verify your wallet to refresh your history')
+                : (th
+                    ? 'อัปเดตประวัติไม่สำเร็จ — รายการนี้อาจไม่ล่าสุด'
+                    : 'Could not refresh — this list may be out of date'),
+            actionLabel: needsVerify
+                ? (th ? 'ยืนยัน' : 'Verify')
+                : (th ? 'ลองใหม่' : 'Retry'),
+            onAction: needsVerify ? _verifyWallet : () => wallet.loadPortfolio(),
+          );
+        }
+        final order = wallet.tradeHistory[i - (stale ? 1 : 0)];
+        return _HistoryTile(order: order, isThai: th);
       },
     );
+  }
+
+  bool _verifying = false;
+
+  /// เซ็นยืนยันกระเป๋ากับเซิร์ฟเวอร์ แล้วโหลดพอร์ตใหม่ — กันกดซ้ำ บอกผลเมื่อไม่ผ่าน
+  Future<void> _verifyWallet() async {
+    if (_verifying) return;
+    setState(() => _verifying = true);
+    var ok = false;
+    try {
+      ok = await _wallet.verifyWithBackend();
+    } catch (_) {
+      ok = false;
+    }
+    if (!mounted) return;
+    setState(() => _verifying = false);
+    if (ok) {
+      // verifyWithBackend โหลดพอร์ตให้เองเมื่อผ่าน — เรียกซ้ำได้ผลรอบเดิม
+      _wallet.loadPortfolio();
+      return;
+    }
+    final th = context.read<LocaleProvider>().isThai;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(th
+          ? 'ยืนยันกระเป๋าไม่สำเร็จ — ลองอีกครั้ง'
+          : 'Wallet verification failed — try again'),
+      duration: const Duration(seconds: 3),
+    ));
   }
 
   // ── Empty (disconnected) view ──
@@ -758,13 +832,36 @@ class _AssetTile extends StatelessWidget {
 // ── History tile ──
 
 class _HistoryTile extends StatelessWidget {
-  final dynamic order; // TradeOrder
+  final TradeOrder order;
+  final bool isThai;
 
-  const _HistoryTile({required this.order});
+  const _HistoryTile({required this.order, this.isThai = false});
 
   @override
   Widget build(BuildContext context) {
-    final isBuy = order.side == 'buy';
+    // ฝั่งที่ไม่ใช่ buy/sell (เช่น `swap`, `bridge`, ว่าง) = เป็นกลาง
+    // เดิมอะไรที่ไม่ใช่ buy ถูกวาดเป็น "ขาย" สีแดงทั้งหมด
+    final side = order.tradeSide;
+    final sideColor = switch (side) {
+      TradeSide.buy => AppColors.tradingGreen,
+      TradeSide.sell => AppColors.tradingRed,
+      TradeSide.neutral => AppColors.textSecondary,
+    };
+    final sideBg = switch (side) {
+      TradeSide.buy => AppColors.tradingGreenBg,
+      TradeSide.sell => AppColors.tradingRedBg,
+      TradeSide.neutral => AppColors.bgInputStrong,
+    };
+    final sideIcon = switch (side) {
+      TradeSide.buy => Icons.arrow_downward_rounded,
+      TradeSide.sell => Icons.arrow_upward_rounded,
+      TradeSide.neutral => Icons.swap_horiz_rounded,
+    };
+    final sideLabel = switch (side) {
+      TradeSide.buy => isThai ? 'ซื้อ' : 'BUY',
+      TradeSide.sell => isThai ? 'ขาย' : 'SELL',
+      TradeSide.neutral => isThai ? 'สลับ' : 'SWAP',
+    };
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -779,14 +876,10 @@ class _HistoryTile extends StatelessWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: isBuy ? AppColors.tradingGreenBg : AppColors.tradingRedBg,
+              color: sideBg,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(
-              isBuy ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-              color: isBuy ? AppColors.tradingGreen : AppColors.tradingRed,
-              size: 16,
-            ),
+            child: Icon(sideIcon, color: sideColor, size: 16),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -794,7 +887,7 @@ class _HistoryTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${order.side.toString().toUpperCase()} ${order.pair}',
+                  '$sideLabel ${order.pair}',
                   style: AppFonts.ui(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -841,7 +934,18 @@ class _EmptyState extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _EmptyState({required this.icon, required this.label});
+  /// ปุ่มทางออก (ยืนยันกระเป๋า / ลองใหม่) — ไม่มี = สถานะว่างธรรมดา
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  final bool busy;
+
+  const _EmptyState({
+    required this.icon,
+    required this.label,
+    this.actionLabel,
+    this.onAction,
+    this.busy = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -853,14 +957,90 @@ class _EmptyState extends StatelessWidget {
         Icon(icon,
             color: AppColors.textTertiary.withValues(alpha: 0.3), size: 64),
         const SizedBox(height: 12),
-        Center(
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Text(
             label,
+            textAlign: TextAlign.center,
             style: AppFonts.ui(
-                fontSize: 14, color: AppColors.textTertiary),
+                fontSize: 14, height: 1.4, color: AppColors.textTertiary),
           ),
         ),
+        if (actionLabel != null && onAction != null) ...[
+          const SizedBox(height: 14),
+          Center(
+            child: TextButton(
+              onPressed: busy ? null : onAction,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.gold1,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(color: AppColors.goldBorder),
+                ),
+              ),
+              child: Text(
+                actionLabel!,
+                style:
+                    AppFonts.ui(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
       ],
+    );
+  }
+}
+
+// ── แถบ "รายการนี้อาจไม่ล่าสุด" เหนือประวัติ ──
+
+class _StaleBanner extends StatelessWidget {
+  final String message;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  const _StaleBanner({
+    required this.message,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: AppColors.goldTint,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.goldBorder, width: 0.8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline_rounded, size: 14, color: AppColors.gold2),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppFonts.ui(
+                  fontSize: 11.5, height: 1.4, color: AppColors.textPrimary),
+            ),
+          ),
+          TextButton(
+            onPressed: onAction,
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.gold1,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 30),
+            ),
+            child: Text(
+              actionLabel,
+              style: AppFonts.ui(fontSize: 11.5, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

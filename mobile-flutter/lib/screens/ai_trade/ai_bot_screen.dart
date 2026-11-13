@@ -464,9 +464,10 @@ class _AiBotScreenState extends State<AiBotScreen> with WidgetsBindingObserver {
         title: th ? 'เปิดโหมดจริง' : 'Switch to live',
         confirmLabel: th ? 'เปิดโหมดจริง' : 'Go live',
         body: [
+          // โหมดจริงใช้กระเป๋าบอทที่ระบบดูแลกุญแจ — ห้ามบอกว่า "ระบบไม่ถือกุญแจ" (ข้อความเดิมผิดจากความจริง)
           _dialogText(th
-              ? 'โหมดจริงจะเสนอสัญญาณให้คุณกดยืนยันในกระเป๋าเอง ระบบไม่ถือกุญแจของคุณ จึงส่งคำสั่งแทนไม่ได้'
-              : 'Live mode proposes signals for you to confirm in your own wallet. We never hold your keys.'),
+              ? 'โหมดจริงใช้เงินจริงจากกระเป๋าบอทที่คุณโอนทุนเข้าไป — ระบบดูแลกุญแจของกระเป๋าบอทและส่งคำสั่งแทนคุณ โอนเข้าเท่าที่พร้อมรับความเสี่ยงเท่านั้น'
+              : 'Live mode trades real money from the bot wallet you fund. The platform keeps the key of that bot wallet and places orders for you — only move in what you can afford to risk.'),
           if (bot.position != null) ...[
             const SizedBox(height: 8),
             _dialogText(
@@ -2952,11 +2953,12 @@ class _PlansSectionState extends State<_PlansSection> {
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: _InfoCard(
-              title:
-                  th ? 'ตอนนี้เปิดเฉพาะโหมดทดลอง' : 'Demo mode only for now',
+              title: th
+                  ? 'โหมดเงินจริง — เร็วๆ นี้'
+                  : 'Real-money mode — coming soon',
               body: th
-                  ? 'ทุกแพลนยังไม่ส่งคำสั่งด้วยเงินจริง — เทรดด้วยเครดิตจำลองที่ราคาจริงของตลาด'
-                  : 'No plan places real orders yet — trading uses simulated credits at real market prices.',
+                  ? 'ตอนนี้ทุกแพลนเทรดด้วยเครดิตจำลองที่ราคาจริงของตลาด ยังไม่มีการส่งคำสั่งด้วยเงินจริง'
+                  : 'For now every plan trades simulated credits at real market prices — no real orders are placed.',
             ),
           ),
 

@@ -33,6 +33,9 @@ import '../../services/bsc_swap_service.dart';
 import '../../services/swap_network.dart';
 import '../../services/token_list_service.dart';
 import '../../services/tpix_dex_service.dart';
+import '../../services/trade_preflight.dart';
+import '../../services/trading_fee_service.dart';
+import '../../utils/kyc_nav.dart';
 import '../../widgets/common/app_background.dart';
 import '../../widgets/common/coin_chip.dart';
 import '../../widgets/common/glass_card.dart';
@@ -405,13 +408,14 @@ class _SwapScreenState extends State<SwapScreen> {
     if (_isTpix) {
       await _fetchTpixQuote(seq, ctx, text, amount, th);
     } else {
-      await _fetchBscQuote(seq, ctx, amount, th);
+      await _fetchBscQuote(seq, ctx, text, amount, th);
     }
   }
 
   /// Quote จริงจาก PancakeSwap router (ตรวจ token กับ on-chain ในตัว)
+  /// อัตราค่าธรรมเนียมมาจาก backend แบบ fail-closed — คู่ถูกปิด/ตรวจไม่ได้ = ไม่มีราคา ปุ่มสลับปิด
   Future<void> _fetchBscQuote(
-      int seq, String ctx, double amount, bool th) async {
+      int seq, String ctx, String text, double amount, bool th) async {
     final from = _fromToken;
     final to = _toToken;
     if (from == to) {
@@ -432,6 +436,8 @@ class _SwapScreenState extends State<SwapScreen> {
         toSymbol: to,
         amount: amount,
         slippageOverride: _slippage,
+        // จำนวนตามที่พิมพ์ตรงตัว — ไม่ผ่าน double (ไม่ปัดเกินยอดจริง)
+        amountText: text,
       );
     } on SwapException catch (e) {
       error = e.message(th);
@@ -443,30 +449,21 @@ class _SwapScreenState extends State<SwapScreen> {
     if (!mounted || seq != _quoteSeq) return;
 
     setState(() {
+      final q = quote;
+      if (q != null) {
+        _applyRouterQuote(q, from, to, ctx);
+        return;
+      }
       _quoting = false;
-      _routerQuote = quote;
+      _routerQuote = null;
       _dexQuote = null;
-      _quotedFor = quote == null ? null : ctx;
-      // มุมมอง map สำหรับ details card (field ตรงกับ reader เดิม)
-      _quote = quote == null
-          ? null
-          : {
-              'amount_out': quote.netOutput,
-              'rate': quote.amountIn > 0
-                  ? quote.netOutput / quote.amountIn
-                  : null,
-              'min_received': quote.minReceived,
-              'slippage': quote.slippage,
-              // เส้นทาง swap จริง — 3 ขาแปลว่าวิ่งผ่าน WBNB
-              'route':
-                  quote.path.length == 3 ? [from, 'WBNB', to] : [from, to],
-            };
-      _quoteError = quote == null
-          ? (error ??
-              (th
-                  ? 'ดึงราคาไม่สำเร็จ ลองอีกครั้ง'
-                  : 'Could not fetch quote. Try again.'))
-          : null;
+      _quotedFor = null;
+      _quote = null;
+      // คู่ถูกปิด / ตรวจค่าธรรมเนียมไม่ได้ / ไม่มีสภาพคล่อง — บอกเหตุ ปุ่มสลับปิด
+      _quoteError = error ??
+          (th
+              ? 'ดึงราคาไม่สำเร็จ ลองอีกครั้ง'
+              : 'Could not fetch quote. Try again.');
     });
   }
 
@@ -716,13 +713,20 @@ class _SwapScreenState extends State<SwapScreen> {
       minText = '${_trimNum(q.minReceived)} $toSym';
       networkLabel = 'TPIX Chain · TPIX DEX';
       impactText = _impactText(q.priceImpact);
-      impactColor = _impactColor(q.priceImpact);
+      impactColor = _impactColorOrBlocked(q.priceImpact);
     } else {
       final q = _routerQuote;
       if (q == null) {
         _snack(th ? 'รอราคาก่อน' : 'Wait for the quote');
         return;
       }
+      // ไม้ที่ดันราคาพูลเกินเพดาน หรือวัดไม่ได้ (หน้านี้ไม่มีราคาตลาดให้เทียบ) = ไม่ส่ง
+      if (q.isImpactBlocked()) {
+        _snack(_bscImpactBlockedMessage(q, th));
+        return;
+      }
+      impactText = _impactText(q.priceImpact);
+      impactColor = _impactColorOrBlocked(q.priceImpact);
       receive = q.netOutput;
       feeText = '${_trimNum(q.feeAmount)} $fromSym (${_trimNum(q.feeRate)}%)';
       minText = '${_trimNum(q.minReceived)} $toSym';
@@ -783,28 +787,69 @@ class _SwapScreenState extends State<SwapScreen> {
   }
 
   /// Execute swap จริงบน BSC — quote ใหม่สดก่อนส่งเสมอ (กันราคาค้างจอ)
-  /// แล้ววิ่ง flow เดียวกับหน้า Trade: approve → swap → เก็บ fee → บันทึก
+  /// แล้ววิ่ง flow เดียวกับหน้า Trade: ยืนยันกระเป๋า + ด่านยืนยันตัวตน → quote สด (fail-closed)
+  /// → ด่าน price impact → ไม่แย่กว่าที่เห็น → กระเป๋าค่าธรรมเนียมพร้อม → ตัดยอดให้พอดี
+  /// → approve → swap → เก็บ fee → บันทึก (คิวส่งซ้ำ)
   /// (chain 56 ตายตัวผ่าน sendBscTransaction — ไม่ขึ้นกับเชนปริยายของกระเป๋า)
   Future<void> _executeBscSwap(
       WalletProvider wallet, LocaleProvider locale) async {
-    final amount = double.tryParse(_payController.text.trim());
+    final amountText = _payController.text.trim();
+    final amount = double.tryParse(amountText);
     if (amount == null || amount <= 0) return;
     // จับค่าไว้ตอนเริ่ม — ข้อความผลลัพธ์ต้องเป็นของไม้นี้ ไม่ใช่ของที่จอแสดงตอนจบ
     final fromSym = _fromToken;
     final toSym = _toToken;
     final address = wallet.address!;
+    final ctx = _quoteContext();
+    final slippage = _slippage;
+    // ราคาที่ผู้ใช้เห็นในหน้ายืนยัน (ถ้าเป็นของไม้นี้) — อ่านก่อนขอราคาใหม่
+    final seen = _quotedFor == ctx ? _routerQuote : null;
 
     setState(() => _executing = true);
     try {
+      // 0) ยืนยันกระเป๋า + ด่านยืนยันตัวตน — ต้องผ่านก่อนเงินออก
+      await _preflight(wallet, address);
+
       // 1) Quote สดใหม่ ณ วินาทีส่ง — minOut คิดจากราคาปัจจุบันจริง
-      final quote = await _swapService.getQuote(
+      //    (อัตราค่าธรรมเนียมจาก backend แบบ fail-closed: คู่ถูกปิด/ตรวจไม่ได้ = โยน ไม่ส่ง)
+      var quote = await _swapService.getQuote(
         fromSymbol: fromSym,
         toSymbol: toSym,
         amount: amount,
-        slippageOverride: _slippage,
+        slippageOverride: slippage,
+        amountText: amountText,
       );
 
-      // 2) Approve router ถ้า allowance ไม่พอ (ข้ามได้ถ้าจ่ายด้วย BNB)
+      // 2) เพดาน price impact — เกิน 10% หรือวัดไม่ได้ = ไม่ส่ง (หน้านี้ไม่มีราคาตลาดให้เทียบ)
+      if (quote.isImpactBlocked()) {
+        throw SwapException(
+          _bscImpactBlockedMessage(quote, false),
+          _bscImpactBlockedMessage(quote, true),
+        );
+      }
+
+      // 3) ราคาใหม่ต้องไม่แย่กว่า "ได้รับขั้นต่ำ" ที่ผู้ใช้เห็นก่อนกดยืนยัน
+      if (seen != null && quote.netOutput < seen.minReceived) {
+        final fresh = quote;
+        if (mounted && ctx == _quoteContext()) {
+          setState(() => _applyRouterQuote(fresh, fromSym, toSym, ctx));
+        }
+        throw SwapException(
+          'The pool price moved: you would now receive about ${_trimNum(fresh.netOutput)} $toSym (at least ${_trimNum(fresh.minReceived)}). Review and confirm again.',
+          'ราคาพูลขยับแล้ว: ตอนนี้จะได้ประมาณ ${_trimNum(fresh.netOutput)} $toSym (อย่างน้อย ${_trimNum(fresh.minReceived)}) ตรวจแล้วกดยืนยันอีกครั้ง',
+        );
+      }
+
+      // 4) กระเป๋าค่าธรรมเนียมต้องพร้อม "ก่อน" ขอให้ผู้ใช้ approve
+      if (quote.feeWei > BigInt.zero) {
+        await _swapService.ensureFeeCollector();
+      }
+
+      // 5) ยอดที่จะจ่ายต้องไม่เกินยอดจริงบนเชน — เกินด้วยเศษ = ตัดให้พอดี · เกินจริง = ไม่ส่ง
+      quote = await _swapService.fitToBalance(quote, address);
+      _ensureSameWallet(wallet, address);
+
+      // 6) Approve router ถ้า allowance ไม่พอ (ข้ามได้ถ้าจ่ายด้วย BNB)
       if (!quote.fromToken.native) {
         final hasAllowance = await _swapService.hasAllowance(
           quote.fromToken,
@@ -833,12 +878,14 @@ class _SwapScreenState extends State<SwapScreen> {
         }
       }
 
-      // 3) Swap จริง — service เก็บ fee + บันทึก backend ให้ครบ
+      // 7) Swap จริง — service เก็บ fee + เข้าคิวบันทึก backend ให้ครบ
       // ห่อ sender เพื่อแนบ summary ให้ TPIX Wallet โชว์ตอนยืนยัน (linked)
       final actionText = 'Swap $fromSym → $toSym — TPIX Trade';
       final result = await _swapService.executeMarketSwap(
         quote: quote,
         walletAddress: address,
+        // minOut บนเชนไม่ต่ำกว่า "ได้รับขั้นต่ำ" ที่ผู้ใช้เห็นในหน้ายืนยัน
+        minOutFloor: seen?.minOutWei,
         sendTx: ({required String to, Uint8List? data, BigInt? value}) {
           // กระเป๋าต้องยังเป็นใบเดียวกับตอนกดยืนยัน — ไม่งั้นใบใหม่จ่ายแต่ใบเก่าได้ของ
           _ensureSameWallet(wallet, address);
@@ -853,9 +900,12 @@ class _SwapScreenState extends State<SwapScreen> {
 
       if (!mounted) return;
 
-      _payController.clear();
-      _invalidateQuote();
-      final received = '${_trimNum(quote.netOutput)} $toSym';
+      // ล้างฟอร์มเฉพาะเมื่อยังเป็นไม้เดิม (ผู้ใช้อาจพิมพ์ไม้ถัดไประหว่างรอ)
+      if (ctx == _quoteContext()) {
+        _payController.clear();
+        _invalidateQuote();
+      }
+      final received = '${_trimNum(result.quote.netOutput)} $toSym';
       _snack(
         result.confirmed
             ? (locale.isThai
@@ -872,6 +922,8 @@ class _SwapScreenState extends State<SwapScreen> {
       );
       _loadBalances();
       wallet.loadPortfolio();
+    } on TradeBlockedException catch (e) {
+      _showTradeBlocked(e, locale);
     } on SwapException catch (e) {
       if (mounted) _snack(e.message(locale.isThai));
     } catch (_) {
@@ -882,6 +934,61 @@ class _SwapScreenState extends State<SwapScreen> {
     } finally {
       if (mounted) setState(() => _executing = false);
     }
+  }
+
+  /// เก็บ quote ของ router ลง state (ใช้ทั้งตอนขอราคาปกติและตอนราคาขยับระหว่างส่ง)
+  /// — เรียกภายใน setState เท่านั้น
+  void _applyRouterQuote(
+      BscSwapQuote quote, String from, String to, String ctx) {
+    _quoting = false;
+    _routerQuote = quote;
+    _dexQuote = null;
+    _quotedFor = ctx;
+    _quoteError = null;
+    // มุมมอง map สำหรับ details card (field ตรงกับ reader เดิม)
+    _quote = {
+      'amount_out': quote.netOutput,
+      'rate': quote.amountIn > 0 ? quote.netOutput / quote.amountIn : null,
+      'min_received': quote.minReceived,
+      'slippage': quote.slippage,
+      // เส้นทาง swap จริง — 3 ขาแปลว่าวิ่งผ่าน WBNB
+      'route': quote.path.length == 3 ? [from, 'WBNB', to] : [from, to],
+    };
+  }
+
+  /// ด่านก่อนเงินออก: กระเป๋าต้องยืนยันกับเซิร์ฟเวอร์แล้ว + ผ่านด่านยืนยันตัวตนของการเทรด
+  /// (ไม่ผ่านโยน [TradeBlockedException] — ยังไม่ได้ส่งอะไร) แล้วเช็กว่ากระเป๋ายังเป็นใบเดิม
+  Future<void> _preflight(WalletProvider wallet, String address) async {
+    await TradePreflight.ensureCanTrade(
+      address: address,
+      isVerified: () => wallet.isVerified,
+      verify: wallet.verifyWithBackend,
+    );
+    _ensureSameWallet(wallet, address);
+  }
+
+  /// แจ้งเหตุที่ส่งไม้ไม่ได้ — ติดด่านยืนยันตัวตน = พาไปหน้ายืนยันตัวตนในแอปเลย
+  void _showTradeBlocked(TradeBlockedException e, LocaleProvider locale) {
+    if (!mounted) return;
+    if (e.needsKyc) {
+      _snack(
+        e.message(locale.isThai),
+        actionLabel: locale.isThai ? 'ยืนยันตัวตน' : 'Verify',
+        onAction: () => KycNav.open(context),
+      );
+      KycNav.open(context);
+      return;
+    }
+    _snack(e.message(locale.isThai));
+  }
+
+  /// ข้อความ "ไม้นี้ส่งไม่ได้เพราะผลต่อราคา" ฝั่ง BSC — เกินเพดาน หรือวัดไม่ได้
+  String _bscImpactBlockedMessage(BscSwapQuote q, bool th) {
+    final impact = q.priceImpact;
+    if (impact == null || !impact.isFinite) {
+      return kSwapImpactUnknown.message(th);
+    }
+    return swapImpactTooHigh(impact).message(th);
   }
 
   /// Swap จริงบนเชน TPIX ผ่านพูลของ TPIX DEX — ลำดับเดียวกับหน้าเทรด
@@ -912,10 +1019,15 @@ class _SwapScreenState extends State<SwapScreen> {
     final address = wallet.address!;
     final ctx = _quoteContext();
     final slippage = _slippage;
+    // ราคาที่ผู้ใช้เห็นในหน้ายืนยัน (ถ้าเป็นของไม้นี้) — อ่านก่อนขอราคาใหม่
+    final seen = _quotedFor == ctx ? _dexQuote : null;
 
     setState(() => _executing = true);
     String? sendError;
     try {
+      // 0) ยืนยันกระเป๋า + ด่านยืนยันตัวตน — ต้องผ่านก่อนเงินออก
+      await _preflight(wallet, address);
+
       // 1) Quote สดใหม่ ณ วินาทีส่ง — minOut คิดจาก slippage กับราคาพูลตอนนี้จริง
       final quote =
           await _quoteTpix(fromTk, toTk, amountText, amount, slippage);
@@ -935,6 +1047,45 @@ class _SwapScreenState extends State<SwapScreen> {
           _impactBlockedMessage(quote, true, fromTk.symbol),
         );
       }
+
+      // ราคาใหม่ต้องไม่แย่กว่า "ได้รับขั้นต่ำ" ที่ผู้ใช้เห็นก่อนกดยืนยัน
+      if (seen != null && quote.netOutput < seen.minReceived) {
+        if (mounted && ctx == _quoteContext()) {
+          setState(() {
+            _dexQuote = quote;
+            _quote = _tpixQuoteView(quote, fromTk, toTk);
+            _quotedFor = ctx;
+            _quoteError = null;
+          });
+        }
+        throw SwapException(
+          'The pool price moved: you would now receive about ${_trimNum(quote.netOutput)} ${toTk.symbol} (at least ${_trimNum(quote.minReceived)}). Review and confirm again.',
+          'ราคาพูลขยับแล้ว: ตอนนี้จะได้ประมาณ ${_trimNum(quote.netOutput)} ${toTk.symbol} (อย่างน้อย ${_trimNum(quote.minReceived)}) ตรวจแล้วกดยืนยันอีกครั้ง',
+        );
+      }
+
+      // ค่าวางไม้ของไม้บน TPIX Chain — จ่ายด้วยเครดิต TPIX ทุกไม้ (เจ้าของสั่ง 2026-11-13)
+      // ถามใบเสนอราคาสดก่อนขอ approve: ถามไม่ได้ / เครดิตไม่พอ = ไม่ส่ง (ยังไม่มีอะไรออกจากกระเป๋า)
+      // มูลค่าไม้ = ฝั่ง USDT ของไม้ (ที่อยู่ตรงกับ USDT ของทะเบียน DEX — ไม่เชื่อชื่อเหรียญ)
+      final usdt = (_dexService.lastConfig.usdt ?? '').toLowerCase();
+      bool isUsdt(VerifiedToken t) =>
+          !t.native && usdt.isNotEmpty && t.address.toLowerCase() == usdt;
+      final payingStable = isUsdt(quote.fromToken);
+      final feePlan = await TradingFeeFlow.plan(
+        wallet: address,
+        // จ่ายด้วย USDT = ซื้อเหรียญปลายทาง · ไม่งั้น = ขายเหรียญต้นทาง (แบบเดียวกับหน้า Swap ของเว็บ)
+        pair: payingStable
+            ? '${toTk.symbol}/${fromTk.symbol}'
+            : '${fromTk.symbol}/${toTk.symbol}',
+        side: payingStable ? 'buy' : 'sell',
+        orderValueUsd: TradingFeeFlow.orderValueUsd(
+          fromIsStable: payingStable,
+          toIsStable: isUsdt(quote.toToken),
+          amountIn: quote.amountIn,
+          netOutput: quote.netOutput,
+        ),
+        chainId: chainId,
+      );
 
       // 3) ยอดที่จะจ่ายต้องไม่เกินที่มีจริง (เทียบหน่วยเล็กสุด · รู้ยอดแล้วเท่านั้น)
       _ensureSameWallet(wallet, address);
@@ -988,22 +1139,32 @@ class _SwapScreenState extends State<SwapScreen> {
       // 5) ส่ง swap จริง — service บันทึกไม้กับเซิร์ฟเวอร์ให้แล้ว (fee 0 = อยู่ในพูล)
       final actionText =
           'Swap ${fromTk.symbol} → ${toTk.symbol} — TPIX Trade (TPIX Chain)';
-      final result = await _dexService.executeMarketSwap(
-        quote: quote,
-        walletAddress: address,
-        sendTx: ({required String to, Uint8List? data, BigInt? value}) async {
-          // ด่านสุดท้ายก่อนเปิดกระเป๋า — ต้องยังเป็นใบเดียวกับตอนกดยืนยัน
-          _ensureSameWallet(wallet, address);
-          final hash = await wallet.sendChainTransaction(
-            chainId: chainId,
-            to: to,
-            data: data,
-            value: value,
-            summary: actionText,
-          );
-          if (hash == null) sendError = wallet.error;
-          return hash;
-        },
+      // ต้องมีใบอนุญาตวางไม้ (หักเครดิต TPIX) = ขอใบ → ส่ง → ผูกกับ tx → ปิดใบเมื่อไม้ยืนยัน
+      // ไม่มีอะไรออกจากกระเป๋า = คืนค่าบริการ · ออกไปแล้ว = เซิร์ฟเวอร์ตัดสินจากเชน (TradingFeeFlow)
+      final result = await TradingFeeFlow.send<TpixDexSwapResult>(
+        plan: feePlan,
+        isConfirmed: (r) => r.confirmed,
+        send: (onSent) => _dexService.executeMarketSwap(
+          quote: quote,
+          walletAddress: address,
+          onSent: onSent,
+          // minOut บนเชนไม่ต่ำกว่า "ได้รับขั้นต่ำ" ที่ผู้ใช้เห็นในหน้ายืนยัน
+          minOutFloor: seen?.minOutWei,
+          sendTx: (
+              {required String to, Uint8List? data, BigInt? value}) async {
+            // ด่านสุดท้ายก่อนเปิดกระเป๋า — ต้องยังเป็นใบเดียวกับตอนกดยืนยัน
+            _ensureSameWallet(wallet, address);
+            final hash = await wallet.sendChainTransaction(
+              chainId: chainId,
+              to: to,
+              data: data,
+              value: value,
+              summary: actionText,
+            );
+            if (hash == null) sendError = wallet.error;
+            return hash;
+          },
+        ),
       );
 
       if (!mounted) return;
@@ -1029,6 +1190,22 @@ class _SwapScreenState extends State<SwapScreen> {
       _loadBalances();
       wallet.loadPortfolio();
       context.read<MarketProvider>().loadTpixPrice(retries: 0);
+    } on TradeBlockedException catch (e) {
+      _showTradeBlocked(e, locale);
+    } on TradingFeeException catch (e) {
+      // ติดที่ค่าวางไม้ (ยังไม่มีอะไรออกจากกระเป๋า) — บอกเหตุ และพาไปเติมเครดิตที่หน้าเว็บถ้าขาด
+      if (mounted) {
+        _snack(
+          e.message(th),
+          actionLabel: e.needsCredit ? (th ? 'เปิดหน้าเว็บ' : 'Open web') : null,
+          onAction: e.needsCredit
+              ? () => launchUrl(
+                    Uri.parse('https://tpix.online/trade/TPIX-USDT'),
+                    mode: LaunchMode.externalApplication,
+                  )
+              : null,
+        );
+      }
     } on SwapException catch (e) {
       if (mounted) {
         // ส่งไม่ออก = เหตุจริงจาก WalletProvider ชัดกว่า "ถูกปฏิเสธหรือส่งไม่สำเร็จ"
@@ -1080,12 +1257,23 @@ class _SwapScreenState extends State<SwapScreen> {
     return AppColors.textSecondary;
   }
 
-  String _impactText(double impact) =>
-      impact < 0.01 ? '< 0.01%' : '${impact.toStringAsFixed(2)}%';
+  /// สีของ price impact — วัดไม่ได้ (null) = ส่งไม่ได้ จึงใช้สีเดียวกับเกินเพดาน
+  Color _impactColorOrBlocked(double? impact) =>
+      impact == null || !impact.isFinite
+          ? AppColors.tradingRed
+          : _impactColor(impact);
+
+  /// ข้อความ price impact — null/ไม่ใช่ตัวเลข = "—" (วัดไม่ได้ ไม่ใช่ 0%)
+  String _impactText(double? impact) {
+    if (impact == null || !impact.isFinite) return '—';
+    return impact < 0.01 ? '< 0.01%' : '${impact.toStringAsFixed(2)}%';
+  }
 
   /// ข้อความ "ไม้นี้เกินเพดาน" — จำนวนสูงสุดเป็นหน่วยของเหรียญที่จ่าย (หน้านี้เป็น exact-in)
   String _impactBlockedMessage(TpixDexQuote q, bool th, String fromSym) {
-    final impact = q.priceImpact.toStringAsFixed(1);
+    // วัดไม่ได้ = ไม่รู้ว่าพูลรับไม้นี้ได้ไหม — คนละข้อความกับ "เกินเพดาน"
+    if (q.impactUnknown) return kTpixImpactUnknown.message(th);
+    final impact = q.priceImpact!.toStringAsFixed(1);
     final limit = kTpixMaxPriceImpactPct.toStringAsFixed(0);
     final max = q.maxAmountInUnderLimit;
     if (max != null && max > 0) {
@@ -1294,7 +1482,9 @@ class _SwapScreenState extends State<SwapScreen> {
     }
     final bal = _balanceOf(wallet, _fromToken);
     if (bal == null || bal <= 0) return;
-    _setAmountText(_trimNum(bal));
+    // ตัดทศนิยมทิ้ง ห้ามปัดขึ้น — ปัดขึ้นแล้วจำนวนเกินยอดจริง ธุรกรรมค่าธรรมเนียม revert
+    // (ยอดจริงบนเชนถูกอ่านซ้ำและตัดให้พอดีอีกชั้นก่อนส่ง)
+    _setAmountText(BscSwapService.floorDecimal(bal, 8));
   }
 
   /// "ใช้สูงสุด" จากแถบเกินเพดาน price impact — ปัดลงเสมอ (ปัดขึ้นแล้วจะเกินเพดานเอง)
@@ -1411,21 +1601,20 @@ class _SwapScreenState extends State<SwapScreen> {
     }
 
     // Price impact — โหมด TPIX บอกทุกไม้ก่อนกด (พูลยังเล็ก ไม้ไม่กี่ดอลลาร์ก็ขยับราคาได้)
+    final bq = _routerQuote;
     if (dq != null) {
       rows.add(_DetailRow(
         label: th ? 'ผลต่อราคาพูล' : 'Price impact',
         value: _impactText(dq.priceImpact),
-        valueColor: _impactColor(dq.priceImpact),
+        valueColor: _impactColorOrBlocked(dq.priceImpact),
       ));
-    } else {
-      final priceImpact =
-          _readNum(_quote, const ['price_impact', 'priceImpact', 'impact']);
-      if (priceImpact != null) {
-        rows.add(_DetailRow(
-          label: th ? 'ผลกระทบราคา' : 'Price impact',
-          value: '${_trimNum(priceImpact)}%',
-        ));
-      }
+    } else if (bq != null) {
+      // BSC: วัดจากไม้จิ๋วบนเส้นทางเดียวกัน — "—" = วัดไม่ได้ (ส่งไม่ได้จนกว่าจะวัดได้)
+      rows.add(_DetailRow(
+        label: th ? 'ผลต่อราคาพูล' : 'Price impact',
+        value: _impactText(bq.priceImpact),
+        valueColor: _impactColorOrBlocked(bq.priceImpact),
+      ));
     }
 
     rows.add(_DetailRow(
@@ -1486,6 +1675,15 @@ class _SwapScreenState extends State<SwapScreen> {
               onUseMax: _executing ? null : () => _applyImpactMax(dq),
             ),
           ],
+          if (dq == null && bq != null && bq.isImpactBlocked()) ...[
+            const SizedBox(height: 8),
+            _ImpactBlockedBanner(
+              message: _bscImpactBlockedMessage(bq, th),
+              canUseMax: false,
+              useMaxLabel: th ? 'ใช้สูงสุด' : 'Use max',
+              onUseMax: null,
+            ),
+          ],
           if (routeStr != null) ...[
             const SizedBox(height: 10),
             Divider(color: AppColors.divider, height: 1),
@@ -1535,7 +1733,9 @@ class _SwapScreenState extends State<SwapScreen> {
       quoteOk = dq != null && !dq.exceedsImpactLimit;
     } else {
       pairOk = _fromToken != _toToken;
-      quoteOk = _routerQuote != null;
+      final bq = _routerQuote;
+      // เกินเพดาน price impact หรือวัดไม่ได้ = กดไม่ได้ (กติกาเดียวกับเว็บ)
+      quoteOk = bq != null && !bq.isImpactBlocked();
     }
 
     final ready = wallet.isConnected &&

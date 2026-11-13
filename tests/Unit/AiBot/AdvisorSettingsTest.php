@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\AiBot;
 
+use App\Models\AiBotPlan;
 use App\Models\SiteSetting;
 use App\Services\AiBot\Advisor\AdvisorFactory;
 use App\Services\AiBot\Advisor\AdvisorSettings;
@@ -10,6 +11,7 @@ use App\Services\AiBot\Advisor\NullAdvisor;
 use App\Services\AiBot\Advisor\OpenAiAdvisor;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -169,6 +171,102 @@ class AdvisorSettingsTest extends TestCase
 
         $this->assertInstanceOf(GeminiAdvisor::class, $factory->make($this->settings->providerForTier('free')));
         $this->assertInstanceOf(OpenAiAdvisor::class, $factory->make(app(AdvisorSettings::class)->providerForTier('pro')));
+    }
+
+    /**
+     * ⭐ แพลนฟรีชี้ไป Gemini แต่ production ไม่มีคีย์ Gemini (มีแต่ OpenAI).
+     *
+     * เดิมผู้ใช้แพลนฟรี — ซึ่งคือทุกคนตอนนี้ — กดขอคำแนะนำแล้วได้ "ยังไม่ได้ตั้งคีย์ของ gemini" ทุกครั้ง
+     * ต้องตกไปใช้เจ้าที่ตั้งคีย์ไว้แล้ว และนับโควตาต่อวันของเจ้าที่ถูกใช้จริง
+     */
+    #[Test]
+    public function แพลนฟรีไม่มีคีย์_gemini_ตกไปใช้_openai_ที่ตั้งคีย์ไว้และนับโควตาของ_openai(): void
+    {
+        config(['aibot_advisor.providers.gemini.api_key' => '']);
+        SiteSetting::set(AdvisorSettings::GROUP, 'advisor_openai_api_key', 'sk-test');
+        SiteSetting::set(AdvisorSettings::GROUP, 'advisor_openai_max_calls', '2');
+        Http::fake(['api.openai.com/*' => Http::response(['choices' => [['message' => ['content' => 'ลดขนาดไม้ลง']]]])]);
+
+        $advisor = app(AdvisorFactory::class)->forPlan(null);
+
+        $this->assertInstanceOf(OpenAiAdvisor::class, $advisor);
+        $this->assertTrue($advisor->isAvailable());
+
+        $result = $advisor->advise(['stats' => ['closed' => 3]]);
+        $this->assertTrue($result['ok']);
+        $this->assertSame('openai', $result['provider']);
+        $this->assertSame('ลดขนาดไม้ลง', $result['text']);
+
+        // โควตาต่อวันเป็นของเจ้าที่ถูกใช้จริง — ครบเพดานของ OpenAI แล้วต้องหยุด ไม่ใช่ไม่จำกัดเพราะเป็นทางสำรอง
+        $this->assertSame(1, (int) cache()->get('aibot:advisor:openai:'.now()->toDateString()));
+        $this->assertSame(0, (int) cache()->get('aibot:advisor:gemini:'.now()->toDateString(), 0));
+
+        $advisor->advise(['stats' => ['closed' => 3]]);
+        $third = app(AdvisorFactory::class)->forPlan(null)->advise(['stats' => ['closed' => 3]]);
+
+        $this->assertFalse($third['ok']);
+        $this->assertStringContainsString('โควตา', $third['reason']);
+        Http::assertSentCount(2);
+    }
+
+    /** ทางกลับกันก็ต้องได้: แพลนเสียเงินชี้ไป OpenAI ที่ไม่มีคีย์ → ใช้ Gemini ที่มีคีย์ */
+    #[Test]
+    public function แพลนเสียเงินไม่มีคีย์_openai_ตกไปใช้_gemini(): void
+    {
+        $advisor = app(AdvisorFactory::class)->forPlan(new AiBotPlan(['tier' => 'pro']));
+
+        $this->assertInstanceOf(GeminiAdvisor::class, $advisor);
+    }
+
+    /** เจ้าที่แพลนกำหนดมีคีย์อยู่แล้ว = ใช้เจ้านั้น ไม่สลับ */
+    #[Test]
+    public function มีคีย์ของเจ้าที่แพลนกำหนดแล้วไม่สลับไปเจ้าอื่น(): void
+    {
+        SiteSetting::set(AdvisorSettings::GROUP, 'advisor_openai_api_key', 'sk-test');
+
+        $factory = app(AdvisorFactory::class);
+
+        $this->assertInstanceOf(GeminiAdvisor::class, $factory->forPlan(null));
+        $this->assertInstanceOf(OpenAiAdvisor::class, $factory->forPlan(new AiBotPlan(['tier' => 'vip'])));
+    }
+
+    /**
+     * ⚠️ สลับเฉพาะตอน "ไม่มีคีย์" — โควตาฟรีของ Gemini หมดแล้วต้องไม่ไหลไปกิน OpenAI ที่เสียเงิน.
+     */
+    #[Test]
+    public function โควตาของเจ้าที่แพลนกำหนดหมดแล้วไม่สลับไปเจ้าอื่น(): void
+    {
+        SiteSetting::set(AdvisorSettings::GROUP, 'advisor_openai_api_key', 'sk-test');
+        SiteSetting::set(AdvisorSettings::GROUP, 'advisor_gemini_max_calls', '1');
+        cache()->put('aibot:advisor:gemini:'.now()->toDateString(), 5, now()->endOfDay());
+
+        $advisor = app(AdvisorFactory::class)->forPlan(null);
+
+        $this->assertInstanceOf(GeminiAdvisor::class, $advisor);
+        $this->assertFalse($advisor->isAvailable());
+    }
+
+    /** ไม่มีเจ้าไหนมีคีย์เลย = NullAdvisor พร้อมชื่อเจ้าที่แพลนกำหนด (แอดมินรู้ว่าต้องตั้งคีย์ช่องไหน) */
+    #[Test]
+    public function ไม่มีคีย์สักเจ้าได้_null_advisor_ที่บอกชื่อเจ้าของแพลน(): void
+    {
+        config(['aibot_advisor.providers.gemini.api_key' => '']);
+
+        $advisor = app(AdvisorFactory::class)->forPlan(null);
+
+        $this->assertInstanceOf(NullAdvisor::class, $advisor);
+        $this->assertStringContainsString('gemini', $advisor->advise([])['reason']);
+    }
+
+    /** ปิดสวิตช์ที่ปรึกษาแล้ว การสลับผู้ให้บริการต้องไม่เปิดกลับมาเอง */
+    #[Test]
+    public function ปิดสวิตช์แล้วทางสำรองก็ไม่ทำงาน(): void
+    {
+        config(['aibot_advisor.providers.gemini.api_key' => '']);
+        SiteSetting::set(AdvisorSettings::GROUP, 'advisor_openai_api_key', 'sk-test');
+        SiteSetting::set(AdvisorSettings::GROUP, 'advisor_enabled', '0', 'boolean');
+
+        $this->assertInstanceOf(NullAdvisor::class, app(AdvisorFactory::class)->forPlan(null));
     }
 
     /**

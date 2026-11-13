@@ -373,6 +373,11 @@
             "marketType": "Market",
             "soon": "Soon",
             "limitSoonTitle": "Limit orders open with the TPIX Chain launch",
+            "limitExpiry": "Order expiry",
+            "limitExpiryDays": "{days}d",
+            "limitNote": "This order waits on our server. When the market reaches your price (fees included), the trade page asks you to confirm in your wallet and sends an order that locks \"minimum received\" at your price. Keep the trade page or the app open to be notified. Your coins stay in your wallet until you confirm.",
+            "placeLimitBuy": "Place buy order for {symbol}",
+            "placeLimitSell": "Place sell order for {symbol}",
             "price": "Price",
             "priceRef": "(reference)",
             "useMarket": "Market",
@@ -423,7 +428,7 @@
             "fundsOnBsc": "Balances on BSC — where your trades settle"
         },
         "notice": {
-            "onchain": "Market orders execute for real on BSC via PancakeSwap — tokens settle in your wallet. Limit orders open with TPIX Chain.",
+            "onchain": "Market orders execute for real on BSC via PancakeSwap — tokens settle in your wallet. Limit orders wait for your price and ask you to confirm when it is reached.",
             "tpixSoon": "TPIX/USDT trading opens with the TPIX Chain launch — coming soon.",
             "dataError": "Failed to load market data. Retrying...",
             "connectError": "Failed to connect to market data. Please refresh.",
@@ -464,7 +469,16 @@
             "priceImpactUnknown": "Couldn't read the pool to check how far this order moves the price — try again in a moment.",
             "dexPriceMoved": "The pool price moved: you'd now receive about {receive} {symbol} (at least {min}). Press again to confirm.",
             "pendingTx": "Order sent — TPIX Chain hasn't confirmed it yet. Check the explorer before ordering again.",
-            "accountChanged": "Your wallet account changed during the order — nothing was sent. Please place the order again."
+            "accountChanged": "Your wallet account changed during the order — nothing was sent. Please place the order again.",
+            "creditRequired": "Not enough TPIX credit for the order fee — top up before trading on TPIX Chain.",
+            "limitNeedPrice": "Enter the price you want.",
+            "limitPlaced": "{side} order for {symbol} at {price} placed — we'll notify you when the price is reached.",
+            "limitFailed": "Could not place the order. Please try again.",
+            "limitNeedVerify": "Verify your wallet first, then place the order again.",
+            "limitReached": "{count} limit order(s) reached their price — confirm to send.",
+            "limitReadyLine": "{side} {symbol} at {price} has reached its price",
+            "limitConfirm": "Confirm order",
+            "limitNotReached": "The real price has not reached your limit yet: you would get about {receive} {symbol} now (this order needs at least {min}) — the order stays open."
         },
         "chart": {
             "loading": "Loading…",
@@ -520,6 +534,7 @@
         "switchFailed": "Couldn't switch your wallet to BSC. Switch it in your wallet, then try again.",
         "embeddedNoBsc": "TPIX Wallet works on TPIX Chain only — connect an external wallet such as MetaMask to swap on BSC.",
         "quoteRefreshed": "The price was updated — check the new amount, then press Swap again.",
+        "feeValueUnknown": "The order fee for this pair cannot be worked out yet (neither side is a dollar stablecoin) — use the Trade page for this pair.",
         "network": "Network",
         "networkTpix": "TPIX Chain",
         "networkBsc": "BSC",
@@ -579,7 +594,13 @@
             "needVerify": "Verify your wallet to see your orders",
             "loadFailed": "Couldn't load your open orders.",
             "empty": "No open orders",
-            "emptyHint": "Market orders on BSC fill instantly, so nothing stays open here. Limit orders are coming soon.",
+            "emptyHint": "Market orders fill instantly, so they never stay here. Limit orders still waiting for their price are listed here.",
+            "execute": "Confirm",
+            "limitStatus": {
+                "waiting": "Waiting for price",
+                "ready": "Price reached",
+                "submitted": "Awaiting chain result"
+            },
             "noMatch": "No open orders for {pair}",
             "hideOtherPairs": "Hide other pairs",
             "cancel": "Cancel",
@@ -1396,7 +1417,7 @@
         "topupClosed": "Credit top-up is not open yet — we will announce it when payments go live. Until then the welcome credits are yours to test with.",
         "botStale": "⚠️ This bot has not run for {n} minutes — the execution service may be down. Please tell the team.",
         "topupTitle": "Top up work credits",
-        "topupSub": "Pick a pack to create a request — credits land after the team confirms payment",
+        "topupSub": "Pick a pack and pay in TPIX from your connected wallet — we verify the transfer on-chain and add the credits automatically",
         "topupOk": "Top-up request sent — credits arrive once payment is confirmed",
         "bonus": "{n} bonus",
         "activated": "AI TRADE is active — go set up your strategies",
@@ -1541,7 +1562,7 @@
         "compareFreeTitle": "Free — the bot runs inside your browser",
         "compareFreeBody": "The bot lives in this tab, so this page has to stay open. Close the tab, shut the machine or lose your connection and the bot stops immediately — it will not resume until you open the page again. One bot, with the Grid and DCA strategies.",
         "compareCloudTitle": "Paid — our servers run it around the clock",
-        "compareCloudBody": "The bot lives on our servers. Close your browser, shut your computer, go to sleep — it keeps watching the market and trading. Includes the 15-minute news risk gate, every strategy, and several bots at once.",
+        "compareCloudBody": "The bot lives on our servers. Close your browser, shut your computer, go to sleep — it keeps watching the market and trading. Includes the 15-minute news risk gate, every available strategy, and several bots at once.",
         "liveOpenNotice": "Live mode is open — the bot proposes signals for you to confirm yourself. We never hold your wallet keys, so we cannot place orders for you.",
         "demoOnlyNotice": "Only demo mode is open right now — trading uses simulated credits at real market prices, so no plan places real orders yet. Live mode opens once the system has been fully proven.",
         "browserBotRunning": "Your bot is running in this tab",
@@ -1587,6 +1608,43 @@
         "planReasonRetired": "This strategy has been retired — you can rename it, lower its risk or delete it, but not start it again",
         "rentClosedShort": "Renting not open yet",
         "welcomeAlreadyClaimed": "This wallet already claimed its welcome credits — one claim per wallet",
+        "comingSoon": "Coming soon",
+        "introDemoNote": "Right now every bot runs in demo mode — it trades a practice portfolio at real market prices and no real funds are used. Real-money trading is coming soon.",
+        "liveComingSoon": "Real-money mode — coming soon. Bots currently run in demo mode at real market prices.",
+        "topup": {
+            "title": "Top up credits with TPIX",
+            "intro": "Send the pack price in TPIX from your connected wallet. We verify the transfer on-chain and add the credits automatically.",
+            "youGet": "Credits you get",
+            "amount": "Amount to send",
+            "network": "Network",
+            "payTo": "Payment wallet",
+            "copy": "Copy",
+            "copied": "Copied",
+            "loading": "Preparing your payment...",
+            "pay": "Pay {amount} TPIX from wallet",
+            "switching": "Switching to TPIX Chain — confirm in your wallet",
+            "signing": "Waiting for you to confirm the transfer in your wallet...",
+            "verifying": "Transaction sent — verifying on-chain...",
+            "pending": "The chain has not confirmed this transaction yet — no credits added so far. Check again in a moment; a transfer you already made is not lost.",
+            "checkAgain": "Check again",
+            "success": "Top-up complete: +{credited} credits · balance {balance} credits",
+            "done": "Done",
+            "cancelled": "You cancelled the transfer in your wallet — nothing was charged.",
+            "wrongChain": "Switch your wallet to TPIX Chain ({chain}) before paying, then try again. Nothing was charged.",
+            "insufficient": "Not enough TPIX in your wallet for this pack — nothing was charged.",
+            "sendFailed": "The transaction could not be sent — nothing was charged. Please try again.",
+            "needSigner": "Your wallet is not ready to sign — unlock or reconnect it and try again.",
+            "accountMismatch": "The account selected in your wallet is not the connected wallet — switch back before paying, or the credits cannot be added.",
+            "walletBusy": "A transfer request is still open in your wallet — approve or reject it there first.",
+            "unpaidPending": "A credit payment you already sent is still waiting for confirmation",
+            "resume": "Check payment",
+            "haveHash": "Already paid? Paste the tx hash to confirm",
+            "invalidHash": "Invalid tx hash (must start with 0x and be 66 characters long)",
+            "confirmHash": "Confirm with tx hash",
+            "forget": "Clear this entry (I have not paid)",
+            "txLabel": "Transaction",
+            "footnote": "Every payment is verified on-chain: it must come from the connected wallet and match the pack price exactly. Each transaction can be used once."
+        },
         "botWallet": {
             "title": "Bot wallet",
             "pitch": "A separate wallet the bot trades from in live mode — fund it here. Your own trading wallet is never touched, and withdrawals only go back to your wallet",
@@ -5927,8 +5985,8 @@
                 "groqKeyHint": "Sign up free at https://console.groq.com/keys",
                 "defaultModel": "Default AI Model",
                 "models": {
-                    "llama70b": "Llama 3.3 70B (recommended)",
-                    "llama8b": "Llama 3.1 8B (fast)"
+                    "gptOss120b": "GPT-OSS 120B (recommended)",
+                    "gptOss20b": "GPT-OSS 20B (fast)"
                 },
                 "imageGen": "AI Image Generation",
                 "imageGenHint": "Optional — the system falls back to Pollinations.ai (free) automatically",
@@ -7107,7 +7165,8 @@
             },
             "models": {
                 "recommended": "recommended",
-                "fast": "fast"
+                "fast": "fast",
+                "default": "System default (recommended)"
             },
             "suggestions": {
                 "s1": "TPIX Chain — a gas-free blockchain for Thailand",
@@ -7142,7 +7201,8 @@
                 "model": "AI model",
                 "suggestions": "Suggested topics:",
                 "generating": "Generating...",
-                "submit": "Generate article + AI image"
+                "submit": "Generate article + AI image",
+                "disabled": "AI content generation is switched off — turn it on under Settings > AI (AI Content)"
             },
             "languages": {
                 "th": "Thai",
@@ -9332,6 +9392,7 @@
                 "symbolPlaceholder": "e.g. BTC/USDT",
                 "type": "Analysis Type",
                 "model": "AI Model",
+                "modelDefault": "System default (recommended)",
                 "analyzing": "Analyzing...",
                 "run": "Run Analysis"
             },
@@ -10043,6 +10104,9 @@
             "statuses": {
                 "pending": "Pending",
                 "processing": "Processing",
+                "executing": "Sending order",
+                "confirming": "Awaiting confirmation",
+                "confirmed": "Confirmed on chain",
                 "completed": "Completed",
                 "failed": "Failed",
                 "cancelled": "Cancelled"
@@ -11090,7 +11154,8 @@
             "recommended": "Recommended",
             "fullRefund": "Full refund if cancelled",
             "payOnchain": "Pay in tokens",
-            "refundMinusGas": "Refund minus gas",
+            "refundMinusGas": "Taken from the coin on fill",
+            "onchainClosed": "Not available on this chain — pay with TPIX credit",
             "shortfall": {
                 "before": "You need",
                 "after": "more credit to use the cheaper option"
@@ -11099,9 +11164,9 @@
             "tpixUnavailable": "TPIX fee payment is not available yet",
             "note": {
                 "onchain": {
-                    "before": "Paid before placing the order to confirm it · Refunded when the order is cancelled",
-                    "highlight": "after deducting the refund transaction's gas",
-                    "after": "Holding TPIX is cheaper and refunds in full"
+                    "before": "Taken as a percentage of the coin you pay, when the order lands on chain (nothing is paid in advance)",
+                    "highlight": "no fill = no fee",
+                    "after": "Paying the service fee with TPIX is cheaper"
                 },
                 "tpix": {
                     "before": "Deducted from your TPIX vault when placing · When the order is cancelled,",

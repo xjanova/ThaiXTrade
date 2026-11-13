@@ -38,6 +38,7 @@ import {
 } from '@/utils/swapNetwork';
 import { useTranslation } from '@/Composables/useTranslation';
 import WalletModal from '@/Components/Wallet/WalletModal.vue';
+import TpixTopupModal from '@/Components/Trading/TpixTopupModal.vue';
 
 const walletStore = useWalletStore();
 const swap = useSwap();
@@ -132,6 +133,28 @@ const isApproveInFlight = ref(false); // เหมือนกันสำหร
 const showWalletModal = ref(false);
 /** ข้อความจากการกระทำล่าสุดที่ไม่ได้มาจาก useSwap/useTpixDex (สลับเชนไม่สำเร็จ / ราคาอัปเดต) */
 const actionNotice = ref(null); // { type: 'error' | 'info', text }
+/** หน้าต่างเติมเครดิต TPIX — เปิดเมื่อไม้บน TPIX Chain ติดที่เครดิตค่าวางไม้ไม่พอ */
+const showTopup = ref(false);
+
+/** เหรียญที่ถือว่า 1 หน่วย = 1 ดอลลาร์ — ชุดเดียวกับ FeeCalculationService::USD_STABLES */
+const USD_STABLES = new Set(['USDT', 'USDC', 'BUSD', 'FDUSD', 'DAI', 'TUSD']);
+
+/**
+ * มูลค่าไม้เป็นดอลลาร์ สำหรับคิดขั้นค่าวางไม้ของไม้บน TPIX Chain — อ่านจากขาที่เป็นสเตเบิล
+ * @returns {number|null} null = ไม่มีขาไหนเป็นสเตเบิล ตีมูลค่าไม่ได้ (ไม่เดา)
+ */
+function swapValueUsd(quote) {
+    if (USD_STABLES.has(String(fromToken.value?.symbol || '').toUpperCase())) {
+        const paid = parseFloat(fromAmount.value);
+        return paid > 0 ? paid : null;
+    }
+    if (USD_STABLES.has(String(toToken.value?.symbol || '').toUpperCase())) {
+        const received = Number(quote?.netOutput);
+        return received > 0 ? received : null;
+    }
+
+    return null;
+}
 
 // Quote data
 const currentQuote = ref(null);
@@ -836,16 +859,53 @@ async function executeSwap() {
             if (isPriceImpactBlocked(quote.priceImpact)) return;
             if (exceedsBalance(fromAmount.value, fromToken.value.balanceRaw)) return;
 
+            /*
+             * ค่าวางไม้ของไม้บน TPIX Chain — จ่ายด้วยเครดิต TPIX ทุกไม้ (เจ้าของสั่ง 2026-11-13)
+             * ⚠️ เดิมหน้านี้ไม่เคยขอใบอนุญาตเลย = สวอปบน TPIX Chain จากหน้านี้ไม่ถูกเก็บค่าแพลตฟอร์ม
+             *    ขณะที่กระดานเทรดเก็บ · ตอนนี้ใช้กติกาเดียวกัน: ขอใบ → ส่ง → ผูกกับธุรกรรม → ปิดใบ/คืน
+             * ระบบค่าบริการปิดอยู่ หรือกระเป๋านี้ได้รับยกเว้น = ส่งได้เลย (sendWithTicket ตัดสินจากใบเสนอราคาสด)
+             */
+            const owner = walletStore.address;
+            const fromSym = fromToken.value.symbol;
+            const toSym = toToken.value.symbol;
+            const valueUsd = swapValueUsd(quote);
+            if (valueUsd === null) {
+                actionNotice.value = { type: 'error', text: t('swapPage.feeValueUnknown') };
+                return;
+            }
+
             // minOut ผูกกับ amounts ของ quote บนจอ · บันทึกประวัติ (fee_amount 0 — ค่าธรรมเนียมอยู่ในพูล) ให้แล้ว
             try {
-                await dex.executeTradeSwap(
-                    fromToken.value,
-                    toToken.value,
-                    parseFloat(fromAmount.value),
-                    quote,
-                    slip,
-                );
+                await tradingFee.sendWithTicket({
+                    wallet: owner,
+                    pair: USD_STABLES.has(String(fromSym).toUpperCase()) ? `${toSym}/${fromSym}` : `${fromSym}/${toSym}`,
+                    side: USD_STABLES.has(String(fromSym).toUpperCase()) ? 'buy' : 'sell',
+                    orderValueUsd: valueUsd,
+                    chainId: chainIdForNetwork(net),
+                }, ({ onSent }) => {
+                    // บัญชีในกระเป๋าเปลี่ยนระหว่างขอใบอนุญาต — ห้ามเก็บค่าบริการจากบัญชีหนึ่งแล้วส่งไม้จากอีกบัญชี
+                    if (String(walletStore.address || '').toLowerCase() !== String(owner || '').toLowerCase()) {
+                        const changed = new Error(t('trade.status.accountChanged'));
+                        changed.isFriendly = true;
+                        throw changed;
+                    }
+
+                    return dex.executeTradeSwap(
+                        fromToken.value,
+                        toToken.value,
+                        parseFloat(fromAmount.value),
+                        quote,
+                        slip,
+                        { onSent },
+                    );
+                });
             } catch (err) {
+                // ติดที่ค่าวางไม้ (ยังไม่มีอะไรออกจากกระเป๋า) — บอกเหตุผล และพาไปเติมเครดิตถ้าขาด
+                if (err?.feeCode || (err?.isFriendly && !err?.txSent && !dex.error.value)) {
+                    actionNotice.value = { type: 'error', text: err.message };
+                    if (err.feeCode === 'CREDIT_REQUIRED') showTopup.value = true;
+                    return;
+                }
                 /*
                  * ส่งออกไปแล้วแต่เชนยังไม่ยืนยัน — ไม้อาจลงไปแล้ว
                  * ล้างฟอร์มเหมือนสำเร็จ (กดซ้ำทันที = สวอปสองรอบ) แล้วให้แถบ "รอยืนยัน" พาไปตรวจที่ explorer
@@ -1459,5 +1519,13 @@ onMounted(async () => {
                 @connected="showWalletModal = false"
             />
         </Transition>
+
+        <!-- TPIX Chain: ค่าวางไม้ต้องจ่ายด้วยเครดิต TPIX — เครดิตไม่พอ พาไปเติมได้จากหน้านี้เลย -->
+        <TpixTopupModal
+            v-if="showTopup"
+            :show="showTopup"
+            @close="showTopup = false"
+            @credited="showTopup = false"
+        />
     </AppLayout>
 </template>

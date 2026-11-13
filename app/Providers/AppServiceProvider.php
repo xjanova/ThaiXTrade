@@ -4,7 +4,11 @@ namespace App\Providers;
 
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\VerifyWalletOwnership;
+use App\Models\FeeConfig;
 use App\Models\SiteSetting;
+use App\Models\SwapConfig;
+use App\Models\TradingPair;
+use App\Services\FeeCalculationService;
 use App\Services\Stabilizer\BridgeReserveSource;
 use App\Services\Stabilizer\NodeStabilizerSigner;
 use App\Services\Stabilizer\NullBridgeReserveSource;
@@ -164,6 +168,8 @@ class AppServiceProvider extends ServiceProvider
             RateLimiter::for($name, fn (Request $request) => $this->aiBotLimits($request, $perMinute));
         }
 
+        $this->flushFeeCacheOnAdminChanges();
+
         // Configure mail from database settings
         $this->configureMailFromDatabase();
     }
@@ -189,6 +195,45 @@ class AppServiceProvider extends ServiceProvider
      * ⚠️ ห้ามเพิ่มเพดานต่อ IP ให้คำขอของเจ้าของ — ทุก Limit ถูกตรวจก่อนเข้า ถังที่คนแปลกหน้าเติมได้
      *    คือถังที่ขวางเจ้าของได้ การยิงรัวมี throttleApi (60/นาที ต่อ IP หรือต่อบัญชี) ของทั้ง API กันอยู่แล้ว
      */
+    /**
+     * ค่าธรรมเนียมที่แอดมินแก้ต้องมีผลทันที ไม่ว่าจะแก้จากหน้าไหน.
+     *
+     * FeeCalculationService แคชอัตรา/คู่/ค่าคลาดเคลื่อนไว้ 10 นาที และ /api/v1/fees อีก 5 นาที
+     * เดิมไม่มีจุดไหนล้างแคชเลย — แก้อัตราแล้วหน้าเว็บยังคิดอัตราเก่า ส่วนเซิร์ฟเวอร์ตรวจไม้
+     * ด้วยอัตราใหม่ทันทีที่แคชของมันหมด = ค่าธรรมเนียมถูกตีว่า "จ่ายขาด" ทั้งที่ผู้ใช้จ่ายตามที่จอบอก
+     *
+     * ผูกกับ event ของโมเดล ไม่ใช่กับ controller: ครอบทุกทางเขียน (หลังบ้าน · ตัวช่วยติดตั้ง · seeder · tinker)
+     * และล้างเฉพาะเมื่อ "ค่าที่เกี่ยวกับค่าธรรมเนียม" เปลี่ยนจริง — dex:sync แตะคู่เทรดกับราคา TPIX ทุกนาที
+     */
+    private function flushFeeCacheOnAdminChanges(): void
+    {
+        $flush = fn () => FeeCalculationService::flush();
+
+        foreach ([FeeConfig::class, SwapConfig::class] as $model) {
+            $model::saved($flush);
+            $model::deleted($flush);
+        }
+
+        TradingPair::saved(function (TradingPair $pair) use ($flush) {
+            $feeFields = ['taker_fee_override', 'maker_fee_override', 'is_active', 'chain_id', 'base_token_id', 'quote_token_id'];
+
+            if ($pair->wasRecentlyCreated || $pair->wasChanged($feeFields)) {
+                $flush();
+            }
+        });
+        TradingPair::deleted($flush);
+
+        SiteSetting::saved(function (SiteSetting $setting) use ($flush) {
+            $feeKeys = ['default_fee_rate', 'max_fee_rate', 'fee_collector_wallet'];
+
+            if ($setting->group === 'trading'
+                && in_array($setting->key, $feeKeys, true)
+                && ($setting->wasRecentlyCreated || $setting->wasChanged('value'))) {
+                $flush();
+            }
+        });
+    }
+
     private function tradingLimit(Request $request): Limit
     {
         $limit = Limit::perMinute(30);

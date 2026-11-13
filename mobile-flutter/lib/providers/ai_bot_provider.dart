@@ -1264,6 +1264,9 @@ class AiBotProvider extends ChangeNotifier {
         _botWallet = current.merge(data);
         _clearErrorSilently();
         notifyListeners();
+        // ถอน / ยกเลิกถอน: เซิร์ฟเวอร์ตอบแค่รายการโอน ไม่ส่ง `wallet` (ยอด) กลับมา
+        // — ไม่โหลดใหม่ ยอดบนจอจะค้างเป็นของก่อนถอน ผู้ใช้กดถอนซ้ำด้วยยอดที่ไม่มีแล้ว
+        if (data['wallet'] is! Map) unawaited(loadBotWallet());
         return true;
       case ApiErr():
         _recordFailure(res.errorOrNull!);

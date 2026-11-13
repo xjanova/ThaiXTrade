@@ -7,6 +7,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_locale.dart';
+
 class LocaleProvider extends ChangeNotifier {
   static const String _key = 'app_locale';
   String _locale = 'en';
@@ -17,11 +19,14 @@ class LocaleProvider extends ChangeNotifier {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _locale = prefs.getString(_key) ?? 'en';
+    // ให้ชั้น HTTP แนบหัว X-Locale ตรงกับภาษาที่ผู้ใช้เลือก
+    AppLocale.set(_locale);
     notifyListeners();
   }
 
   Future<void> setLocale(String locale) async {
     _locale = locale;
+    AppLocale.set(locale);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_key, locale);
     notifyListeners();
@@ -581,7 +586,7 @@ class LocaleProvider extends ChangeNotifier {
       'aiTrade.modeSwitched': 'สลับโหมดเรียบร้อย',
       'aiTrade.liveNeedsPlan': 'ต้องเช่าบอทก่อนถึงจะเปิดโหมดจริงได้',
       'aiTrade.liveHint':
-          'โหมดจริงจะส่งสัญญาณให้คุณกดยืนยันในกระเป๋าเอง ระบบไม่ถือกุญแจของคุณ',
+          'โหมดจริงใช้เงินจริงจากกระเป๋าบอทที่คุณโอนทุนเข้าไป — ระบบดูแลกุญแจของกระเป๋าบอทและส่งคำสั่งแทนคุณ โอนเข้าเท่าที่พร้อมรับความเสี่ยงเท่านั้น',
       'aiTrade.demoHint':
           'ทดลองด้วยเครดิตจำลอง ใช้ราคาจริงจากตลาด ไม่มีเงินจริงเกี่ยวข้อง',
 
@@ -670,9 +675,9 @@ class LocaleProvider extends ChangeNotifier {
       'aiTrade.compareCloudBody':
           'บอทอยู่บนเซิร์ฟเวอร์ของเรา ปิดเบราว์เซอร์ ปิดคอม หรือแม้แต่นอนหลับ บอทก็ยังเฝ้าตลาดและทำงานต่อ พร้อมด่านความเสี่ยงจากข่าวทุก 15 นาที กลยุทธ์ครบ และรันได้หลายบอทพร้อมกัน',
       'aiTrade.liveOpenNotice':
-          'โหมดจริงเปิดแล้ว — บอทจะเสนอสัญญาณให้คุณกดยืนยันเอง ระบบไม่ถือกุญแจกระเป๋าของคุณ จึงส่งคำสั่งแทนไม่ได้',
+          'โหมดจริงเปิดแล้ว — โหมดจริงใช้เงินจริงจากกระเป๋าบอทที่คุณโอนทุนเข้าไป — ระบบดูแลกุญแจของกระเป๋าบอทและส่งคำสั่งแทนคุณ โอนเข้าเท่าที่พร้อมรับความเสี่ยงเท่านั้น',
       'aiTrade.demoOnlyNotice':
-          'ตอนนี้เปิดให้ใช้เฉพาะโหมดทดลอง (เทรดด้วยเครดิตจำลองที่ราคาจริง) ทุกแพลนจึงยังไม่มีการส่งคำสั่งด้วยเงินจริง เราจะเปิดโหมดจริงเมื่อระบบผ่านการทดสอบครบถ้วนแล้ว',
+          'โหมดเงินจริง — เร็วๆ นี้ ตอนนี้ทุกแพลนเทรดด้วยเครดิตจำลองที่ราคาจริงของตลาด ยังไม่มีการส่งคำสั่งด้วยเงินจริง โหมดเงินจริงจะเปิดเมื่อระบบผ่านการทดสอบครบถ้วน',
 
       // ลูปเดินบอทฝั่งไคลเอนต์ (ถ้อยคำเวอร์ชันเว็บ)
       'aiTrade.browserBotRunning': 'บอทกำลังเดินอยู่ในแท็บนี้',
@@ -777,7 +782,7 @@ class LocaleProvider extends ChangeNotifier {
           'กด "หยุด" บอทตัวเก่าเพื่อคืนโควตา — การพักไว้ยังนับว่าใช้โควตาอยู่',
       'aiTrade.confirmLiveTitle': 'สลับไปโหมดจริง?',
       'aiTrade.confirmLiveBody':
-          'โหมดจริงเกี่ยวข้องกับเงินจริง บอทจะเสนอสัญญาณให้คุณกดยืนยันในกระเป๋าเอง ระบบไม่ถือกุญแจของคุณ',
+          'โหมดจริงใช้เงินจริงจากกระเป๋าบอทที่คุณโอนทุนเข้าไป — ระบบดูแลกุญแจของกระเป๋าบอทและส่งคำสั่งแทนคุณ โอนเข้าเท่าที่พร้อมรับความเสี่ยงเท่านั้น',
       'aiTrade.positionOpenWarn':
           'บอทตัวนี้ยังถือของอยู่ — สลับโหมดแล้วไม้เดิมจะไม่หายไปไหน แต่จะมองไม่เห็นจนกว่าจะสลับกลับ',
       'aiTrade.pairLockedWhileOpen':
@@ -828,7 +833,7 @@ class LocaleProvider extends ChangeNotifier {
       'aiTrade.err.BOT_NOT_RUNNING': 'บอทตัวนี้ไม่ได้ทำงานอยู่',
       'aiTrade.err.CLOUD_BOT':
           'บอทของแพลนนี้เดินบนคลาวด์อยู่แล้ว ไม่ต้องสั่งจากแอพ',
-      'aiTrade.err.LIVE_DISABLED': 'ตอนนี้เปิดให้ใช้เฉพาะโหมดทดลองก่อน',
+      'aiTrade.err.LIVE_DISABLED': 'โหมดเงินจริงยังไม่เปิด — เร็วๆ นี้ (ตอนนี้ใช้โหมดทดลองได้)',
       'aiTrade.err.RESET_LIMIT': 'ล้างพอร์ตทดลองได้วันละ 3 ครั้ง',
       'aiTrade.err.VALIDATION_ERROR': 'ข้อมูลที่กรอกยังไม่ถูกต้อง — ตรวจอีกครั้ง',
       'aiTrade.err.RATE_LIMITED': 'เรียกข้อมูลถี่เกินไป — รอสักครู่แล้วลองใหม่',
@@ -1499,7 +1504,7 @@ class LocaleProvider extends ChangeNotifier {
       'aiTrade.modeSwitched': 'Mode switched',
       'aiTrade.liveNeedsPlan': 'Rent a bot before enabling live mode',
       'aiTrade.liveHint':
-          'Live mode sends you a signal to confirm in your own wallet. We never hold your keys.',
+          'Live mode trades real money from the bot wallet you fund. The platform keeps the key of that bot wallet and places orders for you — only move in what you can afford to risk.',
       'aiTrade.demoHint':
           'Practise with demo credits at real market prices. No real money involved.',
 
@@ -1588,9 +1593,9 @@ class LocaleProvider extends ChangeNotifier {
       'aiTrade.compareCloudBody':
           'The bot lives on our servers. Close your browser, shut your computer, go to sleep — it keeps watching the market and trading. Includes the 15-minute news risk gate, every strategy, and several bots at once.',
       'aiTrade.liveOpenNotice':
-          'Live mode is open — the bot proposes signals for you to confirm yourself. We never hold your wallet keys, so we cannot place orders for you.',
+          'Live mode is open. Live mode trades real money from the bot wallet you fund. The platform keeps the key of that bot wallet and places orders for you — only move in what you can afford to risk.',
       'aiTrade.demoOnlyNotice':
-          'Only demo mode is open right now — trading uses simulated credits at real market prices, so no plan places real orders yet. Live mode opens once the system has been fully proven.',
+          'Real-money mode — coming soon. For now every plan trades simulated credits at real market prices, so no real orders are placed. Real-money mode opens once the system is fully proven.',
 
       // Client-side bot loop (web wording)
       'aiTrade.browserBotRunning': 'Your bot is running in this tab',
@@ -1700,7 +1705,7 @@ class LocaleProvider extends ChangeNotifier {
           'Stop an old bot to free the quota — pausing still counts against it',
       'aiTrade.confirmLiveTitle': 'Switch to live mode?',
       'aiTrade.confirmLiveBody':
-          'Live mode involves real money. The bot proposes a signal for you to confirm in your own wallet — we never hold your keys.',
+          'Live mode trades real money from the bot wallet you fund. The platform keeps the key of that bot wallet and places orders for you — only move in what you can afford to risk.',
       'aiTrade.positionOpenWarn':
           'This bot still holds a position — switching modes does not close it, it just hides until you switch back',
       'aiTrade.pairLockedWhileOpen':
@@ -1751,7 +1756,7 @@ class LocaleProvider extends ChangeNotifier {
       'aiTrade.err.BOT_NOT_RUNNING': 'This bot is not running',
       'aiTrade.err.CLOUD_BOT':
           'Bots on this plan already run in the cloud — no need to drive them from the app',
-      'aiTrade.err.LIVE_DISABLED': 'Only demo mode is open right now',
+      'aiTrade.err.LIVE_DISABLED': 'Real-money (live) mode is coming soon — demo mode is available now',
       'aiTrade.err.RESET_LIMIT': 'The demo portfolio can be reset 3 times a day',
       'aiTrade.err.VALIDATION_ERROR': 'Some fields are not valid — please check them',
       'aiTrade.err.RATE_LIMITED': 'Too many requests — wait a moment and try again',

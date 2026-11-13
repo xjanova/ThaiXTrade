@@ -124,6 +124,105 @@ class TradingFeeApiTest extends TestCase
         $this->assertTrue($data['can_place']);
     }
 
+    // ── TPIX Chain: ค่าวางไม้ต้องจ่ายด้วยเครดิต tpix ทุกไม้ (เจ้าของสั่ง 2026-11-13) ──────────
+
+    /**
+     * เดิมกลับหัว: บนเชน 4289 ทาง "จ่ายเป็นเหรียญ" ไม่ถูกเก็บค่าแพลตฟอร์มเลย (ไม่มีธุรกรรมโอนค่าธรรมเนียมให้เก็บ)
+     * ขณะที่คนเลือกจ่ายด้วยเครดิตเสียค่าวางไม้เพิ่ม — ตอนนี้เชนนี้เหลือทางเดียว
+     */
+    #[Test]
+    public function บนเชน_tpix_ปิดทางจ่ายเป็นเหรียญและแนะนำเครดิตเสมอ(): void
+    {
+        $this->fund(self::WALLET, 100);
+
+        $data = $this->postJson('/api/v1/trading-fee/quote', [
+            'wallet_address' => self::WALLET,
+            'order_value_usd' => 250,
+            'chain_id' => 4289,
+        ])->assertOk()->json('data');
+
+        $this->assertTrue($data['enabled']);
+        $this->assertFalse($data['onchain']['available']);
+        $this->assertNotEmpty($data['onchain']['reason']);
+        $this->assertEquals(0.0, $data['onchain']['fee_usd']);
+        $this->assertEquals(2.0, $data['tpix']['fee_tpix']);
+        $this->assertSame('tpix_credit', $data['recommended']);
+        $this->assertTrue($data['can_place']);
+        $this->assertNull($data['reason']);
+    }
+
+    #[Test]
+    public function บนเชน_tpix_เครดิตไม่พอวางไม้ไม่ได้จนกว่าจะเติม(): void
+    {
+        $this->fund(self::WALLET, 0.5);
+
+        $data = $this->postJson('/api/v1/trading-fee/quote', [
+            'wallet_address' => self::WALLET,
+            'order_value_usd' => 250,
+            'chain_id' => 4289,
+        ])->assertOk()->json('data');
+
+        $this->assertFalse($data['onchain']['available']);
+        $this->assertFalse($data['tpix']['has_enough']);
+        $this->assertEquals(1.5, $data['tpix']['shortfall']);
+        // ต่างจาก BSC: ไม่มีทางสำรองให้ "จ่ายแพงกว่า" — ต้องเติมก่อน
+        $this->assertSame('tpix_credit', $data['recommended']);
+        $this->assertFalse($data['can_place']);
+        $this->assertNotEmpty($data['reason']);
+    }
+
+    #[Test]
+    public function บนเชน_tpix_ยังไม่เชื่อมกระเป๋าก็เห็นว่าต้องใช้เครดิต(): void
+    {
+        $data = $this->postJson('/api/v1/trading-fee/quote', [
+            'order_value_usd' => 250,
+            'chain_id' => 4289,
+        ])->assertOk()->json('data');
+
+        $this->assertFalse($data['onchain']['available']);
+        $this->assertFalse($data['can_place']);
+    }
+
+    /** กติกาใหม่ต้องไม่กระทบ BSC และต้องไม่มีผลเมื่อแอดมินปิดระบบค่าบริการ / กระเป๋าได้รับยกเว้น */
+    #[Test]
+    public function กติกาเครดิตอย่างเดียวมีผลเฉพาะเชน_tpix_ที่เปิดระบบอยู่(): void
+    {
+        $bsc = $this->postJson('/api/v1/trading-fee/quote', [
+            'wallet_address' => self::WALLET, 'order_value_usd' => 250, 'chain_id' => 56,
+        ])->json('data');
+        $this->assertTrue($bsc['onchain']['available']);
+        $this->assertTrue($bsc['can_place']);
+
+        SiteSetting::set('trading', 'tpix_fee_enabled', '0', 'boolean');
+        SiteSetting::clearCache();
+
+        $off = $this->postJson('/api/v1/trading-fee/quote', [
+            'wallet_address' => self::WALLET, 'order_value_usd' => 250, 'chain_id' => 4289,
+        ])->json('data');
+        $this->assertFalse($off['enabled']);
+        $this->assertTrue($off['onchain']['available']);
+        $this->assertTrue($off['can_place']);
+    }
+
+    #[Test]
+    public function ไม้บนเชน_tpix_ขอใบอนุญาตด้วยเครดิตได้และถูกหักตามขั้น(): void
+    {
+        $this->fund(self::WALLET, 10);
+
+        $ticket = $this->postJson('/api/v1/trading-fee/tickets', [
+            'wallet_address' => self::WALLET,
+            'pair' => 'TPIX/USDT',
+            'side' => 'buy',
+            'order_value_usd' => 250,
+            'chain_id' => 4289,
+            'method' => 'tpix_credit',
+        ])->assertCreated()->json('data');
+
+        $this->assertNotEmpty($ticket['uuid']);
+        $this->assertEquals(8.0, app(TradingCreditService::class)->balanceFor(self::WALLET));
+        $this->assertSame(4289, (int) TradingOrderTicket::where('uuid', $ticket['uuid'])->value('chain_id'));
+    }
+
     // ── ขอ/ใช้/คืน ใบอนุญาต ─────────────────────────────────────────────────
 
     #[Test]

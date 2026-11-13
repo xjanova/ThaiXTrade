@@ -45,6 +45,19 @@ class GenerateScheduledContent extends Command
             $this->info("Published {$published} scheduled article(s).");
         }
 
+        /*
+         * แอดมินปิด "AI Content" ไว้ (ตั้งค่า > AI) = ไม่ให้ AI เขียนอะไรเลยในรอบนี้
+         *
+         * ต้องหยุดก่อนเข้าตัวเขียน ไม่ใช่ปล่อยให้ ContentService โยน error — ตัวเขียนข่าวจากเหตุการณ์
+         * นับความล้มเหลวต่อวัน (EVENT_ATTEMPTS_PER_DAY) ถ้าปล่อยให้ล้ม เหตุการณ์จะถูกนับว่าลองครบแล้ว
+         * และไม่ถูกเขียนในวันที่เปิดกลับมา · บทความที่ตั้งเวลาไว้ (ด้านบน) ยังเผยแพร่ตามปกติ
+         */
+        if (! ContentService::aiContentEnabled()) {
+            $this->line('AI content generation is disabled (ai.ai_content_enabled).');
+
+            return self::SUCCESS;
+        }
+
         $autoPublish = (bool) SiteSetting::get('content', 'content_auto_publish', false);
 
         if ((bool) SiteSetting::get('content', 'content_event_enabled', true)) {

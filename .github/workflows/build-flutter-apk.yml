@@ -233,10 +233,21 @@ jobs:
         run: flutter test
 
       - name: Build APK (Release)
+        env:
+          # WalletConnect / Reown project id — set as repo secret (preferred) or repo variable.
+          # Passed through env (never interpolated into the script) so the value is not echoed.
+          REOWN_PROJECT_ID: ${{ secrets.REOWN_PROJECT_ID || vars.REOWN_PROJECT_ID }}
         run: |
+          if [ -z "$REOWN_PROJECT_ID" ]; then
+            echo "::warning title=REOWN_PROJECT_ID is empty::External wallets (MetaMask / Trust / WalletConnect) will be DISABLED in this APK. Set the repository secret or variable REOWN_PROJECT_ID (project id from https://cloud.reown.com)."
+            echo "WARNING: REOWN_PROJECT_ID is empty — this build ships without external-wallet (WalletConnect) support."
+          else
+            echo "✓ REOWN_PROJECT_ID is set (value hidden) — external wallets enabled"
+          fi
           flutter build apk \
             --release \
             --no-tree-shake-icons \
+            --dart-define=REOWN_PROJECT_ID="$REOWN_PROJECT_ID" \
             --build-name=${{ steps.version.outputs.version }} \
             --build-number=${{ steps.version.outputs.build }}
 

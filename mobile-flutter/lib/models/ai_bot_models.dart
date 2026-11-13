@@ -2095,8 +2095,8 @@ class AiBotErrorText {
       'Bots on this plan already run in the cloud — no need to drive them from the app',
     ],
     'LIVE_DISABLED': [
-      'ตอนนี้เปิดให้ใช้เฉพาะโหมดทดลองก่อน',
-      'Only demo mode is open right now',
+      'โหมดเงินจริงยังไม่เปิด — เร็วๆ นี้ (ตอนนี้ใช้โหมดทดลองได้)',
+      'Real-money (live) mode is coming soon — demo mode is available now',
     ],
     'RESET_LIMIT': [
       'ล้างพอร์ตทดลองได้วันละ 3 ครั้ง — พรุ่งนี้เริ่มใหม่ได้',

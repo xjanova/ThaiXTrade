@@ -125,6 +125,8 @@ class TradingFeeController extends Controller
             (float) $validated['order_value_usd'],
             $this->chainRowId((int) $validated['chain_id']),
             $pairId,
+            // เลขเชนจริง — บน TPIX Chain ต้องจ่ายค่าวางไม้ด้วยเครดิต TPIX ทุกไม้ (เจ้าของสั่ง 2026-11-13)
+            (int) $validated['chain_id'],
         )]);
     }
 

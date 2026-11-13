@@ -26,6 +26,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/constants/api_constants.dart';
+import '../core/locale/app_locale.dart';
 import '../models/ai_bot_models.dart';
 import 'api_result.dart';
 import 'wallet_session.dart';
@@ -284,6 +285,8 @@ class AiBotApi {
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
         options.headers.addAll(WalletSession.headers());
+        // เหตุผลที่เซิร์ฟเวอร์แปลให้ (error.message) ต้องมาเป็นภาษาที่ผู้ใช้เลือก
+        options.headers.addAll(AppLocale.headers());
         return handler.next(options);
       },
     ));

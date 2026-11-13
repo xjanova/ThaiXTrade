@@ -22,7 +22,7 @@ class ChatbotService
     }
 
     /**
-     * หน้าที่ผู้ช่วยพาไปได้ — ต้องตรงกับ routes/web.php เท่านั้น
+     * หน้าที่ผู้ช่วยพาไปได้ — ต้องตรงกับ routes/web.php เท่านั้น.
      *
      * ⚠️ (2026-09-27) เดิมรายการในพรอมต์บอก AI ว่าหน้าตลาดคือ /market, /market/spot …
      *    แต่เส้นทางจริงคือ /markets → ปุ่ม "ไปหน้านั้น" พาผู้ใช้ไปเจอ 404
@@ -74,6 +74,23 @@ class ChatbotService
      */
     public function chat(string $message, string $language = 'th', array $history = [], string $persona = 'assistant'): array
     {
+        /*
+         * แอดมินปิดผู้ช่วย AI ไว้ (ตั้งค่า > AI > AI Chatbot) — ตอบข้อความปิดบริการโดยไม่ยิง AI
+         *
+         * รูปเดียวกับตอน AI ล้ม (success = false + ข้อความ) ซึ่งหน้าต่างแชทและบับเบิ้ลของน้อง TPIX
+         * แสดงเป็นข้อความของบอทอยู่แล้ว และไม่ถูกส่งกลับมาเป็นบทสนทนาก่อนหน้าในคำถามถัดไป
+         * อยู่ที่ service ไม่ใช่ controller เพราะคำสั่ง /ถาม ใน Discord ก็มาทางนี้
+         */
+        if (! AiTextService::featureEnabled('ai_chatbot_enabled')) {
+            return [
+                'message' => $language === 'th'
+                    ? 'ผู้ช่วย AI ปิดให้บริการชั่วคราว กรุณาลองใหม่ภายหลัง'
+                    : 'The AI assistant is temporarily unavailable. Please try again later.',
+                'navigation' => null,
+                'success' => false,
+            ];
+        }
+
         // หน้าต่างแชททุกหน้าเป็นน้อง TPIX แล้ว (เจ้าของสั่งให้ใช้รูปน้องเป็นอวาตาร์บอท) — เสียงต้องตรงกับรูป
         $mascot = in_array($persona, ['mascot', 'mascot-chat'], true);
         $bubble = $persona === 'mascot';
@@ -165,6 +182,12 @@ PERSONA);
 
     /**
      * สร้าง system prompt ที่มีข้อมูล TPIX ทั้งหมด.
+     *
+     * ⚠️ ทุกบรรทัดในนี้คือ "คำโฆษณาที่ผู้ช่วยพูดกับลูกค้า" — เขียนได้เฉพาะของที่มีหน้า/เส้นทางจริง
+     *    (2026-11-13) ถอดออก: AI Bot Marketplace · NFT Marketplace · Affiliate Program · ตาราง Staking APY
+     *    5%-200% · ค่าสร้างเหรียญ 100 TPIX ตายตัว — ไม่มีหน้าหรือเส้นทางรองรับ หรือเป็นค่าที่แอดมินปรับได้
+     *    ของที่อยู่ใน whitepaper แต่ยังไม่มีบนเว็บ (จองโรงแรม · อีคอมเมิร์ซ · เดลิเวอรี · สมาร์ตฟาร์ม)
+     *    ย้ายไปหมวด "แผนในอนาคต" พร้อมสั่งให้บอกว่ายังไม่เปิด และ AI TRADE ต้องบอกว่าเป็นโหมดทดลอง
      */
     private function buildSystemPrompt(): string
     {
@@ -177,7 +200,6 @@ You are TPIX AI Assistant — a helpful, knowledgeable chatbot for TPIX TRADE de
 
 ## About TPIX TRADE
 - DEX (Decentralized Exchange) for trading cryptocurrencies
-- Built on: Laravel 11 + Vue 3 + Inertia.js + TailwindCSS
 - Website: https://tpix.online
 - Developer: Xman Studio
 
@@ -199,22 +221,30 @@ You are TPIX AI Assistant — a helpful, knowledgeable chatbot for TPIX TRADE de
 - Team & Advisors: 15% (1.05B)
 - Marketing: 10% (700M)
 
-## Use Cases
-1. DEX Trading — swap tokens, provide liquidity
-2. FoodPassport — food supply chain traceability on blockchain
-3. Multi-Service Delivery — food/service delivery with TPIX payment
-4. IoT Smart Farm — AI-powered agriculture
-5. Carbon Credit Trading — blockchain carbon credits
-6. AI Bot Marketplace — buy/sell AI bots
-7. Hotel & Travel Booking — pay with TPIX
-8. E-Commerce — multi-vendor marketplace
-9. Token Factory — create custom ERC-20 tokens (100 TPIX fee)
-10. Staking — earn 5%-200% APY
-11. Affiliate Program — referral rewards in TPIX
-12. NFT Marketplace — digital collectibles
+## What is live on tpix.online today (each has a page in the Pages list)
+1. DEX Trading — trade pairs, swap tokens, provide liquidity (/trade, /swap, /liquidity)
+2. AI TRADE — rent trading bots that run on TPIX cloud (/ai-trade). See "AI TRADE" below
+3. FoodPassport — food supply chain traceability on blockchain (/food-passport)
+4. Carbon Credits — blockchain carbon credits (/carbon-credits)
+5. Token Factory — create custom ERC-20 tokens; the creation fee is shown on the page (/token-factory)
+6. Master Node & validators — run a node and stake TPIX for network rewards (/masternode, /validators)
+7. Bridge, block explorer, token sale, fair launch, portfolio, articles (see Pages)
 
-## Staking APY
-- Flexible: 5% | 30 days: 25% | 90 days: 60% | 180 days: 100% | 365 days: 200%
+## AI TRADE (be exact — never overstate)
+- Bots currently run in DEMO mode only: they trade a practice portfolio at real market prices. No real funds are traded
+- Real-money (live) trading is NOT available yet — say "coming soon" and never give a date
+- Never say a bot will trade the user's real money, and never promise or estimate profit
+- Some strategies are marked "coming soon" on the page (e.g. spread arbitrage) and cannot be used yet
+- Plans, prices and which features are open are shown on /ai-trade — send users there instead of quoting numbers
+
+## Staking / Master Node rewards
+- Staking is done through Master Nodes at /masternode. Reward rates change with the network
+- NEVER quote an APY or a reward percentage. Tell the user the current figures are on /masternode
+
+## Planned for the ecosystem (whitepaper roadmap — NOT available on tpix.online yet)
+- Multi-service delivery, IoT smart farm, hotel & travel booking, e-commerce marketplace
+- If asked, say these are planned and not launched, and point to /whitepaper. Never say they can be used now
+- There is no AI bot marketplace, no NFT marketplace and no affiliate/referral program on the site today — do not offer them
 
 ## ICO/Token Sale
 - Status, phases, prices, dates and payment methods: use ONLY the LIVE DATA section below
@@ -235,6 +265,7 @@ IMPORTANT: Always use the EXACT URLs above. Never guess or make up URLs.
 6. Keep responses concise (under 200 words unless detailed explanation needed)
 7. Be enthusiastic about TPIX ecosystem but honest about risks
 8. Always mention that crypto trading involves risk
+9. Only describe a feature as available if it is in the "live today" list above or in LIVE DATA. If unsure, say you are not sure and point to the relevant page
 PROMPT);
     }
 

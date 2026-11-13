@@ -270,16 +270,33 @@ class Kline {
 
 // ── Trade Order ──
 
+/// ฝั่งของไม้หลังทำให้เป็นมาตรฐาน — เซิร์ฟเวอร์ส่งค่าอื่นมาได้ (`swap`, `bridge`, ว่าง)
+/// ค่าที่ไม่ใช่ buy/sell = [neutral] ห้ามเดาเป็นซื้อหรือขาย (เดิมอะไรไม่ใช่ buy ถูกวาดเป็น "ขาย" สีแดง)
+enum TradeSide { buy, sell, neutral }
+
 class TradeOrder {
   final String id;
   final String pair;
-  final String side; // buy | sell
-  final String type; // limit | market
+
+  /// ค่าดิบจากเซิร์ฟเวอร์ (ตัวพิมพ์เล็ก ตัดช่องว่าง) — ใช้ [tradeSide] ตัดสินสี/ป้าย
+  final String side;
+  final String type; // limit | market | stop-limit | trade | swap
   final double? price;
   final double amount;
   final double? total;
   final String status;
   final DateTime createdAt;
+
+  /// ที่มาของแถว: `limit` = คำสั่งตั้งราคาของคู่บนเชน (เซิร์ฟเวอร์เฝ้าราคา ผู้ใช้ยืนยันในกระเป๋า)
+  /// `internal` / `legacy` = คำสั่งชนิดเดิม · null = เซิร์ฟเวอร์ไม่ได้บอก
+  final String? source;
+
+  /// เลขเชนจริงของคำสั่งตั้งราคา (56 / 4289) — null เมื่อไม่ได้ส่งมา
+  final int? networkChainId;
+
+  /// ยอดขั้นต่ำที่จะได้รับของคำสั่งตั้งราคา (หน่วยเหรียญปลายทาง)
+  final double? minReceive;
+  final DateTime? expiresAt;
 
   const TradeOrder({
     required this.id,
@@ -291,22 +308,91 @@ class TradeOrder {
     this.total,
     required this.status,
     required this.createdAt,
+    this.source,
+    this.networkChainId,
+    this.minReceive,
+    this.expiresAt,
   });
 
   factory TradeOrder.fromJson(Map<String, dynamic> json) => TradeOrder(
         id: json['id']?.toString() ?? '',
-        pair: json['pair'] as String? ?? '',
-        side: json['side'] as String? ?? 'buy',
-        type: json['type'] as String? ?? 'limit',
+        pair: json['pair']?.toString() ?? '',
+        // ไม่เติม 'buy' ให้เองเมื่อไม่มีค่า — ไม่รู้ฝั่ง = เป็นกลาง
+        side: (json['side']?.toString() ?? '').trim().toLowerCase(),
+        type: (json['type']?.toString() ?? 'limit').trim().toLowerCase(),
         price: json['price'] != null ? _toDouble(json['price']) : null,
         amount: _toDouble(json['amount']),
         total: json['total'] != null ? _toDouble(json['total']) : null,
-        status: json['status'] as String? ?? 'pending',
-        createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ??
-            DateTime.now(),
+        status: (json['status']?.toString() ?? 'pending').trim().toLowerCase(),
+        createdAt:
+            DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+                DateTime.now(),
+        source: (json['source'] as String?)?.trim().toLowerCase(),
+        networkChainId: (json['network_chain_id'] as num?)?.toInt(),
+        minReceive: json['min_receive'] != null
+            ? _toDouble(json['min_receive'])
+            : null,
+        expiresAt: DateTime.tryParse(json['expires_at']?.toString() ?? ''),
       );
 
-  bool get isBuy => side == 'buy';
+  TradeSide get tradeSide => switch (side) {
+        'buy' => TradeSide.buy,
+        'sell' => TradeSide.sell,
+        _ => TradeSide.neutral,
+      };
+
+  bool get isBuy => tradeSide == TradeSide.buy;
+  bool get isSell => tradeSide == TradeSide.sell;
+
+  /// คำสั่งตั้งราคาของคู่บนเชน (price-watch) — แถวจาก `source: limit`
+  bool get isLimitWatch => source == 'limit';
+
+  /// คำสั่งตั้งราคาที่ยังรอราคา — ยกเลิกได้
+  bool get isWaitingForPrice => isLimitWatch && status == 'open';
+
+  /// คำสั่งตั้งราคาที่ผู้ใช้ยืนยันในกระเป๋าแล้ว รอผลบนเชน — ยกเลิกไม่ได้ (ธุรกรรมออกไปแล้ว)
+  bool get isAwaitingChain => isLimitWatch && status == 'submitted';
+
+  /// กดยกเลิกได้ไหม — คำสั่งตั้งราคา: เฉพาะที่ยัง `open` · ชนิดเดิม: ตามที่เซิร์ฟเวอร์ส่งมาในรายการเปิดอยู่
+  bool get isCancellable => isLimitWatch ? status == 'open' : true;
+
+  /// ชื่อคู่รูปแบบเดียวกับที่แอปใช้ (BASE-QUOTE ตัวพิมพ์ใหญ่) — เซิร์ฟเวอร์ส่งทั้ง `BTC/USDT` และ `BTC-USDT`
+  String get pairKey => normalizePair(pair);
+
+  static String normalizePair(String pair) =>
+      pair.trim().toUpperCase().replaceAll('/', '-');
+}
+
+/// ผลการโหลดรายการจากเซิร์ฟเวอร์ที่แยก "ว่างจริง" ออกจาก "โหลดไม่ได้"
+///
+/// เดิม `getTradeHistory` คืน `[]` ทั้งตอน 403 (ยังไม่ยืนยันกระเป๋า) และตอนเน็ตหลุด
+/// หน้าประวัติจึงขึ้น "ไม่มีข้อมูล" ทั้งที่ผู้ใช้มีไม้จริง — ต้องบอกเหตุให้ตรง
+enum ListLoadState {
+  /// โหลดสำเร็จ (รายการอาจว่างจริง)
+  ok,
+
+  /// 403 — ต้องยืนยัน (เซ็น) กระเป๋าก่อน
+  needsWalletVerify,
+
+  /// เน็ตหลุด / เซิร์ฟเวอร์ผิดพลาด / คำตอบผิดรูป — ลองใหม่ได้
+  failed,
+}
+
+class ListLoad<T> {
+  final List<T> items;
+  final ListLoadState state;
+
+  const ListLoad(this.items, this.state);
+
+  const ListLoad.ok(this.items) : state = ListLoadState.ok;
+  ListLoad.needsVerify()
+      : items = <T>[],
+        state = ListLoadState.needsWalletVerify;
+  ListLoad.failed()
+      : items = <T>[],
+        state = ListLoadState.failed;
+
+  bool get isOk => state == ListLoadState.ok;
 }
 
 // ── Wallet Balance ──

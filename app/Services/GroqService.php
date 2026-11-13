@@ -6,13 +6,20 @@ use App\Models\SiteSetting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * TPIX TRADE — ยิง Groq ตรงๆ (ของเดิมก่อนมี AiTextService).
+ *
+ * ⚠️ งานข้อความของเว็บใช้ AiTextService ทั้งหมดแล้ว (OpenAI → Groq) คลาสนี้เหลือไว้เพื่อ
+ *    ความเข้ากันได้ และต้องอ่านโมเดลจาก config/ai_text.php เหมือนกัน — เดิมฝัง
+ *    `llama-3.3-70b-versatile` ไว้เป็นค่าปริยายและรายการเลือก ซึ่ง Groq ถอดออกหมดแล้ว
+ */
 class GroqService
 {
     protected string $apiKey;
 
     protected string $baseUrl = 'https://api.groq.com/openai/v1';
 
-    protected string $defaultModel = 'llama-3.3-70b-versatile';
+    protected string $defaultModel;
 
     public function __construct()
     {
@@ -20,9 +27,11 @@ class GroqService
         $dbKey = SiteSetting::get('ai', 'groq_api_key');
         $this->apiKey = $dbKey ?: config('services.groq.api_key', '');
 
-        // อ่าน default model จาก Admin Settings
-        $dbModel = SiteSetting::get('ai', 'groq_default_model');
-        if ($dbModel) {
+        $this->defaultModel = (string) config('ai_text.providers.groq.default_model', 'openai/gpt-oss-120b');
+
+        // โมเดลจาก Admin Settings — ยกเว้นตัวที่ Groq ถอดไปแล้ว (ค้างจากตอนที่ยังใช้ได้)
+        $dbModel = trim((string) SiteSetting::get('ai', 'groq_default_model'));
+        if ($dbModel !== '' && ! in_array($dbModel, (array) config('ai_text.providers.groq.retired_models', []), true)) {
             $this->defaultModel = $dbModel;
         }
     }
@@ -135,11 +144,7 @@ class GroqService
      */
     public function getModels(): array
     {
-        return [
-            'llama-3.3-70b-versatile' => 'Llama 3.3 70B (Versatile)',
-            'llama-3.1-8b-instant' => 'Llama 3.1 8B (Fast)',
-            'mixtral-8x7b-32768' => 'Mixtral 8x7B',
-            'gemma2-9b-it' => 'Gemma 2 9B',
-        ];
+        // รายการเดียวกับที่ AiTextService ใช้ — ชื่อโมเดลอยู่ใน config ที่เดียว ไม่ฝังในโค้ด
+        return (array) config('ai_text.providers.groq.models', []);
     }
 }

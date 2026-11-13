@@ -594,24 +594,52 @@ class BscSwapRecordTest extends TestCase
         $this->assertSame($landed, TradingOrderTicket::where('uuid', $uuid)->value('order_tx_hash'));
     }
 
-    public function test_a_cheap_ticket_on_a_large_swap_is_flagged(): void
+    public function test_a_cheap_ticket_on_a_large_swap_is_charged_the_real_tier_from_credit(): void
     {
         // ⚠️ ออดิท L3: ขั้นของตั๋วมาจากมูลค่าที่หน้าเว็บบอก — ตั๋ว $50 (0.5 TPIX) เคยครอบไม้ $5,000 ได้เงียบๆ
+        //    เดิมแค่ติดธง ไม่มีใครเก็บส่วนต่าง · ตอนนี้เก็บส่วนต่างของขั้นจริงจากเครดิตทันที
         $uuid = $this->issueTicket(50);
+        $this->assertSame(49.5, $this->balance());   // เติมไว้ 50 หักตั๋ว 0.5
+
         $hash = $this->nextHash();
         $this->swapOnChain($hash, in: '5000', out: '0.075');
 
-        $this->record($hash, ['from_amount' => 5000, 'to_amount' => 0.075, 'fee_amount' => 0, 'fee_ticket' => $uuid])
-            ->assertStatus(201);
+        $payload = ['from_amount' => 5000, 'to_amount' => 0.075, 'fee_amount' => 0, 'fee_ticket' => $uuid];
+        $this->record($hash, $payload)->assertStatus(201);
 
         $tx = $this->row($hash);
         $this->assertSame('tpix_ticket', $tx->metadata['fee_model']);
         $this->assertEquals(
-            ['order_value_usd' => 5000, 'required_tpix' => 5, 'paid_tpix' => 0.5],
+            ['order_value_usd' => 5000, 'required_tpix' => 5, 'paid_tpix' => 0.5, 'charged_tpix' => 4.5, 'unpaid_tpix' => 0],
             $tx->metadata['fee_ticket_undervalued'],
         );
-        // ไม้ลงเชนไปแล้ว ย้อนไม่ได้ — ตั๋วปิดตามปกติ แอดมินเห็นธง
+        $this->assertSame(45.0, $this->balance());
+        // ไม้ลงเชนไปแล้ว ย้อนไม่ได้ — ตั๋วปิดตามปกติ
         $this->assertSame(TradingOrderTicket::STATUS_CONSUMED, TradingOrderTicket::where('uuid', $uuid)->value('status'));
+
+        // หน้าเว็บส่งไม้เดิมซ้ำ (retry) — ต้องไม่เก็บส่วนต่างรอบสอง
+        $this->record($hash, $payload);
+        $this->assertSame(45.0, $this->balance());
+    }
+
+    public function test_a_tier_shortfall_larger_than_the_remaining_credit_takes_what_is_there_and_records_the_rest(): void
+    {
+        $uuid = $this->issueTicket(50);
+        // เหลือเครดิตแค่ 1.5 TPIX — ส่วนต่างของขั้นจริงคือ 4.5
+        app(TradingCreditService::class)->record(self::WALLET, 'adjustment', -48, 'test:drain');
+        $this->assertSame(1.5, $this->balance());
+
+        $hash = $this->nextHash();
+        $this->swapOnChain($hash, in: '5000', out: '0.075');
+        $this->record($hash, ['from_amount' => 5000, 'to_amount' => 0.075, 'fee_amount' => 0, 'fee_ticket' => $uuid])
+            ->assertStatus(201);
+
+        $flag = $this->row($hash)->metadata['fee_ticket_undervalued'];
+        $this->assertSame(1.5, (float) $flag['charged_tpix']);
+        $this->assertSame(3.0, (float) $flag['unpaid_tpix']);
+        // ยอดไม่ติดลบ และไม้ยังถูกบันทึกครบ
+        $this->assertSame(0.0, $this->balance());
+        $this->assertSame('confirmed', $this->row($hash)->status);
     }
 
     public function test_price_drift_within_ten_percent_is_not_flagged(): void

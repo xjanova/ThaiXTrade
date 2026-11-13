@@ -26,8 +26,11 @@ import '../../providers/ai_bot_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/bsc_swap_service.dart';
 import '../../services/tpix_dex_service.dart';
+import '../../services/trade_preflight.dart';
+import '../../services/trading_fee_service.dart';
 import '../../models/bsc_trade_tokens.dart';
 import '../../utils/crypto_logos.dart';
+import '../../utils/kyc_nav.dart';
 import '../../widgets/common/app_background.dart';
 import '../../widgets/common/buy_tpix_button.dart';
 import '../../widgets/common/coin_chip.dart';
@@ -62,9 +65,7 @@ class _TradeScreenState extends State<TradeScreen>
   String _lastMarkersJson = '';
   String _lastLinesJson = '';
   String? _lastTradesPair;
-  final _priceController = TextEditingController();
   final _amountController = TextEditingController();
-  final _triggerPriceController = TextEditingController();
   final _chartKey = GlobalKey<TradingChartState>();
 
   // ── เทรดจริงบน BSC (สอดคล้องกับเว็บ) ──
@@ -103,28 +104,35 @@ class _TradeScreenState extends State<TradeScreen>
   bool _quotingPreview = false;
   Timer? _previewDebounce;
   int _previewSeq = 0;
+  // ข้อความเมื่อขอ quote ฝั่ง BSC ไม่ได้ (คู่ถูกปิด / ตรวจค่าธรรมเนียมไม่ได้ / ไม่มีสภาพคล่อง)
+  // — แสดงใต้ฟอร์มก่อนกดส่ง ไม่ใช่ให้ไปรู้ตอนกด
+  String? _bscQuoteError;
+  // quote ที่แสดงอยู่เป็นของไม้ไหน (คู่|ฝั่ง|จำนวน|slippage|กระเป๋า) — ใช้ผูก "ได้รับอย่างน้อย"
+  // ที่ผู้ใช้เห็น กับไม้ที่กดส่ง: ราคาใหม่แย่กว่าที่เห็น = หยุด ให้ยืนยันอีกครั้ง
+  String? _previewKey;
+  // ปุ่ม % ฝั่งซื้อบน BSC: ยอด quote ที่จะจ่าย (ตัดทศนิยมทิ้งจากยอดจริง) ผูกกับข้อความจำนวนที่เติม
+  // — ส่งยอดนี้ตรง ๆ แทน "จำนวน × ราคาตลาดตอนกด" ที่ขยับได้จนเกินยอดในกระเป๋า
+  double? _quickSpend;
+  String? _quickSpendKey;
+  // คำสั่งที่กำลังยกเลิกอยู่ (กันกดซ้ำ)
+  final Set<String> _cancelling = <String>{};
 
   // Gold timeframe pills surfaced on the chart card.
   static const _pillTimeframes = ['15m', '1h', '4h', '1d', '1w'];
   static const _pillLabels = ['15m', '1H', '4H', '1D', '1W'];
 
-  // index: 0=limit, 1=market, 2=stop-limit
-  String get _orderType =>
-      ['limit', 'market', 'stop-limit'][_orderTypeTab.index];
+  // index: 0=limit (วางที่หน้าเว็บ — แท็บนี้อธิบายเท่านั้น), 1=market
   bool get _isMarket => _orderTypeTab.index == 1;
-  bool get _isStopLimit => _orderTypeTab.index == 2;
 
   @override
   void initState() {
     super.initState();
-    // เริ่มที่ Market — คู่ major เทรดจริงได้เฉพาะ market order
-    // (limit/stop-limit เปิดพร้อม TPIX Chain)
-    _orderTypeTab = TabController(length: 3, vsync: this, initialIndex: 1);
-    // Tab change ใช้ handler พิเศษ (ล้างค่าไม่เกี่ยวข้อง + rebuild)
+    // เริ่มที่ Market — แอปส่งได้เฉพาะ market order
+    // (คำสั่งตั้งราคาวางที่หน้าเว็บ แท็บ Limit อธิบายเรื่องนี้ · ไม่มีแท็บ Stop-limit ปลอมแล้ว)
+    _orderTypeTab = TabController(length: 2, vsync: this, initialIndex: 1);
+    // Tab change ใช้ handler พิเศษ (rebuild + ขอ quote ใหม่)
     _orderTypeTab.addListener(_handleOrderTypeChange);
-    _priceController.addListener(_rebuildOnInputChange);
     _amountController.addListener(_rebuildOnInputChange);
-    _triggerPriceController.addListener(_rebuildOnInputChange);
     final market = context.read<MarketProvider>();
     market.loadOrderBook();
     market.loadKlines();
@@ -179,12 +187,81 @@ class _TradeScreenState extends State<TradeScreen>
   bool _isChainPairNow(MarketProvider market) =>
       _isTpixPairNow(market) || market.isDexPair(market.selectedPair);
 
-  /// คู่นี้ execute จริงบน BSC ได้ไหม — base+quote ต้องอยู่ใน registry
-  /// (ตรรกะเดียวกับเว็บ: คู่แปลก = ยังไม่เปิด)
+  /// สถานะของคู่นี้สำหรับการส่งเข้า PancakeSwap — ทะเบียนเหรียญในแอป **และ** ทะเบียนคู่บนเซิร์ฟเวอร์
+  /// (เชน 56 · execution_mode = onchain · เปิดอยู่ · ที่อยู่เหรียญตรงกัน — กติกาเดียวกับเว็บ)
   /// คู่บนเชน TPIX ไม่นับ แม้ชื่อจะบังเอิญตรงกับเหรียญบน BSC
+  ///
+  /// ⚠️ เดิมดูแค่ทะเบียนในแอป — แอดมินปิดคู่บน BSC ฉุกเฉิน แอปก็ยังส่งเข้า PancakeSwap ได้
+  BscPairGate _bscGate(MarketProvider market) {
+    if (_isChainPairNow(market)) return BscPairGate.notInRegistry;
+    final config = context.read<ConfigProvider>();
+    return bscPairGate(
+      baseSymbol: _baseOf(market),
+      quoteSymbol: _quoteOf(market),
+      serverPair: config.pairBySymbol(market.selectedPair),
+      pairsLoaded: config.pairsLoaded,
+      pairsLoadFailed: config.pairsLoadFailed,
+    );
+  }
+
+  /// คู่นี้ execute จริงบน BSC ได้ไหม (เซิร์ฟเวอร์ยืนยันแล้ว)
   bool _isBscTradableNow(MarketProvider market) =>
-      !_isChainPairNow(market) &&
-      isBscTradablePair(_baseOf(market), _quoteOf(market));
+      _bscGate(market) == BscPairGate.tradable;
+
+  /// ยังตัดสินไม่ได้ว่าคู่ BSC นี้เปิดอยู่ไหม (กำลังโหลด/โหลดทะเบียนคู่ไม่สำเร็จ)
+  /// — โชว์ฟอร์มไว้แต่ส่งไม่ได้ พร้อมเหตุผล (ไม่กระพริบเป็น Coming Soon)
+  bool _isBscPendingGate(BscPairGate gate) =>
+      gate == BscPairGate.checking || gate == BscPairGate.checkFailed;
+
+  /// เหตุที่ยังส่งคำสั่งของคู่ BSC นี้ไม่ได้ — null = ส่งได้
+  String? _bscGateReason(BscPairGate gate, bool th) => switch (gate) {
+        BscPairGate.checking =>
+          th ? 'กำลังตรวจสถานะคู่เทรด…' : "Checking this pair's status…",
+        BscPairGate.checkFailed => th
+            ? 'ตรวจสถานะคู่เทรดไม่สำเร็จ — แตะ "ลองใหม่" แล้วลองอีกครั้ง'
+            : "Couldn't check this pair's status — tap Retry and try again.",
+        BscPairGate.unavailable => th
+            ? 'คู่นี้ยังไม่เปิดให้เทรดในขณะนี้'
+            : "This pair isn't open for trading right now.",
+        BscPairGate.tradable || BscPairGate.notInRegistry => null,
+      };
+
+  /// กุญแจของไม้ที่ฟอร์มแสดงอยู่ — เปลี่ยนคู่/ฝั่ง/จำนวน/slippage/กระเป๋า = quote เดิมใช้ผูกไม่ได้
+  String _orderKey(MarketProvider market, WalletProvider wallet) =>
+      '${market.selectedPair}|${_isBuy ? 'buy' : 'sell'}|${_amountController.text.trim()}|${wallet.slippage}|${wallet.address ?? ''}';
+
+  /// ยอดที่จะจ่ายเข้า (input) ของไม้ BSC ตามฟอร์มตอนนี้ — null = จำนวน/ราคาใช้ไม่ได้
+  ///
+  /// sell: จ่าย base ตามจำนวนที่กรอก (คืนหน่วยเล็กสุดแบบตรงตัวจากข้อความด้วย)
+  /// buy: จ่าย quote = ยอดจากปุ่ม % (ถ้าจำนวนยังเป็นค่าที่ปุ่มเติมให้) ไม่งั้น จำนวน × ราคาตลาด
+  ({double amount, bool fromQuick})? _bscInput(
+      MarketProvider market, WalletProvider wallet) {
+    final amount = double.tryParse(_amountController.text.trim());
+    if (amount == null || !(amount > 0)) return null;
+    if (!_isBuy) return (amount: amount, fromQuick: false);
+    final quick = _quickSpend;
+    if (quick != null && quick > 0 && _quickSpendKey == _orderKey(market, wallet)) {
+      return (amount: quick, fromQuick: true);
+    }
+    final price = market.selectedTicker?.lastPrice ?? 0;
+    if (!(price > 0)) return null;
+    return (amount: amount * price, fromQuick: false);
+  }
+
+  /// ป้ายใต้ชื่อคู่ — ไม้ของคู่นี้จะลงที่ไหน
+  String _venueLabel(MarketProvider market, bool th) {
+    final gate = _bscGate(market);
+    if (gate == BscPairGate.tradable || _isBscPendingGate(gate)) {
+      return 'BSC · PancakeSwap';
+    }
+    // คู่ในทะเบียน BSC ที่เซิร์ฟเวอร์ปิด/ไม่ได้เปิดบน BSC — ห้ามบอกว่า "TPIX Chain"
+    if (gate == BscPairGate.unavailable) {
+      return th ? 'BSC · ปิดชั่วคราว' : 'BSC · Paused';
+    }
+    return _isDexTradableNow(market)
+        ? 'TPIX Chain · TPIX DEX'
+        : 'TPIX Chain · Coming soon';
+  }
 
   /// คู่นี้อยู่บนเชน TPIX และส่งคำสั่งได้จริงไหม
   ///
@@ -398,11 +475,15 @@ class _TradeScreenState extends State<TradeScreen>
       if (_marketQuote != null ||
           _dexQuote != null ||
           _dexQuoteError != null ||
+          _bscQuoteError != null ||
+          _previewKey != null ||
           _quotingPreview) {
         setState(() {
           _marketQuote = null;
           _dexQuote = null;
           _dexQuoteError = null;
+          _bscQuoteError = null;
+          _previewKey = null;
           _quotingPreview = false;
         });
       }
@@ -414,11 +495,11 @@ class _TradeScreenState extends State<TradeScreen>
     }
 
     final amount = double.tryParse(_amountController.text.trim()) ?? 0;
-    // buy บน BSC: input จริงคือยอด quote (USDT) = amount × ราคาตลาด
+    // buy บน BSC: input จริงคือยอด quote (USDT) = ยอดจากปุ่ม % หรือ amount × ราคาตลาด
     // buy บนเชน TPIX: ให้ router คิดยอดที่ต้องจ่ายเอง (getAmountsIn) ไม่พึ่งราคา ticker
     // ที่อาจยังเป็น 0 ตอนเพิ่งเปิดแอป
-    final price = market.selectedTicker?.lastPrice ?? 0;
-    final input = dexPair != null ? amount : (_isBuy ? amount * price : amount);
+    final bscInput = dexPair != null ? null : _bscInput(market, wallet);
+    final input = dexPair != null ? amount : (bscInput?.amount ?? 0);
     if (amount <= 0 || input <= 0) {
       clearPreview();
       return;
@@ -428,6 +509,7 @@ class _TradeScreenState extends State<TradeScreen>
     final isBuy = _isBuy;
     final th = context.read<LocaleProvider>().isThai;
     final amountText = _amountController.text;
+    final orderKey = _orderKey(market, wallet);
     setState(() => _quotingPreview = true);
     try {
       if (dexPair != null) {
@@ -456,25 +538,31 @@ class _TradeScreenState extends State<TradeScreen>
         setState(() {
           _dexQuote = quote;
           _dexQuoteError = null;
+          _bscQuoteError = null;
           _marketQuote = null;
+          _previewKey = orderKey;
           _quotingPreview = false;
         });
         return;
       }
 
-      final fromSym = _isBuy ? _quoteOf(market) : _baseOf(market);
-      final toSym = _isBuy ? _baseOf(market) : _quoteOf(market);
+      final fromSym = isBuy ? _quoteOf(market) : _baseOf(market);
+      final toSym = isBuy ? _baseOf(market) : _quoteOf(market);
       final quote = await _swapService.getQuote(
         fromSymbol: fromSym,
         toSymbol: toSym,
         amount: input,
         slippageOverride: wallet.slippage,
+        // ขาย: จำนวน base ตามที่พิมพ์ตรงตัว (ตัวเดียวกับที่จะส่งจริง)
+        amountText: isBuy ? null : amountText.trim(),
       );
       if (!mounted || seq != _previewSeq) return;
       setState(() {
         _marketQuote = quote;
         _dexQuote = null;
         _dexQuoteError = null;
+        _bscQuoteError = null;
+        _previewKey = orderKey;
         _quotingPreview = false;
       });
     } on SwapException catch (e) {
@@ -482,8 +570,11 @@ class _TradeScreenState extends State<TradeScreen>
       setState(() {
         _marketQuote = null;
         _dexQuote = null;
-        // คู่บนเชน TPIX: บอกเหตุผลก่อนกด (เช่น "ใหญ่เกินพูล สั่งได้สูงสุด ...")
+        _previewKey = null;
+        // บอกเหตุผลก่อนกด — เชน TPIX: "ใหญ่เกินพูล สั่งได้สูงสุด ..." ·
+        // BSC: "คู่นี้ปิดการเทรดอยู่" / "ตรวจค่าธรรมเนียมไม่สำเร็จ" / "ไม่มีสภาพคล่อง"
         _dexQuoteError = dexPair != null ? e.message(th) : null;
+        _bscQuoteError = dexPair == null ? e.message(th) : null;
         _quotingPreview = false;
       });
     } catch (_) {
@@ -492,6 +583,8 @@ class _TradeScreenState extends State<TradeScreen>
         _marketQuote = null;
         _dexQuote = null;
         _dexQuoteError = null;
+        _bscQuoteError = null;
+        _previewKey = null;
         _quotingPreview = false;
       });
     }
@@ -506,24 +599,19 @@ class _TradeScreenState extends State<TradeScreen>
       _dexQuote = null;
       _marketQuote = null;
       _dexQuoteError = null;
+      _bscQuoteError = null;
+      _previewKey = null;
+      _quickSpend = null;
+      _quickSpendKey = null;
     });
     _schedulePreview();
   }
 
-  /// ล้างค่า price/trigger ที่ไม่เกี่ยวข้องเมื่อ user สลับ tab
-  /// กัน phantom data (เช่น กรอก price ใน Limit แล้วสลับไป Market
-  /// ค่า price จะถูกซ่อนแต่ไม่หาย → กลับมา Limit เห็นค่าเก่า)
+  /// สลับแท็บ Limit / Market — rebuild เพื่อสลับระหว่างฟอร์มกับคำอธิบาย แล้วขอ quote ใหม่
   /// Guard: TabController fires 2x (indexIsChanging + indexChanged) — รันตอน settled เท่านั้น
   void _handleOrderTypeChange() {
     if (!mounted) return;
     if (_orderTypeTab.indexIsChanging) return; // รอ animation เสร็จก่อน
-    if (_isMarket && _priceController.text.isNotEmpty) {
-      _priceController.clear();
-    }
-    if (!_isStopLimit && _triggerPriceController.text.isNotEmpty) {
-      _triggerPriceController.clear();
-    }
-    // Rebuild เพื่อ show/hide inputs (ถ้า controller ว่างอยู่แล้ว clear ไม่ trigger)
     setState(() {});
     _schedulePreview();
   }
@@ -532,13 +620,9 @@ class _TradeScreenState extends State<TradeScreen>
   void dispose() {
     _previewDebounce?.cancel();
     _orderTypeTab.removeListener(_handleOrderTypeChange);
-    _priceController.removeListener(_rebuildOnInputChange);
     _amountController.removeListener(_rebuildOnInputChange);
-    _triggerPriceController.removeListener(_rebuildOnInputChange);
     _orderTypeTab.dispose();
-    _priceController.dispose();
     _amountController.dispose();
-    _triggerPriceController.dispose();
     super.dispose();
   }
 
@@ -547,6 +631,8 @@ class _TradeScreenState extends State<TradeScreen>
     final locale = context.watch<LocaleProvider>();
     final market = context.watch<MarketProvider>();
     final wallet = context.watch<WalletProvider>();
+    // ทะเบียนคู่จากเซิร์ฟเวอร์ตัดสินว่าคู่ BSC ส่งคำสั่งได้ไหม — โหลดเสร็จ/เปลี่ยนต้อง rebuild
+    context.watch<ConfigProvider>();
     final ticker = market.selectedTicker;
     // คู่บนเชน TPIX ทุกคู่ (รวมเหรียญลูก) ใช้กราฟจาก /dex/klines ไม่ใช่ Binance
     final isTpix = _isChainPairNow(market);
@@ -607,7 +693,7 @@ class _TradeScreenState extends State<TradeScreen>
                         child: _buildTradeForm(locale, wallet, market),
                       ),
 
-                      // Open Orders
+                      // Open Orders — ทุกคู่ (รวมคำสั่งตั้งราคาที่วางจากหน้าเว็บ)
                       if (wallet.isConnected && wallet.openOrders.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -670,11 +756,7 @@ class _TradeScreenState extends State<TradeScreen>
                     const SizedBox(height: 1),
                     // คู่ major เทรดจริงบน BSC — คู่บนเชน TPIX เทรดผ่าน TPIX DEX เมื่อมีพูล
                     Text(
-                      (_isBscTradableNow(market)
-                              ? 'BSC · PancakeSwap'
-                              : (_isDexTradableNow(market)
-                                  ? 'TPIX Chain · TPIX DEX'
-                                  : 'TPIX Chain · Coming soon')) +
+                      _venueLabel(market, locale.isThai) +
                           // ราคา TPIX ที่เซิร์ฟเวอร์ตั้งไว้เอง (ไม่มีพูลให้อ่าน) — บอกตรง ๆ
                           (_isTpixPairNow(market) &&
                                   market.selectedPair == 'TPIX-USDT' &&
@@ -1048,11 +1130,19 @@ class _TradeScreenState extends State<TradeScreen>
     final baseAsset = _baseOf(market);
     final quoteAsset = _quoteOf(market);
     final onDex = _isDexTradableNow(market);
-    final tradable = _isBscTradableNow(market) || onDex;
+    final gate = _bscGate(market);
+    // ระหว่างรอทะเบียนคู่ของคู่ BSC = โชว์ฟอร์มไว้แต่ปุ่มปิด พร้อมเหตุผล (ไม่กระพริบเป็น Coming Soon)
+    final bscPending = _isBscPendingGate(gate);
+    final gateReason = onDex ? null : _bscGateReason(gate, locale.isThai);
+    final tradable = gate == BscPairGate.tradable || onDex || bscPending;
 
     // คู่ที่ยังเทรดจริงไม่ได้ (พูลบนเชน TPIX ยังไม่มี / คู่ไม่มี token บน BSC)
     // → โชว์ Coming Soon แทนฟอร์ม (เห็นไว้ก่อน กดไม่ได้ — ตรงกับเว็บ)
     if (!tradable) {
+      // คู่ในทะเบียน BSC ที่เซิร์ฟเวอร์ปิด / ไม่ได้เปิดบน BSC — บอกตรง ๆ ว่าปิด ไม่ใช่ "รอเชน TPIX"
+      if (gate == BscPairGate.unavailable) {
+        return _buildComingSoonCard(locale, market, paused: true);
+      }
       // ยังไม่รู้ว่าเชนเราเปิดหรือยัง (ทะเบียนสัญญายังโหลดไม่เสร็จ) — อย่าเพิ่งตัดสิน
       // ไม่งั้นคนเปิดหน้ามาจะเห็น "ยังไม่เปิด" แว้บหนึ่งทั้งที่กระดานเปิดอยู่จริง
       return _buildComingSoonCard(locale, market,
@@ -1111,7 +1201,8 @@ class _TradeScreenState extends State<TradeScreen>
 
           const SizedBox(height: 14),
 
-          // Order type tabs (Limit / Market / Stop-limit)
+          // Order type tabs (Limit / Market) — แอปส่งได้เฉพาะ Market
+          // แท็บ Limit เปิดดูได้: อธิบายตรง ๆ ว่าคำสั่งตั้งราคาวางที่หน้าเว็บ (ไม่เด้งกลับเงียบ ๆ)
           Container(
             decoration: BoxDecoration(
               color: AppColors.bgInputStrong,
@@ -1120,16 +1211,6 @@ class _TradeScreenState extends State<TradeScreen>
             ),
             child: TabBar(
               controller: _orderTypeTab,
-              // Limit/Stop-limit ยังไม่เปิดสำหรับเทรดจริงบน BSC (AMM ทำ
-              // limit order ไม่ได้) — เห็นไว้ก่อน กดแล้วเด้งกลับ Market
-              onTap: (index) {
-                if (index != 1) {
-                  _orderTypeTab.index = 1;
-                  _showSnack(locale.isThai
-                      ? 'Limit/Stop-limit เปิดพร้อม TPIX Chain — ตอนนี้ใช้ Market'
-                      : 'Limit & stop-limit open with TPIX Chain — use Market for now');
-                }
-              },
               indicator: BoxDecoration(
                 color: AppColors.bgTertiary,
                 borderRadius: BorderRadius.circular(8),
@@ -1145,17 +1226,21 @@ class _TradeScreenState extends State<TradeScreen>
                   AppFonts.ui(fontSize: 12, fontWeight: FontWeight.w500),
               dividerColor: Colors.transparent,
               tabs: [
-                Tab(height: 34, child: _soonTabLabel(locale.t('trade.limit'))),
-                Tab(text: locale.t('trade.market'), height: 34),
                 Tab(
-                    height: 34,
-                    child: _soonTabLabel(locale.t('trade.stop_limit'))),
+                  height: 34,
+                  child: _badgeTabLabel(
+                      locale.t('trade.limit'), locale.isThai ? 'เว็บ' : 'Web'),
+                ),
+                Tab(text: locale.t('trade.market'), height: 34),
               ],
             ),
           ),
 
           const SizedBox(height: 14),
 
+          if (!_isMarket)
+            _buildLimitOnWebNotice(locale, market)
+          else ...[
           // Available balance row
           Row(
             children: [
@@ -1182,44 +1267,6 @@ class _TradeScreenState extends State<TradeScreen>
           ),
 
           const SizedBox(height: 12),
-
-          // Trigger Price input (stop-limit only) — อธิบาย semantics
-          if (_isStopLimit) ...[
-            _TradeInput(
-              label: locale.t('trade.trigger_price'),
-              controller: _triggerPriceController,
-              suffix: quoteAsset,
-            ),
-            const SizedBox(height: 4),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(
-                _isBuy
-                    ? (locale.isThai
-                        ? 'ทริกเกอร์เมื่อราคาขึ้นถึง (ซื้อตอนราคาขึ้นทะลุ)'
-                        : 'Triggers when price rises to this level (buy breakout)')
-                    : (locale.isThai
-                        ? 'ทริกเกอร์เมื่อราคาลงถึง (ขายตอนราคาหลุด)'
-                        : 'Triggers when price falls to this level (sell stop)'),
-                style: AppFonts.ui(
-                  fontSize: 10,
-                  color: AppColors.textTertiary,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-          ],
-
-          // Price input (ซ่อนใน market order)
-          if (!_isMarket) ...[
-            _TradeInput(
-              label: locale.t('trade.price'),
-              controller: _priceController,
-              suffix: quoteAsset,
-            ),
-            const SizedBox(height: 10),
-          ],
 
           // Amount input
           _TradeInput(
@@ -1255,10 +1302,21 @@ class _TradeScreenState extends State<TradeScreen>
 
           // Market preview — ตัวเลขจริงจาก router (PancakeSwap / TPIX DEX)
           // (แทน fee summary เดิมเมื่อมี quote เพราะ fee ใน quote คือของจริง)
-          if (_isMarket && onDex && _dexQuoteError != null && !_quotingPreview)
+          if (gateReason != null)
+            // ยังไม่รู้ว่าคู่นี้เปิดบน BSC ไหม — บอกเหตุ + ให้ลองใหม่ (ปุ่มส่งถูกปิดอยู่)
+            _buildGateNotice(
+              gateReason,
+              locale,
+              onRetry: gate == BscPairGate.checkFailed
+                  ? () => context.read<ConfigProvider>().reloadPairs()
+                  : null,
+            )
+          else if (onDex && _dexQuoteError != null && !_quotingPreview)
             _buildDexNotice(_dexQuoteError!)
-          else if (_isMarket &&
-              (_marketQuote != null || _dexQuote != null || _quotingPreview))
+          else if (!onDex && _bscQuoteError != null && !_quotingPreview)
+            // BSC: คู่ถูกปิด / ตรวจค่าธรรมเนียมไม่ได้ / ไม่มีสภาพคล่อง — บอกก่อนกด
+            _buildDexNotice(_bscQuoteError!)
+          else if (_marketQuote != null || _dexQuote != null || _quotingPreview)
             _buildMarketPreview(locale, market)
           else
             _buildFeeSummary(locale, market),
@@ -1272,7 +1330,8 @@ class _TradeScreenState extends State<TradeScreen>
                 : '${locale.t('trade.sell')} $baseAsset',
             variant: _isBuy ? ButtonVariant.buy : ButtonVariant.sell,
             isLoading: _isSubmitting,
-            onPressed: wallet.isConnected && !_isSubmitting
+            // ยังตัดสินไม่ได้ว่าคู่เปิดอยู่ไหม = ปิดปุ่ม (เหตุผลอยู่ในแถบด้านบน)
+            onPressed: wallet.isConnected && !_isSubmitting && !bscPending
                 ? () => _submitOrder()
                 : null,
           ),
@@ -1375,6 +1434,126 @@ class _TradeScreenState extends State<TradeScreen>
               ),
             ),
           ],
+          ], // จบส่วนฟอร์ม Market
+        ],
+      ),
+    );
+  }
+
+  /// แท็บ Limit — บอกตามจริง: คำสั่งตั้งราคาวางที่หน้าเว็บ แอปนี้ยังวางไม่ได้
+  /// (เดิมมีแท็บ Limit/Stop-limit ที่กดแล้วเด้งกลับ Market พร้อมข้อความว่า "เปิดพร้อม TPIX Chain"
+  /// ทั้งที่หน้าเว็บวางคำสั่งตั้งราคาได้แล้ว)
+  Widget _buildLimitOnWebNotice(LocaleProvider locale, MarketProvider market) {
+    final th = locale.isThai;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.goldTint,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.goldBorder, width: 0.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline_rounded,
+                  size: 15, color: AppColors.gold2),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  th
+                      ? 'คำสั่งตั้งราคา (Limit) ตอนนี้วางได้ที่หน้าเว็บ tpix.online เท่านั้น — แอปนี้ยังวางไม่ได้'
+                      : 'Limit orders can only be placed on the web (tpix.online) for now — this app cannot place them yet.',
+                  style: AppFonts.ui(
+                    fontSize: 12,
+                    height: 1.45,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            th
+                ? 'คำสั่งที่วางจากเว็บจะขึ้นใน "คำสั่งที่เปิดอยู่" ด้านล่าง และยกเลิกจากแอปได้ขณะยังรอราคา · ในแอปใช้ Market เพื่อซื้อขายทันที'
+                : 'Orders placed on the web appear under Open Orders below, and you can cancel them here while they wait for the price. Use Market in the app to trade right away.',
+            style: AppFonts.ui(
+              fontSize: 11,
+              height: 1.45,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => launchUrl(
+                Uri.parse(
+                    'https://tpix.online/trade/${Uri.encodeComponent(market.selectedPair)}'),
+                mode: LaunchMode.externalApplication,
+              ),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.gold1,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 32),
+              ),
+              icon: const Icon(Icons.open_in_new_rounded, size: 14),
+              label: Text(
+                th ? 'เปิดหน้าเว็บ' : 'Open the web',
+                style:
+                    AppFonts.ui(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// แถบ "ยังส่งคำสั่งของคู่นี้ไม่ได้" (กำลังตรวจ/ตรวจสถานะคู่ไม่สำเร็จ) พร้อมปุ่มลองใหม่
+  Widget _buildGateNotice(String message, LocaleProvider locale,
+      {VoidCallback? onRetry}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: AppColors.goldTint,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.goldBorder, width: 0.8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.hourglass_top_rounded, size: 14, color: AppColors.gold2),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              message,
+              style: AppFonts.ui(
+                fontSize: 11,
+                height: 1.4,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          if (onRetry != null)
+            TextButton(
+              onPressed: onRetry,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 30),
+                foregroundColor: AppColors.gold1,
+              ),
+              child: Text(
+                locale.isThai ? 'ลองใหม่' : 'Retry',
+                style:
+                    AppFonts.ui(fontSize: 11, fontWeight: FontWeight.w700),
+              ),
+            ),
         ],
       ),
     );
@@ -1419,28 +1598,36 @@ class _TradeScreenState extends State<TradeScreen>
             _dexBaseDecimals!);
         return;
       }
+      // BSC — ตัดทศนิยมทิ้งเสมอ ห้ามปัดขึ้น (toStringAsFixed ปัดเข้าหาค่าใกล้สุด = เกินยอดจริงได้
+      // → สวอปผ่านแต่ธุรกรรมโอนค่าธรรมเนียม revert) · ยอดจริงบนเชนถูกอ่านซ้ำก่อนส่งอีกชั้น
       // For Buy, available is in quote → convert to base amount via price.
       if (_isBuy) {
-        final px = _isMarket
-            ? (market.selectedTicker?.lastPrice ?? 0)
-            : (double.tryParse(_priceController.text) ?? 0);
-        if (px > 0) {
-          _amountController.text =
-              (availBalance * factor / px).toStringAsFixed(4);
-          return;
-        }
+        final px = market.selectedTicker?.lastPrice ?? 0;
         // No usable price yet — leave amount untouched.
+        if (!(px > 0)) return;
+        final spend = double.tryParse(
+                BscSwapService.floorDecimal(availBalance * factor, 8)) ??
+            0;
+        final baseText = BscSwapService.floorDecimal(spend / px, 8);
+        if (!(spend > 0) || !((double.tryParse(baseText) ?? 0) > 0)) return;
+        _amountController.text = baseText;
+        // จำยอด quote ที่จะจ่ายไว้กับจำนวนนี้ — ตอนส่งใช้ยอดนี้ตรง ๆ ไม่คูณราคาตลาดใหม่
+        // (ราคาขยับขึ้นนิดเดียว "จำนวน × ราคา" ก็เกินยอดในกระเป๋าแล้ว)
+        _quickSpend = spend;
+        _quickSpendKey = _orderKey(market, wallet);
         return;
       }
       // Sell → available already in base asset.
-      _amountController.text = (availBalance * factor).toStringAsFixed(4);
+      _amountController.text =
+          BscSwapService.floorDecimal(availBalance * factor, 8);
       return;
     }
 
     // Fallback: scale whatever the user already typed.
     final current = double.tryParse(_amountController.text) ?? 0;
     if (current > 0) {
-      _amountController.text = (current * factor).toStringAsFixed(4);
+      _amountController.text =
+          BscSwapService.floorDecimal(current * factor, 8);
     }
   }
 
@@ -1564,13 +1751,21 @@ class _TradeScreenState extends State<TradeScreen>
     return AppColors.textSecondary;
   }
 
+  /// ข้อความ price impact — null/ไม่ใช่ตัวเลข = "—" (วัดไม่ได้ ไม่ใช่ 0%)
+  String _impactText(double? impact) {
+    if (impact == null || !impact.isFinite) return '—';
+    return impact < 0.01 ? '< 0.01%' : '${impact.toStringAsFixed(2)}%';
+  }
+
   /// จำนวนสูงสุดที่ไม่เกินเพดาน price impact ในหน่วยของช่อง "จำนวน" (base เสมอ)
   /// ซื้อ = TPIX ที่ได้ออก (exact-out) · ขาย = TPIX ที่จ่ายเข้า (exact-in)
   double? _maxBaseUnderLimit(TpixDexQuote q) =>
       _isBuy ? q.maxAmountOutUnderLimit : q.maxAmountInUnderLimit;
 
   String _impactBlockedMessage(TpixDexQuote q, bool th, String baseSym) {
-    final impact = q.priceImpact.toStringAsFixed(1);
+    // วัดไม่ได้ = ไม่รู้ว่าพูลรับไม้นี้ได้ไหม — คนละข้อความกับ "เกินเพดาน"
+    if (q.impactUnknown) return kTpixImpactUnknown.message(th);
+    final impact = q.priceImpact!.toStringAsFixed(1);
     final limit = kTpixMaxPriceImpactPct.toStringAsFixed(0);
     final max = _maxBaseUnderLimit(q);
     if (max != null && max > 0) {
@@ -1590,25 +1785,25 @@ class _TradeScreenState extends State<TradeScreen>
     return v.toStringAsFixed(6);
   }
 
-  /// ป้ายแท็บ order type ที่ยังไม่เปิด (Limit/Stop-limit) — เห็นแต่กดไม่ได้
-  Widget _soonTabLabel(String label) {
+  /// ป้ายแท็บพร้อมตราเล็ก ๆ (เช่น Limit · เว็บ) — บอกว่าแท็บนี้ทำที่ไหน
+  Widget _badgeTabLabel(String label, String badge) {
     return FittedBox(
       fit: BoxFit.scaleDown,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Opacity(opacity: 0.55, child: Text(label)),
-          const SizedBox(width: 3),
+          Text(label),
+          const SizedBox(width: 4),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
             decoration: BoxDecoration(
               color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(3),
             ),
             child: Text(
-              'Soon',
+              badge,
               style: AppFonts.ui(
-                fontSize: 7,
+                fontSize: 8,
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFFF59E0B),
               ),
@@ -1620,9 +1815,11 @@ class _TradeScreenState extends State<TradeScreen>
   }
 
   /// คู่ที่ยังไม่เปิดเทรด (TPIX รอเชน) — แผง Coming Soon แทนฟอร์ม
+  /// [paused] = คู่ในทะเบียน BSC ที่เซิร์ฟเวอร์ปิดอยู่ / ไม่ได้เปิดบน BSC (ไม่ใช่ "รอเชน TPIX")
   Widget _buildComingSoonCard(LocaleProvider locale, MarketProvider market,
-      {bool checking = false}) {
+      {bool checking = false, bool paused = false}) {
     final pair = market.selectedTicker?.displaySymbol ?? market.selectedPair;
+    if (paused) return _buildPausedCard(locale, pair);
     return GlassCard(
       variant: GlassVariant.elevated,
       borderRadius: AppTheme.radiusXl,
@@ -1689,6 +1886,51 @@ class _TradeScreenState extends State<TradeScreen>
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFFF59E0B),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// คู่ BSC ที่ปิดการเทรดอยู่ (แอดมินปิด / ไม่ได้เปิดแบบ onchain บน BSC)
+  Widget _buildPausedCard(LocaleProvider locale, String pair) {
+    return GlassCard(
+      variant: GlassVariant.elevated,
+      borderRadius: AppTheme.radiusXl,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 28),
+      child: Column(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.goldTint,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.goldBorder, width: 1),
+            ),
+            child: Icon(Icons.pause_circle_outline_rounded,
+                size: 24, color: AppColors.gold2),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            locale.isThai ? '$pair — ปิดการเทรดอยู่' : '$pair — Trading paused',
+            style: AppFonts.ui(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            locale.isThai
+                ? 'คู่นี้ยังไม่เปิดให้เทรดในขณะนี้\nยังดูราคาและกราฟได้ตามปกติ'
+                : "This pair isn't open for trading right now.\nYou can still follow its price and chart.",
+            textAlign: TextAlign.center,
+            style: AppFonts.ui(
+              fontSize: 11.5,
+              height: 1.5,
+              color: AppColors.textTertiary,
             ),
           ),
         ],
@@ -1765,14 +2007,32 @@ class _TradeScreenState extends State<TradeScreen>
           if (dq != null)
             row(
               locale.isThai ? 'ผลต่อราคาพูล' : 'Price impact',
-              dq.priceImpact < 0.01
-                  ? '< 0.01%'
-                  : '${dq.priceImpact.toStringAsFixed(2)}%',
-              valueColor: _impactColor(dq.priceImpact),
+              _impactText(dq.priceImpact),
+              // วัดไม่ได้ = ส่งไม่ได้ — สีเดียวกับเกินเพดาน
+              valueColor: dq.impactUnknown
+                  ? AppColors.tradingRed
+                  : _impactColor(dq.priceImpact!),
             ),
           if (dq != null && dq.exceedsImpactLimit) ...[
             const SizedBox(height: 6),
             _buildImpactBlocked(dq, locale.isThai, _baseOf(market)),
+          ],
+          // BSC: วัดจากไม้จิ๋วบนเส้นทางเดียวกัน — "—" = วัดไม่ได้ (หน้าเทรดยังมีด่านเทียบราคาตลาดอีกชั้น)
+          if (dq == null && bq != null)
+            row(
+              locale.isThai ? 'ผลต่อราคาพูล' : 'Price impact',
+              _impactText(bq.priceImpact),
+              valueColor: bq.priceImpact == null
+                  ? AppColors.textSecondary
+                  : _impactColor(bq.priceImpact!),
+            ),
+          if (dq == null &&
+              bq != null &&
+              bq.priceImpact != null &&
+              bq.priceImpact! > kBscMaxPriceImpactPct) ...[
+            const SizedBox(height: 6),
+            _buildDexNotice(
+                swapImpactTooHigh(bq.priceImpact!).message(locale.isThai)),
           ],
           const SizedBox(height: 4),
           Row(
@@ -1808,10 +2068,7 @@ class _TradeScreenState extends State<TradeScreen>
 
     // คำนวณ estimated fee จาก amount ที่ user กรอก
     final amount = double.tryParse(_amountController.text) ?? 0;
-    final price = double.tryParse(_priceController.text) ?? 0;
-    final total = (_orderTypeTab.index == 1) // market
-        ? amount * (market.selectedTicker?.lastPrice ?? 0)
-        : amount * price;
+    final total = amount * (market.selectedTicker?.lastPrice ?? 0);
     final feeAmount = total * (feeRate / 100);
     final quoteAsset = market.selectedTicker?.quoteAsset ?? 'USDT';
 
@@ -1898,12 +2155,21 @@ class _TradeScreenState extends State<TradeScreen>
 
   // ── Open Orders ──
 
+  /// คำสั่งที่เปิดอยู่ของกระเป๋านี้ — ทุกคู่ (คู่ที่ดูอยู่ขึ้นก่อน)
+  ///
+  /// รวมคำสั่งตั้งราคาของคู่บนเชนที่วางจากหน้าเว็บ (`source: limit`): เซิร์ฟเวอร์เฝ้าราคา
+  /// แล้วให้เจ้าของยืนยันในกระเป๋าเมื่อราคาถึง — แอปนี้แสดงและยกเลิกได้ (เฉพาะที่ยังรอราคา)
+  /// ยังวาง/ส่งคำสั่งตั้งราคาจากแอปไม่ได้
   Widget _buildOpenOrders(WalletProvider wallet, LocaleProvider locale) {
-    final orders = wallet.openOrders
-        .where((o) => o.pair == context.read<MarketProvider>().selectedPair)
-        .toList();
+    final current =
+        TradeOrder.normalizePair(context.read<MarketProvider>().selectedPair);
+    final orders = [
+      ...wallet.openOrders.where((o) => o.pairKey == current),
+      ...wallet.openOrders.where((o) => o.pairKey != current),
+    ];
 
     if (orders.isEmpty) return const SizedBox.shrink();
+    final hasLimitWatch = orders.any((o) => o.isLimitWatch);
 
     return GlassCard(
       variant: GlassVariant.standard,
@@ -1930,23 +2196,110 @@ class _TradeScreenState extends State<TradeScreen>
           const SizedBox(height: 12),
           ...orders.map((order) => _OpenOrderRow(
                 order: order,
-                onCancel: () => _cancelOrder(order.id, wallet),
+                locale: locale,
+                busy: _cancelling.contains(order.id),
+                onCancel: order.isCancellable
+                    ? () => _cancelOrder(order, wallet)
+                    : null,
               )),
+          if (hasLimitWatch) ...[
+            const SizedBox(height: 2),
+            Text(
+              locale.isThai
+                  ? 'คำสั่งตั้งราคา: เมื่อราคาถึง ต้องยืนยันในกระเป๋าที่หน้าเว็บ tpix.online — แอปนี้ยังส่งคำสั่งตั้งราคาไม่ได้'
+                  : 'Limit orders: when the price is reached, confirm in your wallet on the web (tpix.online) — this app cannot send limit orders yet.',
+              style: AppFonts.ui(
+                fontSize: 10,
+                height: 1.4,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Future<void> _cancelOrder(String orderId, WalletProvider wallet) async {
-    if (wallet.address == null) return;
-    final ok = await ApiService().cancelOrder(orderId, wallet.address!);
-    if (!mounted) return;
-    if (ok) {
-      wallet.loadPortfolio();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order cancelled')),
-      );
+  /// ยกเลิกคำสั่ง — ถามยืนยันก่อน (ยกเลิกแล้วต้องไปวางใหม่ที่หน้าเว็บ) กันกดซ้ำ และบอกผลทุกทาง
+  Future<void> _cancelOrder(TradeOrder order, WalletProvider wallet) async {
+    final address = wallet.address;
+    if (address == null || order.id.isEmpty) return;
+    if (_cancelling.contains(order.id)) return;
+    final locale = context.read<LocaleProvider>();
+    final th = locale.isThai;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgElevated,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: AppColors.bgCardBorder),
+        ),
+        title: Text(
+          th ? 'ยกเลิกคำสั่งนี้?' : 'Cancel this order?',
+          style: AppFonts.ui(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textPrimary),
+        ),
+        content: Text(
+          th
+              ? '${_orderSummary(order, th)}\nยกเลิกแล้วย้อนกลับไม่ได้ — ถ้าต้องการอีกต้องวางคำสั่งใหม่'
+              : '${_orderSummary(order, th)}\nThis cannot be undone — you would have to place the order again.',
+          style: AppFonts.ui(fontSize: 13, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(th ? 'ไม่ยกเลิก' : 'Keep order',
+                style: TextStyle(color: AppColors.textTertiary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(th ? 'ยกเลิกคำสั่ง' : 'Cancel order',
+                style: TextStyle(color: AppColors.tradingRed)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    // กระเป๋าถูกสลับระหว่างที่หน้ายืนยันเปิดอยู่ — คำสั่งนี้ไม่ใช่ของกระเป๋าที่เชื่อมอยู่แล้ว
+    if (wallet.address?.toLowerCase() != address.toLowerCase()) return;
+    if (_cancelling.contains(order.id)) return;
+
+    setState(() => _cancelling.add(order.id));
+    var ok = false;
+    try {
+      ok = await ApiService().cancelOrder(order.id, address);
+    } catch (_) {
+      ok = false;
     }
+    if (!mounted) return;
+    setState(() => _cancelling.remove(order.id));
+    // สำเร็จหรือไม่ก็โหลดรายการใหม่ — ยกเลิกไม่ได้ส่วนใหญ่เพราะสถานะเปลี่ยนไปแล้ว (ราคาถึง/ส่งธุรกรรมแล้ว)
+    wallet.loadPortfolio();
+    _showSnack(
+      ok
+          ? (th ? 'ยกเลิกคำสั่งแล้ว' : 'Order cancelled')
+          : (th
+              ? 'ยกเลิกคำสั่งไม่สำเร็จ — คำสั่งอาจถูกส่งหรือปิดไปแล้ว ลองใหม่อีกครั้ง'
+              : 'Could not cancel the order — it may already be submitted or closed. Please try again.'),
+      isSuccess: ok,
+    );
+  }
+
+  /// สรุปคำสั่งหนึ่งบรรทัด (สำหรับหน้ายืนยัน)
+  String _orderSummary(TradeOrder order, bool th) {
+    final side = switch (order.tradeSide) {
+      TradeSide.buy => th ? 'ซื้อ' : 'Buy',
+      TradeSide.sell => th ? 'ขาย' : 'Sell',
+      TradeSide.neutral => th ? 'คำสั่ง' : 'Order',
+    };
+    final price = order.price != null && order.price! > 0
+        ? ' @ ${_fmtAmount(order.price!)}'
+        : '';
+    return '$side ${_fmtAmount(order.amount)} ${order.pairKey.replaceAll('-', '/')}$price';
   }
 
   // ── Pair picker ──
@@ -1969,9 +2322,10 @@ class _TradeScreenState extends State<TradeScreen>
 
   // ── Submit order ──
   // Dispatcher — แยกเส้นทางเหมือนเว็บ:
-  //  คู่ major (BSC registry) → market order execute จริงผ่าน PancakeSwap
-  //  คู่ TPIX               → Coming Soon (รอเชน TPIX — ฟอร์มถูกซ่อนอยู่แล้ว)
-  //  คู่อื่น                → internal order book เดิม (เปิดคืนพร้อม TPIX Chain)
+  //  คู่ major (ทะเบียน BSC + เซิร์ฟเวอร์ยืนยัน) → market order execute จริงผ่าน PancakeSwap
+  //  คู่บนเชน TPIX ที่มีพูล                     → market order ผ่าน TPIX DEX
+  //  อื่น ๆ                                      → ยังไม่เปิด (ฟอร์มถูกซ่อนอยู่แล้ว)
+  // แอปส่งได้เฉพาะ Market — คำสั่งตั้งราคาวางที่หน้าเว็บ (แท็บ Limit อธิบายไว้)
 
   Future<void> _submitOrder() async {
     if (_isSubmitting) return;
@@ -1979,12 +2333,25 @@ class _TradeScreenState extends State<TradeScreen>
     final wallet = context.read<WalletProvider>();
     final market = context.read<MarketProvider>();
     final locale = context.read<LocaleProvider>();
-    final config = context.read<ConfigProvider>();
 
     if (!wallet.isConnected || wallet.address == null) return;
 
-    if (_isBscTradableNow(market)) {
+    if (!_isMarket) {
+      _showSnack(locale.isThai
+          ? 'คำสั่งตั้งราคาวางได้ที่หน้าเว็บ tpix.online — ในแอปใช้ Market'
+          : 'Limit orders are placed on the web (tpix.online) — use Market in the app');
+      return;
+    }
+
+    final gate = _bscGate(market);
+    if (gate == BscPairGate.tradable) {
       await _executeBscMarketOrder(wallet, market, locale);
+      return;
+    }
+    // กันอีกชั้น (ปุ่มถูกปิด/ฟอร์มถูกซ่อนอยู่แล้ว): ยังไม่ยืนยันว่าคู่นี้เปิดบน BSC = ไม่ส่ง
+    final gateReason = _bscGateReason(gate, locale.isThai);
+    if (gateReason != null) {
+      _showSnack(gateReason);
       return;
     }
 
@@ -1994,136 +2361,54 @@ class _TradeScreenState extends State<TradeScreen>
       return;
     }
 
-    if (_isChainPairNow(market)) {
-      // กันไว้อีกชั้น — ฟอร์มถูกแทนด้วย Coming Soon card อยู่แล้ว
-      _showSnack(locale.isThai
-          ? 'คู่นี้ยังไม่มีพูลบนเชน TPIX — เติมสภาพคล่องที่หน้าเว็บก่อน'
-          : 'This pair has no pool on TPIX Chain yet');
-      return;
-    }
+    // กันไว้อีกชั้น — ฟอร์มถูกแทนด้วย Coming Soon card อยู่แล้ว
+    _showSnack(_isChainPairNow(market)
+        ? (locale.isThai
+            ? 'คู่นี้ยังไม่มีพูลบนเชน TPIX — เติมสภาพคล่องที่หน้าเว็บก่อน'
+            : 'This pair has no pool on TPIX Chain yet')
+        : (locale.isThai
+            ? 'คู่นี้ยังไม่เปิดให้เทรดในขณะนี้'
+            : "This pair isn't open for trading right now."));
+  }
 
-    // ตรวจก่อนว่า backend พร้อมเทรด (มี fee wallet ตั้งค่าแล้ว)
-    if (!config.canTrade) {
-      _showSnack(locale.isThai
-          ? 'ระบบยังไม่พร้อมให้เทรด — ติดต่อผู้ดูแล'
-          : 'Platform not ready — contact admin');
-      return;
-    }
+  /// ด่านก่อนเงินออก: กระเป๋าต้องยืนยันกับเซิร์ฟเวอร์แล้ว + ผ่านด่านยืนยันตัวตนของการเทรด
+  /// (ไม่ผ่านโยน [TradeBlockedException] — ยังไม่ได้ส่งอะไร) แล้วเช็กว่ากระเป๋ายังเป็นใบเดิม
+  Future<void> _preflight(WalletProvider wallet, String address) async {
+    await TradePreflight.ensureCanTrade(
+      address: address,
+      isVerified: () => wallet.isVerified,
+      verify: wallet.verifyWithBackend,
+    );
+    _ensureSameWallet(wallet, address);
+  }
 
-    final priceText = _priceController.text.trim();
-    final amountText = _amountController.text.trim();
-    final triggerText = _triggerPriceController.text.trim();
-    final orderType = _orderType; // 'limit' | 'market' | 'stop-limit'
-
-    final amount = double.tryParse(amountText);
-    if (amount == null || amount <= 0) {
-      _showSnack(locale.t('trade.invalid_amount'));
-      return;
-    }
-
-    // Validate min/max จาก TradingPair config
-    final pair = config.pairBySymbol(market.selectedPair);
-    if (pair != null) {
-      if (pair.minTradeAmount > 0 && amount < pair.minTradeAmount) {
-        _showSnack(locale.isThai
-            ? 'จำนวนต่ำกว่าขั้นต่ำ ${pair.minTradeAmount}'
-            : 'Amount below min ${pair.minTradeAmount}');
-        return;
-      }
-      if (pair.maxTradeAmount > 0 && amount > pair.maxTradeAmount) {
-        _showSnack(locale.isThai
-            ? 'จำนวนเกินสูงสุด ${pair.maxTradeAmount}'
-            : 'Amount above max ${pair.maxTradeAmount}');
-        return;
-      }
-    }
-
-    // Trade เป็น index/proxy — ทุกคู่ register บน TPIX chain (4289)
-    // ราคาดึง realtime จาก Binance, balance off-chain ใน DB ระบบ trade
-    // → ไม่ต้องสลับ wallet chain เพื่อเทรด (chain_id เป็น metadata เท่านั้น)
-    // wallet จะอยู่เชนไหนก็เทรดได้ — chain switching ใช้สำหรับ Bridge/Send/Receive ต่างหาก
-
-    double? price;
-    if (orderType != 'market') {
-      price = double.tryParse(priceText);
-      if (price == null || price <= 0) {
-        _showSnack(locale.t('trade.invalid_price'));
-        return;
-      }
-    }
-
-    // Stop-limit ต้องมี trigger price
-    double? triggerPrice;
-    if (orderType == 'stop-limit') {
-      triggerPrice = double.tryParse(triggerText);
-      if (triggerPrice == null || triggerPrice <= 0) {
-        _showSnack(locale.t('trade.invalid_trigger'));
-        return;
-      }
-    }
-
-    setState(() => _isSubmitting = true);
-
-    // ถ้ายังไม่ verified → verify ก่อนเพื่อได้ auth token
-    if (!wallet.isVerified) {
-      final ok = await wallet.verifyWithBackend();
-      if (!mounted) return;
-      if (!ok) {
-        setState(() => _isSubmitting = false);
-        _showSnack(locale.isThai
-            ? 'ยืนยันกระเป๋าไม่สำเร็จ — ลองอีกครั้ง'
-            : 'Wallet verification failed — try again');
-        return;
-      }
-    }
-
-    try {
-      final order = await ApiService().createOrder(
-        pair: market.selectedPair,
-        side: _isBuy ? 'buy' : 'sell',
-        type: orderType,
-        price: price,
-        triggerPrice: triggerPrice,
-        amount: amount,
-        walletAddress: wallet.address!,
-        chainId: 4289, // TPIX-only — see comment above pre-submit block
+  /// แจ้งเหตุที่ส่งไม้ไม่ได้ — ติดด่านยืนยันตัวตน = พาไปหน้ายืนยันตัวตนในแอปเลย
+  void _showTradeBlocked(TradeBlockedException e, LocaleProvider locale) {
+    if (!mounted) return;
+    if (e.needsKyc) {
+      _showSnack(
+        e.message(locale.isThai),
+        actionLabel: locale.isThai ? 'ยืนยันตัวตน' : 'Verify',
+        onAction: () => KycNav.open(context),
       );
-
-      if (!mounted) return;
-
-      if (order != null) {
-        _priceController.clear();
-        _amountController.clear();
-        _showSnack(locale.t('trade.order_success'), isSuccess: true);
-        market.loadOrderBook();
-        wallet.loadPortfolio();
-      } else {
-        _showSnack(locale.t('trade.order_failed'));
-      }
-    } catch (e) {
-      if (!mounted) return;
-      _showSnack(locale.t('common.error'));
+      KycNav.open(context);
+      return;
     }
-
-    if (mounted) setState(() => _isSubmitting = false);
+    _showSnack(e.message(locale.isThai));
   }
 
   /// Market order เทรดจริงบน BSC ผ่าน PancakeSwap — ลำดับเหมือนเว็บทุกขั้น:
-  /// ตรวจ token on-chain → quote จริง → กันราคาเพี้ยน (>10% ไม่ส่ง)
-  /// → approve ถ้าจำเป็น → swap → เก็บ fee → บันทึก backend → refresh ยอด
+  /// ยืนยันกระเป๋า + ด่านยืนยันตัวตน → quote จริง (ตรวจ token on-chain, อัตราจาก backend แบบ fail-closed)
+  /// → กันราคาเพี้ยน/ดันราคาพูล (>10% หรือวัดไม่ได้ = ไม่ส่ง) → ไม่แย่กว่าที่เห็นในพรีวิว
+  /// → กระเป๋าค่าธรรมเนียมพร้อม → ตัดยอดให้พอดียอดบนเชน → approve ถ้าจำเป็น → swap → เก็บ fee
+  /// → บันทึก backend (คิวส่งซ้ำ) → refresh ยอด
   Future<void> _executeBscMarketOrder(
     WalletProvider wallet,
     MarketProvider market,
     LocaleProvider locale,
   ) async {
-    if (!_isMarket) {
-      _showSnack(locale.isThai
-          ? 'Limit/Stop-limit เปิดพร้อม TPIX Chain — ตอนนี้ใช้ Market'
-          : 'Limit & stop-limit open with TPIX Chain — use Market for now');
-      return;
-    }
-
-    final amount = double.tryParse(_amountController.text.trim());
+    final amountText = _amountController.text.trim();
+    final amount = double.tryParse(amountText);
     if (amount == null || amount <= 0) {
       _showSnack(locale.t('trade.invalid_amount'));
       return;
@@ -2137,27 +2422,46 @@ class _TradeScreenState extends State<TradeScreen>
       return;
     }
 
+    // จับค่าตั้งต้นไว้ — ผู้ใช้อาจสลับฝั่ง/คู่/กระเป๋าระหว่างที่ไม้นี้ยังวิ่งอยู่
+    final isBuy = _isBuy;
+    final address = wallet.address!;
+    final pairSymbol = market.selectedPair;
     final base = _baseOf(market);
     final quote = _quoteOf(market);
-    final fromSym = _isBuy ? quote : base;
-    final toSym = _isBuy ? base : quote;
-    // buy: จ่าย quote (USDT) = จำนวน base × ราคาตลาด, sell: จ่าย base ตรงๆ
-    final inputAmount = _isBuy ? amount * marketPrice : amount;
+    final fromSym = isBuy ? quote : base;
+    final toSym = isBuy ? base : quote;
+    final slippage = wallet.slippage;
+    final orderKey = _orderKey(market, wallet);
+    // buy: จ่าย quote (USDT) = ยอดจากปุ่ม % (ถ้าจำนวนยังเป็นค่าที่ปุ่มเติมให้) ไม่งั้น จำนวน × ราคาตลาด
+    // sell: จ่าย base ตรงๆ
+    final input = _bscInput(market, wallet);
+    if (input == null || !(input.amount > 0)) {
+      _showSnack(locale.t('trade.invalid_amount'));
+      return;
+    }
+    final inputAmount = input.amount;
+    // ราคาที่ผู้ใช้เห็นในพรีวิว (ถ้าเป็นของไม้นี้) — อ่านก่อนขอราคาใหม่
+    final seen = _previewKey == orderKey ? _marketQuote : null;
 
     setState(() => _isSubmitting = true);
 
     try {
-      // 1) Quote จริงจาก router (ตรวจ token กับ on-chain ในตัว — fail-closed)
-      final swapQuote = await _swapService.getQuote(
+      // 0) ยืนยันกระเป๋า + ด่านยืนยันตัวตน — ต้องผ่านก่อนเงินออก (เซิร์ฟเวอร์ตรวจตอนบันทึกไม้ ซึ่งสายไปแล้ว)
+      await _preflight(wallet, address);
+
+      // 1) Quote จริงจาก router (ตรวจ token กับ on-chain ในตัว · อัตราค่าธรรมเนียมจาก backend — fail-closed)
+      //    sell: จำนวน base แปลงจากข้อความตรงตัว ไม่ผ่าน double (ไม่ปัดเกินยอดจริง)
+      var swapQuote = await _swapService.getQuote(
         fromSymbol: fromSym,
         toSymbol: toSym,
         amount: inputAmount,
-        slippageOverride: wallet.slippage,
+        slippageOverride: slippage,
+        amountText: isBuy ? null : amountText,
       );
 
       // 2) กันราคา on-chain เพี้ยนจากราคาตลาดเกิน 10% (สภาพคล่องบาง/pool ผิดปกติ)
       if (swapQuote.netOutput > 0) {
-        final effPrice = _isBuy
+        final effPrice = isBuy
             ? swapQuote.amountIn / swapQuote.netOutput // จ่าย USDT ต่อ 1 base
             : swapQuote.netOutput / swapQuote.amountIn; // ได้ USDT ต่อ 1 base
         final deviation = (effPrice - marketPrice).abs() / marketPrice;
@@ -2168,14 +2472,57 @@ class _TradeScreenState extends State<TradeScreen>
           );
         }
       }
+      // ไม้นี้ดันราคาพูลเกินเพดาน = ไม่ส่ง · วัดไม่ได้ ยอมได้เฉพาะเมื่อมีราคาตลาดเทียบ (ด่านด้านบนผ่านแล้ว)
+      final impact = swapQuote.priceImpact;
+      if (impact != null && impact > kBscMaxPriceImpactPct) {
+        if (mounted) {
+          setState(() {
+            _marketQuote = swapQuote;
+            _bscQuoteError = null;
+            _previewKey = null;
+          });
+        }
+        throw swapImpactTooHigh(impact);
+      }
+      if (swapQuote.isImpactBlocked(hasMarketReference: marketPrice > 0)) {
+        throw kSwapImpactUnknown;
+      }
 
-      // 3) Approve router ถ้า allowance ไม่พอ (เฉพาะ token ไม่ใช่ BNB)
+      // 3) ราคาใหม่ต้องไม่แย่กว่า "ได้รับอย่างน้อย" ที่ผู้ใช้เห็นในฟอร์ม
+      //    พูลขยับระหว่างพรีวิวกับกดส่ง = หยุด โชว์ตัวเลขใหม่ ให้กดยืนยันอีกครั้ง
+      if (seen != null && swapQuote.netOutput < seen.minReceived) {
+        final fresh = swapQuote;
+        if (mounted && _orderKey(market, wallet) == orderKey) {
+          setState(() {
+            _marketQuote = fresh;
+            _bscQuoteError = null;
+            _previewKey = orderKey;
+          });
+        }
+        throw SwapException(
+          'The pool price moved: you would now receive about ${_fmtAmount(fresh.netOutput)} $toSym (at least ${_fmtAmount(fresh.minReceived)}). Press again to confirm.',
+          'ราคาพูลขยับแล้ว: ตอนนี้จะได้ประมาณ ${_fmtAmount(fresh.netOutput)} $toSym (อย่างน้อย ${_fmtAmount(fresh.minReceived)}) กดอีกครั้งเพื่อยืนยัน',
+        );
+      }
+
+      // 4) กระเป๋าค่าธรรมเนียมต้องพร้อม "ก่อน" ขอให้ผู้ใช้ approve
+      //    (เดิมเช็กตอนจะสวอป — จ่ายค่าแก๊ส approve ไปแล้วค่อยเจอ "ระบบยังไม่พร้อม")
+      if (swapQuote.feeWei > BigInt.zero) {
+        await _swapService.ensureFeeCollector();
+      }
+
+      // 5) ยอดที่จะจ่ายต้องไม่เกินยอดจริงบนเชน — เกินด้วยเศษ = ตัดให้พอดี · เกินจริง = ไม่ส่ง
+      swapQuote = await _swapService.fitToBalance(swapQuote, address);
+      _ensureSameWallet(wallet, address);
+
+      // 6) Approve router ถ้า allowance ไม่พอ (เฉพาะ token ไม่ใช่ BNB)
       if (!swapQuote.fromToken.native) {
         final hasAllowance = await _swapService.hasAllowance(
           swapQuote.fromToken,
-          wallet.address!,
+          address,
           swapQuote.amountInSwapWei,
         );
+        _ensureSameWallet(wallet, address);
         if (!hasAllowance) {
           if (mounted) {
             _showSnack(locale.isThai
@@ -2200,32 +2547,50 @@ class _TradeScreenState extends State<TradeScreen>
         }
       }
 
-      // 4) ส่ง swap จริง — service เก็บ fee + บันทึก backend ให้ครบ
+      // 7) ส่ง swap จริง — service เก็บ fee + เข้าคิวบันทึก backend ให้ครบ
       // ห่อ sender เพื่อแนบ summary ให้ TPIX Wallet โชว์ตอนยืนยัน (linked)
       final actionText =
-          '${_isBuy ? 'Buy' : 'Sell'} $base — TPIX Trade market order';
+          '${isBuy ? 'Buy' : 'Sell'} $base — TPIX Trade market order';
       final result = await _swapService.executeMarketSwap(
         quote: swapQuote,
-        walletAddress: wallet.address!,
-        sendTx: ({required String to, Uint8List? data, BigInt? value}) =>
-            wallet.sendBscTransaction(
-          to: to,
-          data: data,
-          value: value,
-          summary: actionText,
+        walletAddress: address,
+        meta: SwapRecordMeta(
+          pair: pairSymbol,
+          side: isBuy ? 'buy' : 'sell',
+          price: marketPrice,
         ),
+        // minOut บนเชนไม่ต่ำกว่า "ได้รับอย่างน้อย" ที่ผู้ใช้เห็นในพรีวิว
+        minOutFloor: seen?.minOutWei,
+        // วัด price impact ไม่ได้ ยอมได้เพราะด่านเทียบราคาตลาด (ข้อ 2) ผ่านแล้ว
+        allowUnknownImpact: marketPrice > 0,
+        sendTx: ({required String to, Uint8List? data, BigInt? value}) {
+          // ด่านสุดท้ายก่อนเปิดกระเป๋า — กระเป๋าต้องยังเป็นใบเดียวกับตอนกดซื้อ
+          _ensureSameWallet(wallet, address);
+          return wallet.sendBscTransaction(
+            to: to,
+            data: data,
+            value: value,
+            summary: actionText,
+          );
+        },
       );
 
       if (!mounted) return;
 
-      _amountController.clear();
-      _marketQuote = null;
-      final received = '${_fmtAmount(swapQuote.netOutput)} $toSym';
+      // ล้างฟอร์มเฉพาะเมื่อยังเป็นไม้เดิม (ผู้ใช้อาจพิมพ์ไม้ถัดไประหว่างรอ)
+      if (_orderKey(market, wallet) == orderKey) _amountController.clear();
+      setState(() {
+        _marketQuote = null;
+        _previewKey = null;
+        _quickSpend = null;
+        _quickSpendKey = null;
+      });
+      final received = '${_fmtAmount(result.quote.netOutput)} $toSym';
       _showSnack(
         result.confirmed
             ? (locale.isThai
-                ? '${_isBuy ? 'ซื้อ' : 'ขาย'}สำเร็จ ≈ $received บน BSC'
-                : '${_isBuy ? 'Bought' : 'Sold'} ≈ $received on BSC')
+                ? '${isBuy ? 'ซื้อ' : 'ขาย'}สำเร็จ ≈ $received บน BSC'
+                : '${isBuy ? 'Bought' : 'Sold'} ≈ $received on BSC')
             : (locale.isThai
                 ? 'ส่งธุรกรรมแล้ว กำลังรอยืนยันบนเชน'
                 : 'Transaction sent — awaiting confirmation'),
@@ -2241,6 +2606,8 @@ class _TradeScreenState extends State<TradeScreen>
       _bscBalanceKey = null;
       _loadBscBalances();
       wallet.loadPortfolio();
+    } on TradeBlockedException catch (e) {
+      _showTradeBlocked(e, locale);
     } on SwapException catch (e) {
       if (mounted) _showSnack(e.message(locale.isThai));
     } catch (_) {
@@ -2264,13 +2631,6 @@ class _TradeScreenState extends State<TradeScreen>
     LocaleProvider locale,
     TradingPairInfo pair,
   ) async {
-    if (!_isMarket) {
-      _showSnack(locale.isThai
-          ? 'คำสั่งตั้งราคายังไม่เปิดบนเชน TPIX — ตอนนี้ใช้ Market'
-          : 'Limit orders are not open on TPIX Chain yet — use Market');
-      return;
-    }
-
     final amountText = _amountController.text;
     final amount = double.tryParse(amountText.trim());
     if (amount == null || amount <= 0) {
@@ -2284,6 +2644,9 @@ class _TradeScreenState extends State<TradeScreen>
     final isBuy = _isBuy;
     final address = wallet.address!;
     final pairSymbol = market.selectedPair;
+    final orderKey = _orderKey(market, wallet);
+    // ราคาที่ผู้ใช้เห็นในพรีวิว (ถ้าเป็นของไม้นี้) — อ่านก่อนขอราคาใหม่
+    final seen = _previewKey == orderKey ? _dexQuote : null;
 
     setState(() => _isSubmitting = true);
 
@@ -2291,6 +2654,9 @@ class _TradeScreenState extends State<TradeScreen>
     String? sendError;
 
     try {
+      // 0) ยืนยันกระเป๋า + ด่านยืนยันตัวตน — ต้องผ่านก่อนเงินออก
+      await _preflight(wallet, address);
+
       final (baseTok, quoteTok) = await _dexTokens(pair, market);
       final fromTok = isBuy ? quoteTok : baseTok;
       final toTok = isBuy ? baseTok : quoteTok;
@@ -2321,6 +2687,7 @@ class _TradeScreenState extends State<TradeScreen>
             );
 
       // 2) กันไม้ที่ดันราคาพูลเกิน 10% — เพดานเดียวกับเว็บ บอกจำนวนสูงสุดที่ส่งได้ด้วย
+      //    วัดไม่ได้ (อ่านพูลไม่ได้) = ไม่ส่งเช่นกัน — ไม่รู้ว่าพูลรับไม้ขนาดนี้ได้ไหม
       if (swapQuote.exceedsImpactLimit) {
         final en = _impactBlockedMessage(swapQuote, false, base);
         final th = _impactBlockedMessage(swapQuote, true, base);
@@ -2328,10 +2695,59 @@ class _TradeScreenState extends State<TradeScreen>
           setState(() {
             _dexQuote = swapQuote;
             _dexQuoteError = null;
+            _previewKey = null;
           });
         }
         throw SwapException(en, th);
       }
+
+      // ราคาใหม่ต้องไม่แย่กว่าที่ผู้ใช้เห็นในฟอร์ม — พูลขยับระหว่างพรีวิวกับกดส่ง = หยุด
+      // โชว์ตัวเลขใหม่ ให้กดยืนยันอีกครั้ง
+      //   ขาย (exact-in): ได้รับน้อยกว่า "ได้รับอย่างน้อย" ที่เห็น
+      //   ซื้อ (exact-out): ต้องจ่ายมากกว่าที่เห็นเกินค่า slippage ที่ตั้งไว้
+      if (seen != null) {
+        final worse = isBuy
+            ? swapQuote.amountIn > seen.amountIn * (1 + seen.slippage / 100)
+            : swapQuote.netOutput < seen.minReceived;
+        if (worse) {
+          if (mounted && _orderKey(market, wallet) == orderKey) {
+            setState(() {
+              _dexQuote = swapQuote;
+              _dexQuoteError = null;
+              _previewKey = orderKey;
+            });
+          }
+          throw isBuy
+              ? SwapException(
+                  'The pool price moved: this order now costs about ${_fmtAmount(swapQuote.amountIn)} ${fromTok.symbol}. Press again to confirm.',
+                  'ราคาพูลขยับแล้ว: ตอนนี้ต้องจ่ายประมาณ ${_fmtAmount(swapQuote.amountIn)} ${fromTok.symbol} กดอีกครั้งเพื่อยืนยัน',
+                )
+              : SwapException(
+                  'The pool price moved: you would now receive about ${_fmtAmount(swapQuote.netOutput)} ${toTok.symbol} (at least ${_fmtAmount(swapQuote.minReceived)}). Press again to confirm.',
+                  'ราคาพูลขยับแล้ว: ตอนนี้จะได้ประมาณ ${_fmtAmount(swapQuote.netOutput)} ${toTok.symbol} (อย่างน้อย ${_fmtAmount(swapQuote.minReceived)}) กดอีกครั้งเพื่อยืนยัน',
+                );
+        }
+      }
+
+      // ค่าวางไม้ของไม้บน TPIX Chain — จ่ายด้วยเครดิต TPIX ทุกไม้ (เจ้าของสั่ง 2026-11-13)
+      // ถามใบเสนอราคาสดก่อนขอ approve: ถามไม่ได้ / เครดิตไม่พอ = ไม่ส่ง (ยังไม่มีอะไรออกจากกระเป๋า)
+      // มูลค่าไม้ = ฝั่ง USDT ของไม้ (ที่อยู่ตรงกับ USDT ของทะเบียน DEX — ไม่เชื่อชื่อเหรียญ)
+      final usdt = (_dexService.lastConfig.usdt ?? '').toLowerCase();
+      bool isUsdt(VerifiedToken t) =>
+          !t.native && usdt.isNotEmpty && t.address.toLowerCase() == usdt;
+      final feePlan = await TradingFeeFlow.plan(
+        wallet: address,
+        pair: pairSymbol.replaceAll('-', '/'),
+        side: isBuy ? 'buy' : 'sell',
+        orderValueUsd: TradingFeeFlow.orderValueUsd(
+          fromIsStable: isUsdt(fromTok),
+          toIsStable: isUsdt(toTok),
+          amountIn: swapQuote.amountIn,
+          netOutput: swapQuote.netOutput,
+        ),
+        chainId: chainId,
+      );
+      _ensureSameWallet(wallet, address);
 
       // ยอดที่จะจ่ายต้องไม่เกินที่มีจริงบนเชน (อ่านได้แล้วเท่านั้น — ไม่รู้ยอดก็ปล่อยให้เชนตัดสิน)
       // เทียบเป็นหน่วยเล็กสุด — double ทำให้ "ขาย 100%" ของยอดหลักร้อยล้านเด้งว่าไม่พอ
@@ -2385,30 +2801,47 @@ class _TradeScreenState extends State<TradeScreen>
       // 4) ส่ง swap จริง — service บันทึกฝั่งเซิร์ฟเวอร์ให้แล้ว
       final actionText =
           '${isBuy ? 'Buy' : 'Sell'} $base — TPIX Trade (TPIX Chain)';
-      final result = await _dexService.executeMarketSwap(
-        quote: swapQuote,
-        walletAddress: address,
-        sendTx: ({required String to, Uint8List? data, BigInt? value}) async {
-          // ด่านสุดท้ายก่อนเปิดกระเป๋า — กระเป๋าต้องยังเป็นใบเดียวกับตอนกดซื้อ
-          _ensureSameWallet(wallet, address);
-          final hash = await wallet.sendChainTransaction(
-            chainId: chainId,
-            to: to,
-            data: data,
-            value: value,
-            summary: actionText,
-          );
-          if (hash == null) sendError = wallet.error;
-          return hash;
-        },
+      // ต้องมีใบอนุญาตวางไม้ (หักเครดิต TPIX) = ขอใบ → ส่ง → ผูกกับ tx → ปิดใบเมื่อไม้ยืนยัน
+      // ไม่มีอะไรออกจากกระเป๋า = คืนค่าบริการ · ออกไปแล้ว = เซิร์ฟเวอร์ตัดสินจากเชน (TradingFeeFlow)
+      final result = await TradingFeeFlow.send<TpixDexSwapResult>(
+        plan: feePlan,
+        isConfirmed: (r) => r.confirmed,
+        send: (onSent) => _dexService.executeMarketSwap(
+          quote: swapQuote,
+          walletAddress: address,
+          onSent: onSent,
+          meta: SwapRecordMeta(
+            pair: pairSymbol,
+            side: isBuy ? 'buy' : 'sell',
+            price: market.selectedTicker?.lastPrice,
+          ),
+          // ขาย: minOut บนเชนไม่ต่ำกว่า "ได้รับอย่างน้อย" ที่ผู้ใช้เห็นในพรีวิว
+          minOutFloor: isBuy ? null : seen?.minOutWei,
+          sendTx: (
+              {required String to, Uint8List? data, BigInt? value}) async {
+            // ด่านสุดท้ายก่อนเปิดกระเป๋า — กระเป๋าต้องยังเป็นใบเดียวกับตอนกดซื้อ
+            _ensureSameWallet(wallet, address);
+            final hash = await wallet.sendChainTransaction(
+              chainId: chainId,
+              to: to,
+              data: data,
+              value: value,
+              summary: actionText,
+            );
+            if (hash == null) sendError = wallet.error;
+            return hash;
+          },
+        ),
       );
 
       if (!mounted) return;
 
-      _amountController.clear();
+      // ล้างฟอร์มเฉพาะเมื่อยังเป็นไม้เดิม (ผู้ใช้อาจพิมพ์ไม้ถัดไประหว่างรอ)
+      if (_orderKey(market, wallet) == orderKey) _amountController.clear();
       setState(() {
         _dexQuote = null;
         _dexQuoteError = null;
+        _previewKey = null;
       });
       final received =
           '${_fmtAmount(swapQuote.netOutput)} ${toTok.symbol}';
@@ -2436,6 +2869,25 @@ class _TradeScreenState extends State<TradeScreen>
       wallet.loadPortfolio();
       // ป้องกันคนอ่านตัวเลขเก่า — quoteSym ใช้เฉพาะข้อความ ไม่ได้ใช้คำนวณ
       debugPrint('TPIX DEX order done: $base/$quoteSym');
+    } on TradeBlockedException catch (e) {
+      _showTradeBlocked(e, locale);
+    } on TradingFeeException catch (e) {
+      // ติดที่ค่าวางไม้ (ยังไม่มีอะไรออกจากกระเป๋า) — บอกเหตุ และพาไปเติมเครดิตที่หน้าเว็บถ้าขาด
+      if (mounted) {
+        _showSnack(
+          e.message(locale.isThai),
+          actionLabel: e.needsCredit
+              ? (locale.isThai ? 'เปิดหน้าเว็บ' : 'Open web')
+              : null,
+          onAction: e.needsCredit
+              ? () => launchUrl(
+                    Uri.parse(
+                        'https://tpix.online/trade/${Uri.encodeComponent(pairSymbol)}'),
+                    mode: LaunchMode.externalApplication,
+                  )
+              : null,
+        );
+      }
     } on SwapException catch (e) {
       // ส่งไม่ออก = เหตุจริงจาก WalletProvider ชัดกว่า "ถูกปฏิเสธหรือส่งไม่สำเร็จ"
       if (mounted) _showSnack(sendError ?? e.message(locale.isThai));
@@ -2785,22 +3237,78 @@ class _OrderBookRow extends StatelessWidget {
 
 class _OpenOrderRow extends StatelessWidget {
   final TradeOrder order;
-  final VoidCallback onCancel;
+  final LocaleProvider locale;
 
-  const _OpenOrderRow({required this.order, required this.onCancel});
+  /// null = ยกเลิกไม่ได้ (คำสั่งตั้งราคาที่ส่งธุรกรรมไปแล้ว รอผลบนเชน)
+  final VoidCallback? onCancel;
+
+  /// กำลังยกเลิกอยู่ — ปิดปุ่มกันกดซ้ำ
+  final bool busy;
+
+  const _OpenOrderRow({
+    required this.order,
+    required this.locale,
+    required this.onCancel,
+    this.busy = false,
+  });
+
+  String _fmt(double v) {
+    if (v >= 1000) return v.toStringAsFixed(2);
+    if (v >= 1) return v.toStringAsFixed(4);
+    return v.toStringAsFixed(8).replaceFirst(RegExp(r'0+$'), '').replaceFirst(
+        RegExp(r'\.$'), '');
+  }
+
+  /// ป้ายสถานะ — คำสั่งตั้งราคา: รอราคา / รอผลบนเชน · ชนิดเดิม: ไม่มีป้าย
+  String? _statusLabel(bool th) {
+    if (order.isWaitingForPrice) return th ? 'รอราคา' : 'Waiting for price';
+    if (order.isAwaitingChain) {
+      return th ? 'รอผลบนเชน' : 'Awaiting chain result';
+    }
+    return null;
+  }
+
+  String _typeLabel(bool th) => switch (order.type) {
+        'limit' => 'Limit',
+        'market' => 'Market',
+        'stop-limit' => 'Stop-limit',
+        _ => order.type,
+      };
 
   @override
   Widget build(BuildContext context) {
-    final isBuy = order.isBuy;
+    final th = locale.isThai;
+    // ฝั่งที่ไม่ใช่ buy/sell = เป็นกลาง (ห้ามวาดเป็น "ขาย" สีแดง)
+    final sideColor = switch (order.tradeSide) {
+      TradeSide.buy => AppColors.tradingGreen,
+      TradeSide.sell => AppColors.tradingRed,
+      TradeSide.neutral => AppColors.textSecondary,
+    };
+    final sideLabel = switch (order.tradeSide) {
+      TradeSide.buy => locale.t('trade.buy'),
+      TradeSide.sell => locale.t('trade.sell'),
+      TradeSide.neutral => th ? 'คำสั่ง' : 'Order',
+    };
+    final status = _statusLabel(th);
+    final pairText = order.pairKey.replaceAll('-', '/');
+    final parts = order.pairKey.split('-');
+    final baseSym = parts.isNotEmpty ? parts.first : '';
+    final quoteSym = parts.length > 1 ? parts[1] : '';
+    final price = order.price;
+    final priceText = price != null && price > 0
+        ? '${_fmt(price)} $quoteSym'.trim()
+        : (th ? 'ราคาตลาด' : 'market');
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             width: 6,
-            height: 30,
+            height: 34,
             decoration: BoxDecoration(
-              color: isBuy ? AppColors.tradingGreen : AppColors.tradingRed,
+              color: sideColor,
               borderRadius: BorderRadius.circular(3),
             ),
           ),
@@ -2809,43 +3317,79 @@ class _OpenOrderRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${order.side.toUpperCase()} ${order.type}',
-                  style: AppFonts.ui(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: isBuy
-                        ? AppColors.tradingGreen
-                        : AppColors.tradingRed,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        '$sideLabel $pairText · ${_typeLabel(th)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppFonts.ui(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: sideColor,
+                        ),
+                      ),
+                    ),
+                    if (status != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: AppColors.goldTint,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: AppColors.goldBorder, width: 0.6),
+                        ),
+                        child: Text(
+                          status,
+                          style: AppFonts.ui(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.gold1,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
+                const SizedBox(height: 2),
                 Text(
-                  '${order.amount.toStringAsFixed(4)} @ ${order.price?.toStringAsFixed(2) ?? 'market'}',
+                  '${_fmt(order.amount)} $baseSym @ $priceText',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: AppTheme.mono(
-                      fontSize: 10, color: AppColors.textTertiary),
+                      fontSize: 10.5, color: AppColors.textTertiary),
                 ),
               ],
             ),
           ),
-          GestureDetector(
-            onTap: onCancel,
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.tradingRedBg,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                'Cancel',
-                style: AppFonts.ui(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.tradingRed),
+          if (onCancel != null) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: busy ? null : onCancel,
+              behavior: HitTestBehavior.opaque,
+              child: Opacity(
+                opacity: busy ? 0.5 : 1,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.tradingRedBg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    locale.t('common.cancel'),
+                    style: AppFonts.ui(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.tradingRed),
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

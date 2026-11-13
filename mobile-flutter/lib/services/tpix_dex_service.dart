@@ -29,7 +29,9 @@ import '../models/chain_config.dart';
 import 'api_service.dart';
 // ใช้ชนิดข้อมูลร่วมกับฝั่ง BSC เพื่อให้หน้าจอถือผลลัพธ์แบบเดียวกันได้
 // (VerifiedToken = โทเคนที่ตรวจ decimals กับเชนแล้ว · SwapException = ข้อความ 2 ภาษา)
-import 'bsc_swap_service.dart' show SwapException, VerifiedToken;
+import 'bsc_swap_service.dart'
+    show SwapException, SwapRecordMeta, VerifiedToken;
+import 'pending_swap_records.dart';
 import 'rpc_failover.dart';
 
 /// ค่าธรรมเนียมของพูล UniV2 — เข้าพูลทั้งก้อน ไม่ได้หักเพิ่มจากผู้ใช้
@@ -37,6 +39,12 @@ const double kTpixPoolFeePct = 0.3;
 
 /// เพดาน price impact ต่อไม้ — **ต้องเท่ากับเว็บ** (Trade.vue: `quote.priceImpact > 10` = ไม่ส่ง)
 const double kTpixMaxPriceImpactPct = 10;
+
+/// วัด price impact ไม่ได้ (อ่าน reserve ไม่ได้ และไม้จิ๋วก็วัดไม่ได้) — ไม่รู้ = ไม่ส่ง
+const SwapException kTpixImpactUnknown = SwapException(
+  "Couldn't read the pool to check how far this order moves the price — try again in a moment.",
+  'อ่านพูลไม่ได้ จึงตรวจไม่ได้ว่าคำสั่งนี้ดันราคาแค่ไหน — ลองใหม่อีกครั้ง',
+);
 
 /// ข้อความเมื่อเชนติดต่อไม่ได้ (ทุก RPC ส่งไม่ถึง) — แยกจาก "ไม่มีสภาพคล่อง" ให้ชัด
 const SwapException kTpixChainUnreachable = SwapException(
@@ -96,7 +104,9 @@ class TpixDexQuote {
   final double slippage;
 
   /// ราคาที่ไม้นี้ดันพูลไป (%) — 0 = พูลลึกพอจนแทบไม่ขยับ
-  final double priceImpact;
+  /// **null = วัดไม่ได้** (อ่าน reserve ไม่ได้ และไม้จิ๋วก็วัดไม่ได้) — ไม่ใช่ 0
+  /// เดิมกรณีนี้กลายเป็น 0 แล้วผ่านด่าน 10% ทุกไม้ ไม่ว่าจะใหญ่แค่ไหน
+  final double? priceImpact;
 
   final BigInt amountInWei;
   final BigInt rawAmountOut;
@@ -129,8 +139,19 @@ class TpixDexQuote {
 
   double get feeRate => kTpixPoolFeePct;
 
-  /// ไม้นี้เกินเพดานเดียวกับเว็บ — ส่งไม่ได้
-  bool get exceedsImpactLimit => priceImpact > kTpixMaxPriceImpactPct;
+  /// วัด price impact ไม่ได้ — ไม่รู้ว่าพูลรับไม้ขนาดนี้ได้หรือเปล่า
+  bool get impactUnknown {
+    final v = priceImpact;
+    return v == null || !v.isFinite;
+  }
+
+  /// ไม้นี้ส่งไม่ได้ — เกินเพดานเดียวกับเว็บ **หรือวัดไม่ได้** (fail-closed
+  /// เหมือน `isPriceImpactBlocked` ใน useTpixDex.js: ไม่รู้ค่า = บล็อก)
+  bool get exceedsImpactLimit =>
+      impactUnknown || priceImpact! > kTpixMaxPriceImpactPct;
+
+  /// minOut ที่จะส่งเข้า router ถ้าใช้ quote นี้ — สูตรเดียวกับ executeMarketSwap
+  BigInt get minOutWei => TpixDexService.minOutFor(rawAmountOut, slippage);
 
   /// จ่ายเข้าได้มากสุดเท่าไร (หน่วย fromToken) โดยไม่ดันราคาเกินเพดาน — null = ไม่รู้ reserve
   double? get maxAmountInUnderLimit {
@@ -725,21 +746,22 @@ class TpixDexService {
     }
 
     // อ่าน reserve ไม่ได้ / วิ่ง 2 ฮอป → วัดด้วย quote ก้อนจิ๋ว (1/1000 ของไม้) แทน
-    // ห้ามปล่อยเป็น 0 เพราะ 0 = ผ่านด่าน 10% ทุกไม้ ไม่ว่าจะใหญ่แค่ไหน
+    // วัดไม่ได้ทั้งสองทาง = คง null ไว้ ("ไม่รู้") — ห้ามปล่อยเป็น 0 เพราะ 0 = ผ่านด่าน 10%
+    // ทุกไม้ ไม่ว่าจะใหญ่แค่ไหน (ผู้ใช้/ตัวส่งต้องบล็อกเมื่อไม่รู้ — [exceedsImpactLimit])
     if (priceImpact == null) {
-      priceImpact = 0;
+      List<BigInt>? probe;
       final probeWei = amountInWei ~/ BigInt.from(1000);
       if (probeWei > BigInt.zero) {
-        final probe =
+        // เชนติดต่อไม่ได้ตอนวัด = โยน kTpixChainUnreachable ต่อ (บอกเหตุจริง ไม่ใช่ "วัดไม่ได้")
+        probe =
             await _routerAmounts('getAmountsOut', router, probeWei, usedPath);
-        if (probe != null && probe.isNotEmpty && probe.last > BigInt.zero) {
-          final spot = probe.last.toDouble() / probeWei.toDouble();
-          final effective = rawOut.toDouble() / amountInWei.toDouble();
-          if (spot > 0) {
-            priceImpact = math.max(0, (1 - effective / spot) * 100).toDouble();
-          }
-        }
       }
+      priceImpact = probeImpactPct(
+        amountIn: amountInWei,
+        amountOut: rawOut,
+        probeIn: probeWei,
+        probeOut: probe == null || probe.isEmpty ? null : probe.last,
+      );
     }
 
     return TpixDexQuote(
@@ -749,7 +771,9 @@ class TpixDexService {
       netOutput: netOutput,
       minReceived: minReceived,
       slippage: slippage,
-      priceImpact: double.parse(priceImpact.toStringAsFixed(4)),
+      priceImpact: priceImpact == null
+          ? null
+          : double.parse(priceImpact.toStringAsFixed(4)),
       amountInWei: amountInWei,
       rawAmountOut: rawOut,
       path: usedPath,
@@ -757,6 +781,35 @@ class TpixDexService {
       reserveIn: reserveIn,
       reserveOut: reserveOut,
     );
+  }
+
+  /// price impact (%) จากการเทียบไม้จริงกับไม้จิ๋วบนเส้นทางเดียวกัน — ฟังก์ชันเพียวไว้ทดสอบ
+  ///
+  /// **null = วัดไม่ได้** (ไม้เล็กจนแบ่ง 1/1000 ไม่ได้ / ไม้จิ๋ว revert / อ่านเชนไม่ได้)
+  /// ห้ามแปลงเป็น 0 — ดู [TpixDexQuote.exceedsImpactLimit]
+  static double? probeImpactPct({
+    required BigInt amountIn,
+    required BigInt amountOut,
+    required BigInt probeIn,
+    required BigInt? probeOut,
+  }) {
+    if (amountIn <= BigInt.zero ||
+        probeIn <= BigInt.zero ||
+        probeOut == null ||
+        probeOut <= BigInt.zero) {
+      return null;
+    }
+    final spot = probeOut.toDouble() / probeIn.toDouble();
+    final effective = amountOut.toDouble() / amountIn.toDouble();
+    if (!(spot > 0) || !spot.isFinite || !effective.isFinite) return null;
+    return math.max(0, (1 - effective / spot) * 100).toDouble();
+  }
+
+  /// minOut จาก slippage เท่านั้น — คิดเป็น basis point ป้องกัน float
+  static BigInt minOutFor(BigInt rawAmountOut, double slippagePct) {
+    final slipBps =
+        BigInt.from(math.max(0, ((1 - slippagePct / 100) * 10000).floor()));
+    return (rawAmountOut * slipBps) ~/ BigInt.from(10000);
   }
 
   /// เรียก getAmountsOut/getAmountsIn ของ router
@@ -854,22 +907,36 @@ class TpixDexService {
   ///
   /// ไม่มีขั้นเก็บค่าธรรมเนียมแยกเหมือนฝั่ง BSC เพราะพูลกิน 0.3% ในตัวอยู่แล้ว
   /// (ฝั่งเซิร์ฟเวอร์รับ fee_amount = 0 สำหรับเชน 4289 — `fee_model: in_pool`)
+  ///
+  /// [meta] = คู่/ฝั่ง/ราคา จากกระดานเทรด · [minOutFloor] = "ได้รับอย่างน้อย" ที่ผู้ใช้เห็นบนจอ
+  /// ก่อนกด — minOut บนเชนจะไม่ต่ำกว่านี้
+  /// [onSent] ถูกเรียกทันทีที่ธุรกรรมออกจากกระเป๋า (รู้ tx hash) ก่อนรอลงบล็อก — ใช้ผูกใบอนุญาต
+  /// วางไม้กับธุรกรรม (TradingFeeFlow) · error ที่โยนหลังจุดนี้ = ธุรกรรมออกไปแล้ว
   Future<TpixDexSwapResult> executeMarketSwap({
     required TpixDexQuote quote,
     required String walletAddress,
     required DexTxSender sendTx,
+    SwapRecordMeta? meta,
+    BigInt? minOutFloor,
+    void Function(String txHash)? onSent,
   }) async {
     // ด่านสุดท้ายก่อนแตะเงิน — กติกาเดียวกับเว็บ ไม่ว่าหน้าจอจะเช็กมาแล้วหรือยัง
+    // วัดไม่ได้ = ไม่ส่ง (ไม่รู้ว่าพูลรับไม้ขนาดนี้ได้หรือเปล่า)
+    if (quote.impactUnknown) throw kTpixImpactUnknown;
     if (quote.exceedsImpactLimit) {
+      final impact = quote.priceImpact!.toStringAsFixed(1);
       throw SwapException(
-        'This order moves the pool price by ${quote.priceImpact.toStringAsFixed(1)}% (limit ${kTpixMaxPriceImpactPct.toStringAsFixed(0)}%).',
-        'คำสั่งนี้ดันราคาพูลไป ${quote.priceImpact.toStringAsFixed(1)}% (เพดาน ${kTpixMaxPriceImpactPct.toStringAsFixed(0)}%)',
+        'This order moves the pool price by $impact% (limit ${kTpixMaxPriceImpactPct.toStringAsFixed(0)}%).',
+        'คำสั่งนี้ดันราคาพูลไป $impact% (เพดาน ${kTpixMaxPriceImpactPct.toStringAsFixed(0)}%)',
       );
     }
 
-    final slipBps =
-        BigInt.from(math.max(0, ((1 - quote.slippage / 100) * 10000).floor()));
-    final minOut = (quote.rawAmountOut * slipBps) ~/ BigInt.from(10000);
+    var minOut = minOutFor(quote.rawAmountOut, quote.slippage);
+    if (minOutFloor != null &&
+        minOutFloor > minOut &&
+        minOutFloor <= quote.rawAmountOut) {
+      minOut = minOutFloor;
+    }
     if (minOut <= BigInt.zero) {
       throw const SwapException(
         'Slippage too high — please adjust and retry.',
@@ -918,8 +985,35 @@ class TpixDexService {
       );
     }
 
+    // แจ้งผู้เรียกว่าธุรกรรมออกจากกระเป๋าแล้ว (ผูกใบอนุญาตวางไม้) — ห้ามให้ callback ทำไม้ล้ม
+    try {
+      onSent?.call(txHash);
+    } catch (e) {
+      debugPrint('TPIX DEX onSent: ${e.runtimeType}');
+    }
+
+    // เข้าคิวบันทึกทันทีที่ธุรกรรมออกจากกระเป๋า — แอปถูกปิดระหว่างรอ / 403 / 5xx ก็ยังส่งใหม่ได้
+    // (เซิร์ฟเวอร์จัดทำดัชนีสวอปของ DEX เองด้วย แถวนี้ช่วยให้ประวัติ/ป้ายบนกราฟขึ้นทันที)
+    final queue = PendingSwapRecords.I;
+    await queue.upsert(PendingSwapRecords.buildRecord(
+      fromToken:
+          quote.fromToken.native ? nativeAddress : quote.fromToken.address,
+      toToken: quote.toToken.native ? nativeAddress : quote.toToken.address,
+      fromAmount: quote.amountIn,
+      toAmount: quote.netOutput,
+      feeAmount: 0, // ค่าธรรมเนียมอยู่ในพูล
+      txHash: txHash,
+      chainId: _config.chainId,
+      walletAddress: walletAddress,
+      pair: meta?.pair,
+      side: meta?.side,
+      price: meta?.price,
+    ));
+
     final receipt = await _waitReceipt(txHash, attempts: 40);
     if (receipt != null && receipt.status == false) {
+      // ไม้ไม่ลง — ไม่มีอะไรให้บันทึก
+      await queue.remove(txHash);
       throw const SwapException(
         'Swap failed on-chain. Try a smaller amount or higher slippage.',
         'สวอปล้มเหลวบนเชน ลองจำนวนน้อยลงหรือเพิ่ม slippage',
@@ -927,22 +1021,8 @@ class TpixDexService {
     }
     final confirmed = receipt?.status == true;
 
-    // บันทึกฝั่งเซิร์ฟเวอร์ (best-effort) — ให้ประวัติ/ป้ายบนกราฟเห็นไม้นี้
-    try {
-      await ApiService().recordSwapExecution(
-        fromToken:
-            quote.fromToken.native ? nativeAddress : quote.fromToken.address,
-        toToken: quote.toToken.native ? nativeAddress : quote.toToken.address,
-        fromAmount: quote.amountIn,
-        toAmount: quote.netOutput,
-        feeAmount: 0, // ค่าธรรมเนียมอยู่ในพูล
-        txHash: txHash,
-        chainId: _config.chainId,
-        walletAddress: walletAddress,
-      );
-    } catch (e) {
-      debugPrint('recordSwapExecution (TPIX DEX) failed: ${e.runtimeType}');
-    }
+    // แจ้งเซิร์ฟเวอร์ — ไม่สำเร็จ แถวยังอยู่ในคิว ส่งใหม่ตอนโหลดพอร์ต/เปิดแอปครั้งถัดไป
+    await queue.submit(txHash);
 
     return TpixDexSwapResult(
       txHash: txHash,

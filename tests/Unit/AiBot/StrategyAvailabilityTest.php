@@ -3,6 +3,7 @@
 namespace Tests\Unit\AiBot;
 
 use App\Services\AiBot\StrategyAvailability;
+use App\Services\ContractRegistry;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -71,7 +72,42 @@ class StrategyAvailabilityTest extends TestCase
         $this->assertFalse($status['available']);
         $this->assertNotEmpty($status['reason']);
         $this->assertNotEmpty($status['reason_en']);
-        $this->assertStringContainsString('DEX', $status['reason']);
+        $this->assertStringContainsString('เร็วๆ นี้', $status['reason']);
+        $this->assertStringContainsString('Coming soon', $status['reason_en']);
+        $this->assertTrue($status['coming_soon']);
+    }
+
+    /**
+     * ⭐ DEX พร้อมอย่างเดียวต้องไม่เปิดอาร์บิทราจ — ArbitrageStrategy ยังคืน "ถือ" ทุกรอบ.
+     *
+     * เดิมพอพูล DEX ขึ้น production แคตตาล็อกก็รายงาน available=true ทันที ผู้ใช้ VIP
+     * สร้างบอทที่ไม่มีวันเข้าไม้ได้ ต้องรอธง implemented ที่คนตั้งเองเมื่อทำเสร็จจริง
+     */
+    #[Test]
+    public function dex_พร้อมแล้วอาร์บิทราจก็ยังเป็นเร็วๆนี้จนกว่าจะตั้งธงว่าทำเสร็จ(): void
+    {
+        $this->mock(ContractRegistry::class, fn ($mock) => $mock->shouldReceive('dexReady')->andReturn(true));
+        $availability = new StrategyAvailability();
+
+        $status = $availability->check('arbitrage');
+        $this->assertFalse($status['available']);
+        $this->assertTrue($status['coming_soon']);
+        $this->assertNotContains('arbitrage', $availability->availableCodes());
+
+        // ตั้งธงว่าทำเสร็จแล้ว + DEX พร้อม = เปิดได้ (ธงเป็นตัวเปิด ไม่ใช่ DEX)
+        config(['aibot.strategies' => collect(config('aibot.strategies'))
+            ->map(fn (array $s) => $s['code'] === 'arbitrage' ? ['implemented' => true] + $s : $s)
+            ->all()]);
+
+        $this->assertTrue((new StrategyAvailability())->isAvailable('arbitrage'));
+    }
+
+    /** ถอดออกจากการขาย ≠ เร็วๆ นี้ — หน้าจอติดป้ายคนละแบบ */
+    #[Test]
+    public function กลยุทธ์ที่ถอดแล้วไม่ถูกติดป้ายเร็วๆนี้(): void
+    {
+        $this->assertFalse($this->availability->check('scalping')['coming_soon']);
+        $this->assertFalse($this->availability->check('grid')['coming_soon']);
     }
 
     #[Test]
@@ -84,10 +120,12 @@ class StrategyAvailabilityTest extends TestCase
         foreach ($decorated as $strategy) {
             $this->assertArrayHasKey('available', $strategy);
             $this->assertArrayHasKey('unavailable_reason', $strategy);
+            $this->assertArrayHasKey('coming_soon', $strategy);
         }
 
         $arbitrage = collect($decorated)->firstWhere('code', 'arbitrage');
         $this->assertFalse($arbitrage['available']);
+        $this->assertTrue($arbitrage['coming_soon']);
 
         $grid = collect($decorated)->firstWhere('code', 'grid');
         $this->assertTrue($grid['available']);
@@ -102,7 +140,7 @@ class StrategyAvailabilityTest extends TestCase
         $this->assertNotContains('arbitrage', $codes);
         $this->assertContains('grid', $codes);
 
-        // หายไปสองตัว: อาร์บิทราจ (รอ DEX) + สแกลป์ (ถอดออกจากการขาย)
+        // หายไปสองตัว: อาร์บิทราจ (เร็วๆ นี้) + สแกลป์ (ถอดออกจากการขาย)
         $retired = collect(config('aibot.strategies'))->where('retired', true)->count();
         $this->assertCount(count(config('aibot.strategies')) - 1 - $retired, $codes);
     }

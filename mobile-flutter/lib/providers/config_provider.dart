@@ -44,11 +44,23 @@ class ConfigProvider extends ChangeNotifier {
   DateTime? _lastLoadedAt;
   int? _activeChainId; // chain ที่ใช้ดึง fees ล่าสุด — refetch ถ้าเปลี่ยน
 
+  // ทะเบียนคู่จากเซิร์ฟเวอร์: เคยโหลดสำเร็จหรือยัง / ครั้งล่าสุดล้มไหม / กำลังโหลดอยู่ไหม
+  // หน้าเทรดใช้ตัดสินว่าคู่ BSC ส่งคำสั่งได้หรือยัง (bscPairGate) — ยังไม่รู้ = ห้ามส่ง
+  bool _pairsLoaded = false;
+  bool _pairsLoadFailed = false;
+  Future<void>? _pairsReload;
+
   FeeConfig? get fees => _fees;
   List<ChainInfo> get chains => _chains;
   List<TradingPairInfo> get pairs => _pairs;
   bool get isLoading => _isLoading;
   bool get isReady => _fees != null && _chains.isNotEmpty;
+
+  /// เคยได้ทะเบียนคู่จากเซิร์ฟเวอร์สำเร็จแล้ว (รายการอาจว่างจริง)
+  bool get pairsLoaded => _pairsLoaded;
+
+  /// ยังไม่เคยได้ทะเบียนคู่ และครั้งล่าสุดที่ขอล้มเหลว (เน็ตหลุด/เซิร์ฟเวอร์ผิดพลาด)
+  bool get pairsLoadFailed => !_pairsLoaded && _pairsLoadFailed;
   int? get activeChainId => _activeChainId;
 
   /// ค่า fee rate ที่ใช้งานจริง (% ของ trade amount)
@@ -97,13 +109,44 @@ class ConfigProvider extends ChangeNotifier {
     }).toList();
   }
 
-  /// หา trading pair ตาม symbol (BTC-USDT)
+  /// หา trading pair ตาม symbol (BTC-USDT) — ไม่สนตัวพิมพ์เล็ก/ใหญ่
   TradingPairInfo? pairBySymbol(String symbol) {
-    try {
-      return _pairs.firstWhere((p) => p.symbol == symbol);
-    } catch (_) {
-      return null;
+    final wanted = symbol.toUpperCase();
+    for (final p in _pairs) {
+      if (p.symbol.toUpperCase() == wanted) return p;
     }
+    return null;
+  }
+
+  /// ขอทะเบียนคู่ใหม่ (เช่นผู้ใช้กด "ลองใหม่" ตอนตรวจสถานะคู่ไม่สำเร็จ)
+  /// เรียกซ้อนกัน = ได้รอบเดิม
+  Future<void> reloadPairs() {
+    final running = _pairsReload;
+    if (running != null) return running;
+    late final Future<void> run;
+    run = _api.getPairs().then<void>((pairs) {
+      _applyPairs(pairs);
+      notifyListeners();
+    }).catchError((Object e) {
+      debugPrint('reloadPairs: ${e.runtimeType}');
+      _applyPairs(null);
+      notifyListeners();
+    }).whenComplete(() {
+      if (identical(_pairsReload, run)) _pairsReload = null;
+    });
+    _pairsReload = run;
+    return run;
+  }
+
+  /// เก็บผลโหลดทะเบียนคู่ — null = ขอไม่สำเร็จ (คงรายการเดิมไว้ ไม่ล้างเป็นว่าง)
+  void _applyPairs(List<TradingPairInfo>? pairs) {
+    if (pairs == null) {
+      _pairsLoadFailed = true;
+      return;
+    }
+    _pairs = pairs;
+    _pairsLoaded = true;
+    _pairsLoadFailed = false;
   }
 
   /// หา chain ตาม chainId
@@ -144,7 +187,7 @@ class ConfigProvider extends ChangeNotifier {
     });
     final pairsFuture = _api.getPairs().catchError((e) {
       debugPrint('getPairs: ${e.runtimeType}');
-      return <TradingPairInfo>[];
+      return null as List<TradingPairInfo>?;
     });
 
     final fees = await feesFuture;
@@ -154,10 +197,11 @@ class ConfigProvider extends ChangeNotifier {
     // อัพเดตเฉพาะตัวที่ได้ผล — ไม่ overwrite ด้วย empty ถ้าเคยโหลดสำเร็จ
     if (fees != null) _fees = fees;
     if (chains.isNotEmpty) _chains = chains;
-    if (pairs.isNotEmpty) _pairs = pairs;
+    // ทะเบียนคู่: ได้คำตอบ = ใช้ของใหม่ (แม้ว่างจริง — แอดมินปิดทุกคู่ต้องมีผล) · ขอไม่สำเร็จ = คงของเดิม
+    _applyPairs(pairs);
 
     // ถ้าได้ของใหม่อย่างน้อย 1 ตัว ถือว่าโหลดสำเร็จ (update lastLoadedAt)
-    if (fees != null || chains.isNotEmpty || pairs.isNotEmpty) {
+    if (fees != null || chains.isNotEmpty || pairs != null) {
       _lastLoadedAt = DateTime.now();
     }
 

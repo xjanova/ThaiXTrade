@@ -86,6 +86,9 @@ vi.mock('@/Composables/useSounds', () => ({
 }));
 
 vi.mock('@/Composables/useAiBot', () => ({
+    // หน้าต่างเติมเครดิตจำธุรกรรมที่ค้างยืนยันไว้ — เทสต์ชุดนี้ไม่มีรายการค้าง
+    readPendingTopup: () => null,
+    writePendingTopup: vi.fn(),
     useAiBot: () => ({
         ...state,
         runningBots: computed(() => state.bots.value.filter(b => b.status === 'running')),
@@ -251,6 +254,7 @@ describe('AiTradeCard', () => {
         }
     });
 
+    /** เลือกแพ็ก = เปิดหน้าต่างเติมเครดิต ซึ่งขอใบแจ้งชำระของแพ็กนั้นจากเซิร์ฟเวอร์ */
     it('creates a top-up request when a credit pack is picked', async () => {
         wallet.isConnected = true;
         state.topupEnabled.value = true;

@@ -100,7 +100,7 @@ describe('OpenOrders', () => {
         expect(get).not.toHaveBeenCalled();
     });
 
-    it('explains why the list is empty (market orders fill instantly on BSC)', async () => {
+    it('explains why the list is empty (market orders fill instantly, limit orders wait here)', async () => {
         connect();
         respondWith([]);
 
@@ -108,8 +108,95 @@ describe('OpenOrders', () => {
         const empty = wrapper.find('[data-test="orders-empty"]');
 
         expect(empty.exists()).toBe(true);
-        expect(empty.text()).toContain('Market orders on BSC fill instantly');
-        expect(empty.text()).toContain('Limit orders are coming soon');
+        expect(empty.text()).toContain('Market orders fill instantly');
+        expect(empty.text()).toContain('Limit orders still waiting for their price are listed here');
+        // เดิมบอกว่า "coming soon" — ตอนนี้ใช้ได้จริงแล้ว ข้อความเก่าต้องไม่ค้าง
+        expect(empty.text()).not.toContain('coming soon');
+    });
+
+    // ── คำสั่งตั้งราคาของคู่บนเชน (source = limit) ───────────────────────────
+
+    const LIMIT_WAITING = {
+        id: 'l1', pair: 'BTC-USDT', side: 'buy', type: 'limit', price: '50000', amount: '0.002',
+        filled_amount: '0', total: '100', status: 'open', source: 'limit', created_at: ISO,
+    };
+    const LIMIT_SENT = { ...LIMIT_WAITING, id: 'l2', status: 'submitted', tx_hash: `0x${'a'.repeat(64)}` };
+
+    it('labels limit orders by state and offers Confirm only when the price is reached', async () => {
+        connect();
+        respondWith([LIMIT_WAITING, LIMIT_SENT]);
+
+        const wrapper = await mountOrders({ readyIds: [] });
+        const badges = () => wrapper.findAll('[data-test="orders-limit-status"]').map(b => b.text());
+
+        expect(badges()).toEqual(['Waiting for price', 'Awaiting chain result']);
+        expect(wrapper.find('[data-test="orders-execute"]').exists()).toBe(false);
+
+        await wrapper.setProps({ readyIds: ['l1'] });
+        expect(badges()).toEqual(['Price reached', 'Awaiting chain result']);
+
+        await wrapper.find('[data-test="orders-execute"]').trigger('click');
+        expect(wrapper.emitted('execute')).toEqual([['l1']]);
+    });
+
+    it('disables Confirm while the trade page is already sending an order', async () => {
+        connect();
+        respondWith([LIMIT_WAITING]);
+
+        const wrapper = await mountOrders({ readyIds: ['l1'], busy: true });
+
+        expect(wrapper.find('[data-test="orders-execute"]').attributes('disabled')).toBeDefined();
+    });
+
+    it('does not offer Cancel for a limit order whose transaction was already sent', async () => {
+        connect();
+        respondWith([LIMIT_WAITING, LIMIT_SENT]);
+
+        const wrapper = await mountOrders();
+        const rows = wrapper.findAll('[data-test="orders-row"]');
+
+        expect(rows[0].find('[data-test="orders-cancel"]').exists()).toBe(true);
+        expect(rows[1].find('[data-test="orders-cancel"]').exists()).toBe(false);
+
+        // "ยกเลิกทั้งหมด" ต้องข้ามตัวที่ส่งธุรกรรมแล้ว — ยิงไปก็โดนปฏิเสธและขึ้นว่ายกเลิกไม่ครบ
+        del.mockResolvedValue({ data: { success: true } });
+        await wrapper.find('[data-test="orders-cancel-all"]').trigger('click');
+        await flushPromises();
+
+        expect(del).toHaveBeenCalledTimes(1);
+        expect(del.mock.calls[0][0]).toContain('/l1');
+    });
+
+    it('tells the trade page when a limit order is cancelled so it stops watching the price', async () => {
+        connect();
+        respondWith([LIMIT_WAITING, ORDERS[0]]);
+        del.mockResolvedValue({ data: { success: true } });
+
+        const wrapper = await mountOrders();
+        const cancels = wrapper.findAll('[data-test="orders-cancel"]');
+
+        await cancels[1].trigger('click');   // คำสั่งชนิดเดิม — ไม่ต้องแจ้ง
+        await flushPromises();
+        expect(wrapper.emitted('changed')).toBeUndefined();
+
+        await wrapper.find('[data-test="orders-cancel"]').trigger('click');   // คำสั่งตั้งราคา
+        await flushPromises();
+        expect(wrapper.emitted('changed')).toHaveLength(1);
+    });
+
+    it('reloads when the trade page signals that the order list changed', async () => {
+        connect();
+        respondWith([]);
+
+        const wrapper = await mountOrders({ refreshKey: 0 });
+        expect(get).toHaveBeenCalledTimes(1);
+
+        respondWith([LIMIT_WAITING]);
+        await wrapper.setProps({ refreshKey: 1 });
+        await flushPromises();
+
+        expect(get).toHaveBeenCalledTimes(2);
+        expect(rowCount(wrapper)).toBe(1);
     });
 
     it('renders orders without a $ sign and with real fill progress', async () => {

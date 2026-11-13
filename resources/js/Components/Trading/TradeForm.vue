@@ -105,27 +105,31 @@ const slippage = ref(preferredSlippage());
 
 let flashTimer = null;
 
-// โหมด onchain: limit โชว์ไว้แต่กดไม่ได้ (AMM ทำ limit order ไม่ได้จนกว่า
-// order book บน TPIX Chain จะเปิด) — market เท่านั้นที่ execute จริง
-const orderTypes = computed(() => {
-    if (props.mode === 'onchain') {
-        return [
-            { value: 'limit', labelKey: 'trade.form.limit', disabled: true },
-            { value: 'market', labelKey: 'trade.form.marketType' },
-        ];
-    }
-    return [
-        { value: 'limit', labelKey: 'trade.form.limit' },
-        { value: 'market', labelKey: 'trade.form.marketType' },
-    ];
-});
+/*
+ * ชนิดคำสั่ง — ทั้งสองแบบใช้ได้จริงในทุกโหมด
+ *
+ * โหมด onchain (AMM ไม่มีสมุดคำสั่ง): limit = "คำสั่งรอราคา" เก็บไว้ที่เซิร์ฟเวอร์
+ * พอราคาถึง หน้าเทรด/แอปให้ยืนยันในกระเป๋า แล้วส่งไม้ที่ล็อก "ได้รับอย่างน้อย" ตามราคาที่ตั้งบนเชน
+ * (เดิมแท็บนี้โชว์ไว้แต่กดไม่ได้ ติดป้าย "เร็วๆ นี้")
+ */
+const orderTypes = computed(() => [
+    { value: 'limit', labelKey: 'trade.form.limit' },
+    { value: 'market', labelKey: 'trade.form.marketType' },
+]);
 
 const limitAvailable = computed(() => !orderTypes.value.find(o => o.value === 'limit')?.disabled);
 
-// เปลี่ยนคู่เทรด/โหมด → บังคับ market ในโหมด onchain (limit เลือกไม่ได้)
+// เข้าโหมด onchain → เริ่มที่ market (ไม้ที่ลงทันที) ผู้ใช้สลับไป limit เองได้
 watch(() => props.mode, (m) => {
     if (m === 'onchain') orderType.value = 'market';
 }, { immediate: true });
+
+/** คำสั่งตั้งราคาของคู่บนเชน — ไม่มีเหรียญออกจากกระเป๋าตอนตั้ง มีแค่ตอนราคาถึงแล้วยืนยัน */
+const isLimitOnchain = computed(() => props.mode === 'onchain' && orderType.value === 'limit');
+
+/** อายุคำสั่งตั้งราคา (วัน) — ต้องตรงกับ LimitOrderService::EXPIRY_DAYS */
+const limitExpiryOptions = [1, 7, 30];
+const limitExpiryDays = ref(7);
 
 // แจ้ง parent เมื่อค่าในฟอร์มเปลี่ยน — ใช้ขอ quote จริงจาก router (parent debounce เอง)
 // ส่ง slippage ด้วย: "ได้รับอย่างน้อย" ต้องคิดจากค่าที่เลือก ไม่ใช่ค่าปริยายของ backend
@@ -357,6 +361,23 @@ function formatQuote(value) {
 const feeAmountText = computed(() => formatQuote(feeAmount.value));
 const netTotalText = computed(() => formatQuote(netTotal.value));
 
+/**
+ * "ได้รับอย่างน้อย" ของคำสั่งตั้งราคา — ตัวเลขเดียวกับที่เซิร์ฟเวอร์คิดและหน้าเทรดส่งเป็น minOut บนเชน
+ * ซื้อ: มูลค่ารวม ÷ ราคาที่ตั้ง (เหรียญหลัก) · ขาย: จำนวน × ราคาที่ตั้ง (เหรียญอ้างอิง)
+ */
+const limitMinReceiveText = computed(() => {
+    const limitPrice = toNumber(price.value);
+    if (!(limitPrice > 0)) return '';
+
+    if (activeTab.value === 'buy') {
+        const spend = toNumber(total.value);
+        return spend > 0 ? `${truncDecimals(spend / limitPrice, 8)} ${baseSymbol.value}` : '';
+    }
+
+    const sell = toNumber(amount.value);
+    return sell > 0 ? `${formatQuote(sell * limitPrice)} ${quoteSymbol.value}` : '';
+});
+
 onMounted(async () => {
     if (root.value) initialWidth.value = root.value.getBoundingClientRect().width;
 
@@ -550,6 +571,16 @@ watch(() => tradingFee.recommended.value, (rec) => {
     if (rec) feeMethod.value = rec;
 });
 
+/*
+ * TPIX Chain: จ่ายค่าวางไม้ได้ทางเดียวคือเครดิต TPIX (เซิร์ฟเวอร์ปิดทาง "จ่ายเป็นเหรียญ")
+ * ทางที่เลือกค้างมาจากคู่บน BSC ต้องถูกดึงกลับ — ไม่งั้นปุ่มวางไม้เปิดอยู่ทั้งที่เครดิตไม่พอ
+ * แล้วไปล้มตอนกดส่งแทนที่จะพาไปเติมเครดิตตั้งแต่แรก
+ */
+const creditOnly = computed(() => tradingFee.isCreditOnly(tradingFee.currentQuote.value));
+watch(creditOnly, (only) => {
+    if (only) feeMethod.value = 'tpix_credit';
+}, { immediate: true });
+
 // เปลี่ยนทางจ่ายค่าบริการ → ตัวเลข preview (หัก % หรือไม่) ต้องคิดใหม่
 watch(feeMethod, emitFormChange);
 
@@ -580,7 +611,8 @@ const submitOrder = () => {
     if (balanceBlocked.value) return;
 
     // เครดิตไม่พอสำหรับทางที่เลือก — พาไปเติมแทนที่จะปล่อยให้กดแล้วพัง
-    if (feeBlocked.value) {
+    // (คำสั่งตั้งราคายังไม่เก็บค่าบริการตอนตั้ง — เก็บตอนราคาถึงแล้วยืนยัน จึงไม่กั้นตรงนี้)
+    if (feeBlocked.value && !isLimitOnchain.value) {
         showTopup.value = true;
         return;
     }
@@ -605,6 +637,8 @@ const submitOrder = () => {
         // ทางจ่ายค่าบริการ — parent เอาไปขอใบอนุญาตก่อนเซ็นธุรกรรมของไม้
         feeMethod: feeMethod.value,
         orderValueUsd: orderValueUsd.value,
+        // อายุคำสั่งตั้งราคา (ใช้เฉพาะ type = limit)
+        expiresInDays: limitExpiryDays.value,
     });
 };
 </script>
@@ -662,12 +696,13 @@ const submitOrder = () => {
                     </button>
                 </div>
 
-                <!-- ชนิดคำสั่ง — limit ในโหมด onchain โชว์ไว้แต่กดไม่ได้ (รอ TPIX Chain) -->
+                <!-- ชนิดคำสั่ง — ตั้งราคา (limit) / ราคาตลาด (market) -->
                 <div :class="['flex gap-1 p-0.5 bg-dark-800 rounded-lg', isWide ? 'w-[200px]' : 'mb-3']">
                     <button
                         v-for="type in orderTypes"
                         :key="type.value"
                         type="button"
+                        :data-test="`order-type-${type.value}`"
                         :disabled="type.disabled"
                         :title="type.disabled ? t('trade.form.limitSoonTitle') : ''"
                         :class="[
@@ -823,6 +858,33 @@ const submitOrder = () => {
                     </div>
                     <div class="text-[10px] text-dark-500">{{ t('trade.form.executedVia') }}</div>
                 </div>
+
+                <!-- คำสั่งตั้งราคาของคู่บนเชน — อายุคำสั่ง + บอกตรงๆ ว่าทำงานอย่างไร -->
+                <div v-if="isLimitOnchain" class="mb-3" data-test="limit-expiry">
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="text-xs text-dark-400">{{ t('trade.form.limitExpiry') }}</label>
+                    </div>
+                    <div class="flex gap-1">
+                        <button
+                            v-for="days in limitExpiryOptions"
+                            :key="days"
+                            type="button"
+                            :class="['flex-1 py-1 text-[11px] rounded-md transition-all',
+                                limitExpiryDays === days ? 'bg-primary-500/20 text-primary-300' : 'bg-dark-800 text-dark-400 hover:text-white']"
+                            @click="limitExpiryDays = days"
+                        >
+                            {{ t('trade.form.limitExpiryDays', { days }) }}
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="isLimitOnchain" class="mb-3 px-3 py-2 rounded-lg bg-dark-800/60 border border-white/5 space-y-1" data-test="limit-note">
+                    <div v-if="limitMinReceiveText" class="flex items-center justify-between gap-2 text-xs">
+                        <span class="text-dark-400">{{ t('trade.form.minReceived') }}</span>
+                        <span class="font-mono text-white truncate">{{ limitMinReceiveText }}</span>
+                    </div>
+                    <div class="text-[10px] text-dark-400 leading-relaxed">{{ t('trade.form.limitNote') }}</div>
+                </div>
             </div>
 
             <!--
@@ -876,7 +938,7 @@ const submitOrder = () => {
                 :quote="tradingFee.currentQuote.value"
                 :method="feeMethod"
                 :quote-symbol="quoteSymbol"
-                @select-method="feeMethod = $event"
+                @select-method="feeMethod = creditOnly ? 'tpix_credit' : $event"
                 @topup="showTopup = true"
             />
 
@@ -889,7 +951,7 @@ const submitOrder = () => {
                     (isSubmitting || submitBlocked) ? 'opacity-60 cursor-not-allowed' : '',
                     !isConnected
                         ? 'bg-primary-500 hover:bg-primary-600 text-white'
-                        : (kycBlocked || feeBlocked || submitBlocked)
+                        : (kycBlocked || (feeBlocked && !isLimitOnchain) || submitBlocked)
                             ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
                             : activeTab === 'buy'
                                 ? 'btn-success'
@@ -904,6 +966,9 @@ const submitOrder = () => {
                     : unavailableReason ? t('trade.form.unavailable')
                     : kycBlocked ? t('trade.form.verifyIdentity')
                     : balanceBlocked ? t('swapPage.insufficientBalance', { symbol: activeTab === 'buy' ? quoteSymbol : baseSymbol })
+                    : isLimitOnchain ? (activeTab === 'buy'
+                        ? t('trade.form.placeLimitBuy', { symbol: baseSymbol })
+                        : t('trade.form.placeLimitSell', { symbol: baseSymbol }))
                     : feeBlocked ? t('trade.form.topupToTrade')
                     : activeTab === 'buy' ? t('trade.form.buySymbol', { symbol: baseSymbol })
                     : t('trade.form.sellSymbol', { symbol: baseSymbol })
@@ -917,7 +982,7 @@ const submitOrder = () => {
             <p v-else-if="isConnected && kycBlocked" class="mt-1.5 text-[11px] text-amber-300/90 text-center leading-relaxed">
                 {{ t('trade.form.kycHint') }}
             </p>
-            <p v-else-if="feeBlocked" class="mt-1.5 text-[11px] text-amber-300/90 text-center leading-relaxed">
+            <p v-else-if="feeBlocked && !isLimitOnchain" class="mt-1.5 text-[11px] text-amber-300/90 text-center leading-relaxed">
                 {{ feeBlockedReason }}
             </p>
 
