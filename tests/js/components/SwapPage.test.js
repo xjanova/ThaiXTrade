@@ -633,6 +633,121 @@ describe('Swap page', () => {
             expect(notice(wrapper).text()).toContain('this swap runs on TPIX Chain');
         });
 
+        /*
+         * ค่าวางไม้บน TPIX Chain ต้องจ่ายด้วยเครดิต TPIX ทุกไม้ (เจ้าของสั่ง 2026-11-13)
+         * เดิมหน้านี้ไม่เคยขอใบอนุญาตเลย — สวอปจากหน้านี้ไม่ถูกเก็บค่าแพลตฟอร์ม ขณะที่กระดานเทรดเก็บ
+         */
+        describe('order fee paid with TPIX credit', () => {
+            const UUID = '9b2c6a10-0000-4000-8000-000000000001';
+            const CREDIT_ONLY = {
+                enabled: true,
+                can_place: true,
+                reason: null,
+                tpix: { available: true, has_enough: true, fee_tpix: 0.05 },
+                onchain: { available: false },
+            };
+
+            /** ตอบคำขอค่าบริการตามปลายทาง แล้วจดลำดับที่ถูกเรียก */
+            function feeApi(routes, order = []) {
+                axiosPost.mockImplementation(async (url) => {
+                    const key = Object.keys(routes).find(suffix => url.endsWith(suffix));
+                    if (!key) return { data: { success: true } };
+                    order.push(key);
+                    if (routes[key] instanceof Error || routes[key]?.response) throw routes[key];
+                    return { data: { success: true, data: routes[key] } };
+                });
+                return order;
+            }
+
+            // กระเป๋าสลับไปเชน 4289 ได้จริง — ไม่งั้นทุกเทสต์หยุดที่ด่านสลับเชน ก่อนถึงค่าบริการ
+            beforeEach(() => trackSwitches([]));
+
+            async function swapTen(wrapper) {
+                await typeAmount(wrapper, '10');
+                await swapButton(wrapper).trigger('click');
+                await flushPromises();
+            }
+
+            it('takes a ticket, binds it to the transaction and closes it when the swap lands', async () => {
+                const hash = `0x${'cd'.repeat(32)}`;
+                const order = feeApi({
+                    '/trading-fee/quote': CREDIT_ONLY,
+                    '/trading-fee/tickets': { uuid: UUID },
+                    '/bind': { uuid: UUID },
+                    '/consume': { uuid: UUID },
+                });
+                dexFns.executeTradeSwap.mockImplementation(async (_f, _t, _a, _q, _s, extra) => {
+                    order.push('swap');
+                    extra.onSent(hash);
+                    return { hash, status: 'confirmed' };
+                });
+
+                const wrapper = await mountTpix();
+                await swapTen(wrapper);
+
+                // ขอใบก่อนส่งเสมอ · ผูกตอนธุรกรรมออกจากกระเป๋า · ปิดเมื่อไม้ลง
+                expect(order).toEqual(['/trading-fee/quote', '/trading-fee/tickets', 'swap', '/bind', '/consume']);
+
+                // TPIX → USDT 10 เหรียญ ได้ 0.5 USDT = ขายมูลค่า $0.5 (ตีจากขาที่เป็นสเตเบิล) บนเชน 4289
+                const ticket = axiosPost.mock.calls.find(([url]) => url === '/api/v1/trading-fee/tickets')[1];
+                expect(ticket).toMatchObject({ pair: 'TPIX/USDT', side: 'sell', order_value_usd: 0.5, chain_id: 4289, method: 'tpix_credit' });
+            });
+
+            it('does not swap and offers a top-up when the credit cannot cover the fee', async () => {
+                const order = feeApi({
+                    '/trading-fee/quote': { ...CREDIT_ONLY, can_place: false, reason: 'Not enough TPIX credit for the order fee' },
+                });
+
+                const wrapper = await mountTpix();
+                await swapTen(wrapper);
+
+                expect(dexFns.executeTradeSwap).not.toHaveBeenCalled();
+                expect(order).toEqual(['/trading-fee/quote']);   // ไม่ขอใบ = ไม่หักเครดิต
+                expect(notice(wrapper).text()).toContain('Not enough TPIX credit for the order fee');
+                expect(wrapper.findComponent({ name: 'TpixTopupModal' }).exists()).toBe(true);
+            });
+
+            it('does not swap when the fee cannot be checked (fail closed)', async () => {
+                const order = feeApi({ '/trading-fee/quote': { response: { status: 503 } } });
+
+                const wrapper = await mountTpix();
+                await swapTen(wrapper);
+
+                // ไปถึงขั้นถามค่าบริการจริง (ไม่ใช่หยุดที่ด่านก่อนหน้า) แล้วไม่ส่งไม้
+                expect(wallet.switchChain).toHaveBeenCalledWith(4289);
+                expect(order).toEqual(['/trading-fee/quote']);
+                expect(dexFns.executeTradeSwap).not.toHaveBeenCalled();
+                expect(notice(wrapper).text()).toContain("Couldn't check the service fee for this order");
+            });
+
+            it('refunds the ticket when the wallet rejects the swap', async () => {
+                const order = feeApi({
+                    '/trading-fee/quote': CREDIT_ONLY,
+                    '/trading-fee/tickets': { uuid: UUID },
+                    '/refund': { uuid: UUID },
+                });
+                dexFns.executeTradeSwap.mockImplementation(async () => {
+                    dexState.error.value = 'You cancelled the transaction in your wallet';
+                    throw Object.assign(new Error('rejected'), { isFriendly: true });
+                });
+
+                const wrapper = await mountTpix();
+                await swapTen(wrapper);
+
+                expect(order).toEqual(['/trading-fee/quote', '/trading-fee/tickets', '/refund']);
+            });
+
+            it('swaps without a ticket while the fee system is switched off', async () => {
+                const order = feeApi({ '/trading-fee/quote': { ...CREDIT_ONLY, enabled: false, onchain: { available: true } } });
+
+                const wrapper = await mountTpix();
+                await swapTen(wrapper);
+
+                expect(dexFns.executeTradeSwap).toHaveBeenCalledTimes(1);
+                expect(order).toEqual(['/trading-fee/quote']);
+            });
+        });
+
         it('warns about the wrong network and switches to 4289 (not 56) from the banner', async () => {
             const order = [];
             trackSwitches(order);
