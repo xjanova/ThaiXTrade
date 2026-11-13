@@ -28,15 +28,25 @@ const props = defineProps({
     articles: Object,
     stats: Object,
     filters: Object,
+    // โมเดลที่เลือกได้ { id: ป้าย } — มาจากเซิร์ฟเวอร์ (config/ai_text.php) ไม่ฝังในหน้านี้
+    models: { type: Object, default: () => ({}) },
+    // แอดมินเปิดให้ AI เขียนคอนเทนต์อยู่ไหม (ตั้งค่า > AI > AI Content)
+    aiContentEnabled: { type: Boolean, default: true },
 });
 
 // ฟอร์มสร้างบทความ AI
 const showGenerator = ref(false);
+/*
+ * model ว่าง = ให้เซิร์ฟเวอร์ใช้โมเดลตามค่าตั้งของระบบ
+ *
+ * เดิมฝัง 'llama-3.3-70b-versatile' ไว้และส่งไปทุกครั้ง — Groq ถอดโมเดลนี้แล้ว และชื่อเดียวกันถูกส่งต่อ
+ * ไปให้ผู้ให้บริการทุกเจ้า จึงสร้างบทความจากหน้านี้ไม่สำเร็จเลยสักครั้ง
+ */
 const generateForm = useForm({
     topic: '',
     category: 'tpix_chain',
     language: 'th',
-    model: 'llama-3.3-70b-versatile',
+    model: '',
 });
 
 function generateArticle() {
@@ -91,11 +101,10 @@ const categoryLabel = (value) => categories.value.find((c) => c.value === value)
 const STATUSES = ['draft', 'scheduled', 'published', 'archived'];
 const statusLabel = (status) => (STATUSES.includes(status) ? t(`admin.content.status.${status}`) : status);
 
+// ตัวเลือกแรก (ค่าว่าง) คือ "ค่าเริ่มต้นของระบบ" — ที่เหลือเป็นรายการจากเซิร์ฟเวอร์
 const models = computed(() => [
-    { value: 'llama-3.3-70b-versatile', label: `Llama 3.3 70B (${t('admin.content.models.recommended')})` },
-    { value: 'llama-3.1-8b-instant', label: `Llama 3.1 8B (${t('admin.content.models.fast')})` },
-    { value: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
-    { value: 'gemma2-9b-it', label: 'Gemma 2 9B' },
+    { value: '', label: t('admin.content.models.default') },
+    ...Object.entries(props.models || {}).map(([value, label]) => ({ value, label })),
 ]);
 
 // หัวข้อแนะนำ — ตามภาษาที่เลือกอยู่ (กดแล้วใส่ลงช่องหัวข้อเป็นภาษานั้น)
@@ -235,7 +244,12 @@ const statusColors = {
                     </div>
                 </div>
 
-                <button @click="generateArticle" :disabled="generateForm.processing || !generateForm.topic"
+                <!-- ปิด AI Content ไว้ในหน้าตั้งค่า — บอกเหตุผล ไม่ใช่ปล่อยให้กดแล้วเด้ง error -->
+                <p v-if="!aiContentEnabled" class="text-xs leading-relaxed px-3 py-2 rounded-xl bg-amber-500/10 text-amber-200/90 ring-1 ring-amber-500/20">
+                    {{ t('admin.content.generator.disabled') }}
+                </p>
+
+                <button @click="generateArticle" :disabled="generateForm.processing || !generateForm.topic || !aiContentEnabled"
                     class="w-full py-3 bg-gradient-to-r from-primary-500 to-accent-500 text-white rounded-xl font-medium hover:shadow-lg disabled:opacity-50 transition-all">
                     {{ generateForm.processing ? '🔄 ' + t('admin.content.generator.generating') : '✨ ' + t('admin.content.generator.submit') }}
                 </button>

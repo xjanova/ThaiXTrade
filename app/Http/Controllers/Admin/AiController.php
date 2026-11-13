@@ -8,6 +8,8 @@ use App\Models\AiNews;
 use App\Services\AiTextService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -52,11 +54,19 @@ class AiController extends Controller
      */
     public function analyze(Request $request)
     {
+        /*
+         * โมเดลต้องเป็นตัวที่เซิร์ฟเวอร์รู้จัก (รายการจาก config/ai_text.php) หรือไม่ส่งมาเลย
+         *
+         * เดิมรับสตริงอะไรก็ได้ และหน้าเว็บส่ง `llama-3.3-70b-versatile` (ถูกถอดแล้ว) มาทุกครั้ง
+         * ไม่ส่ง/ส่งค่าว่าง = ใช้โมเดลตามค่าตั้งของระบบ ซึ่งเป็นทางที่หน้าเว็บใช้เป็นค่าปริยาย
+         */
         $validated = $request->validate([
             'symbol' => 'required|string|max:20',
             'type' => 'required|in:market_analysis,price_prediction,sentiment,technical',
-            'model' => 'nullable|string',
+            'model' => ['nullable', 'string', Rule::in(array_keys(AiTextService::modelOptions()))],
         ]);
+
+        $model = $validated['model'] ?? null;
 
         // Create analysis record
         $analysis = AiAnalysis::create([
@@ -64,36 +74,46 @@ class AiController extends Controller
             'symbol' => $validated['symbol'],
             'prompt' => '',
             'response' => '',
-            'model' => $validated['model'] ?? 'llama-3.3-70b-versatile',
+            // ยังไม่รู้ว่าเจ้าไหนจะตอบ — เขียนโมเดลจริงทับเมื่อสำเร็จ
+            'model' => $model ?: 'auto',
             'status' => 'processing',
             'created_by' => $request->user()?->id,
         ]);
 
-        // Call Groq API
-        $result = $this->groqService->analyzeMarket(
-            $validated['symbol'],
-            $validated['type'],
-        );
+        /*
+         * ไม่ว่าจะล้มแบบไหน แถวต้องไม่ค้างสถานะ processing
+         *
+         * เดิมอ่าน $result['processing_time_ms'] ตอนล้ม ซึ่งไม่มีคีย์นี้เมื่อล้มทุกผู้ให้บริการ
+         * → ErrorException กลางทาง หน้าจอได้ 500 และแถวค้าง "กำลังประมวลผล" ตลอดกาล
+         */
+        try {
+            $result = $this->groqService->analyzeMarket($validated['symbol'], $validated['type'], [], $model);
+        } catch (\Throwable $e) {
+            Log::error('AI analysis threw', ['analysis_id' => $analysis->id, 'error' => $e->getMessage()]);
+            $result = ['success' => false, 'error' => __('เกิดข้อผิดพลาดภายในระบบ')];
+        }
 
-        if ($result['success']) {
+        if ($result['success'] ?? false) {
             $analysis->update([
-                'response' => $result['content'],
-                'model' => $result['model'],
-                'tokens_used' => $result['tokens_used'],
-                'processing_time_ms' => $result['processing_time_ms'],
+                'response' => $result['content'] ?? '',
+                'model' => $result['model'] ?? ($model ?: 'auto'),
+                'tokens_used' => $result['tokens_used'] ?? null,
+                'processing_time_ms' => $result['processing_time_ms'] ?? null,
                 'status' => 'completed',
             ]);
 
-            return back()->with('success', 'Analysis completed successfully.')->with('analysis', $analysis->fresh());
+            return back()->with('success', __('วิเคราะห์เสร็จเรียบร้อย'))->with('analysis', $analysis->fresh());
         }
+
+        $error = (string) ($result['error'] ?? __('ไม่ทราบสาเหตุ'));
 
         $analysis->update([
             'status' => 'failed',
-            'error_message' => $result['error'],
-            'processing_time_ms' => $result['processing_time_ms'],
+            'error_message' => $error,
+            'processing_time_ms' => $result['processing_time_ms'] ?? null,
         ]);
 
-        return back()->with('error', 'Analysis failed: '.$result['error']);
+        return back()->with('error', __('วิเคราะห์ไม่สำเร็จ: :error', ['error' => $error]));
     }
 
     /**
@@ -138,14 +158,19 @@ class AiController extends Controller
 
         $language = $validated['language'] ?? 'th';
 
+        // แอดมินปิดการสร้างคอนเทนต์ด้วย AI ไว้ (ตั้งค่า > AI) — ไม่ยิง API เลย
+        if (! AiTextService::featureEnabled('ai_content_enabled')) {
+            return back()->with('error', __('ปิดการสร้างคอนเทนต์ด้วย AI ไว้ชั่วคราว — เปิดได้ที่หน้า ตั้งค่า > AI'));
+        }
+
         $result = $this->groqService->generateNews(
             $validated['topic'],
             $validated['category'],
             $language,
         );
 
-        if (! $result['success']) {
-            return back()->with('error', 'News generation failed: '.$result['error']);
+        if (! ($result['success'] ?? false)) {
+            return back()->with('error', __('สร้างข่าวไม่สำเร็จ: :error', ['error' => (string) ($result['error'] ?? __('ไม่ทราบสาเหตุ'))]));
         }
 
         // Attempt to parse JSON response from AI

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Article;
+use App\Services\AiTextService;
 use App\Services\ContentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -47,6 +48,12 @@ class ContentController extends Controller
             'stats' => $stats,
             'filters' => $request->only(['status', 'language', 'search']),
             'imageProviders' => ContentService::imageProviders(),
+            /*
+             * โมเดลที่เลือกได้ต้องมาจากเซิร์ฟเวอร์ (config/ai_text.php) ไม่ใช่รายการฝังในหน้าเว็บ
+             * เดิมหน้าเว็บมีแต่ชื่อ Llama ที่ Groq ถอดแล้ว และส่งตัวแรกมาทุกครั้งที่กดสร้าง
+             */
+            'models' => AiTextService::modelOptions(),
+            'aiContentEnabled' => ContentService::aiContentEnabled(),
         ]);
     }
 
@@ -133,19 +140,35 @@ class ContentController extends Controller
             'topic' => 'required|string|max:500',
             'category' => 'required|string|in:news,analysis,tutorial,tpix_chain,defi,technology',
             'language' => 'required|string|in:th,en',
-            'model' => 'nullable|string',
+            // ไม่ส่ง/ค่าว่าง = โมเดลตามค่าตั้งของระบบ · ชื่อที่ระบบไม่รู้จักถูกเมินที่ AiTextService
+            'model' => 'nullable|string|max:100',
         ]);
+
+        // แอดมินปิดการสร้างคอนเทนต์ด้วย AI ไว้ (ตั้งค่า > AI) — บอกเหตุผลตรงๆ ไม่ยิง API
+        if (! ContentService::aiContentEnabled()) {
+            return back()->with('error', __('ปิดการสร้างคอนเทนต์ด้วย AI ไว้ชั่วคราว — เปิดได้ที่หน้า ตั้งค่า > AI'));
+        }
 
         try {
             $article = $this->contentService->generateArticle(
                 $validated['topic'],
                 $validated['category'],
                 $validated['language'],
-                $validated['model'] ?? null,
+                ($validated['model'] ?? '') !== '' ? $validated['model'] : null,
             );
 
             return back()->with('success', __('สร้างบทความ ":title" สำเร็จ!', ['title' => $article->title]));
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            /*
+             * ส่งต่อได้เฉพาะข้อความที่ ContentService ตั้งใจโยน (RuntimeException ของเราเอง)
+             * QueryException ก็เป็น RuntimeException (ผ่าน PDOException) — ข้อความมี SQL จึงเก็บไว้ใน log
+             */
+            if ($e instanceof \PDOException || ! $e instanceof \RuntimeException) {
+                \Log::error('Generate article error', ['error' => $e->getMessage()]);
+
+                return back()->with('error', __('สร้างบทความไม่สำเร็จ — เกิดข้อผิดพลาดภายในระบบ ดูรายละเอียดได้ใน log'));
+            }
+
             return back()->with('error', __('สร้างบทความไม่สำเร็จ: :error', ['error' => __($e->getMessage())]));
         }
     }

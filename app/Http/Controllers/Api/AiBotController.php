@@ -14,6 +14,7 @@ use App\Models\AiBotTrade;
 use App\Models\AiMarketView;
 use App\Services\AiBot\Advisor\AdvisorFactory;
 use App\Services\AiBot\BotRunner;
+use App\Services\AiBot\CreditTopupService;
 use App\Services\AiBot\MarketRiskService;
 use App\Services\AiBot\PaperBroker;
 use App\Services\AiBot\StrategyAnalytics;
@@ -56,6 +57,12 @@ class AiBotController extends Controller
         // เดิมไม่มีข้อความ — ผู้ใช้เห็นแค่ "ทำรายการไม่สำเร็จ" แล้วไม่รู้ว่าต้องเปลี่ยนกลยุทธ์
         AiBotService::ERR_STRATEGY_RETIRED => 'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว — สร้างหรือเริ่มบอทด้วยกลยุทธ์นี้ไม่ได้ (บอทเดิมยังแก้ชื่อ ลดความเสี่ยง หรือลบได้)',
         'INVALID_PACK' => 'ไม่พบแพ็กเกจเครดิตที่เลือก',
+        // เติมเครดิตด้วยการโอน TPIX บนเชน — บอกสาเหตุให้ตรง ผู้ใช้จ่ายเงินไปแล้วต้องรู้ว่าต้องทำอะไรต่อ
+        CreditTopupService::ERR_TX_FAILED => 'ธุรกรรมนี้ไม่สำเร็จบนเชน (ไม่มีการโอนเกิดขึ้น) จึงเติมเครดิตให้ไม่ได้',
+        CreditTopupService::ERR_WRONG_SENDER => 'ธุรกรรมนี้ไม่ได้โอนจากกระเป๋าที่เชื่อมอยู่ — เติมเครดิตได้เฉพาะธุรกรรมที่โอนจากกระเป๋าของคุณเอง',
+        CreditTopupService::ERR_WRONG_RECIPIENT => 'ธุรกรรมนี้ไม่ได้โอนเข้ากระเป๋ารับชำระค่าเครดิตของ AI TRADE',
+        CreditTopupService::ERR_WRONG_AMOUNT => 'ยอดที่โอนไม่ตรงกับราคาแพ็กที่เลือก — เลือกแพ็กที่ราคาตรงกับยอดที่โอนแล้วยืนยันใหม่ หรือติดต่อทีมงานพร้อม tx hash',
+        CreditTopupService::ERR_TX_USED => 'ธุรกรรมนี้ถูกใช้เติมเครดิตไปแล้ว ใช้ซ้ำไม่ได้',
         'REQUEST_FAILED' => 'ทำรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
     ];
 
@@ -151,7 +158,14 @@ class AiBotController extends Controller
                  */
                 'features' => [
                     'live_trading' => (bool) config('aibot.live_enabled', false),
-                    'credit_topup' => (bool) config('aibot.credits.topup_enabled', false),
+                    /*
+                     * เติมเครดิตได้จริงสำหรับคนทั่วไป = รางรับเงินพร้อม (ธงเปิด + ตั้งกระเป๋ารับเงินแล้ว)
+                     * และเปิดขายแล้ว — เครดิตใช้ได้แค่เช่าแพลน เติมตอนยังเช่าไม่ได้คือจ่ายแล้วใช้ไม่ได้
+                     * หน้าเว็บ/แอพต้องไม่โชว์ปุ่มเติมที่กดแล้วไปไม่ถึงไหน
+                     */
+                    'credit_topup' => $this->bots->topupAvailable() && $this->bots->salesOpen(),
+                    // รางรับเงินพร้อมแล้ว (ยังไม่นับเรื่องเปิดขาย) — หน้าเว็บใช้เปิดปุ่มให้กระเป๋าทีมงานทดสอบ
+                    'credit_topup_ready' => $this->bots->topupAvailable(),
                     // ยังไม่เปิดให้เช่า = หน้าเว็บต้องปิดปุ่มเช่าและบอกเหตุผล
                     // ไม่ใช่ปล่อยให้กดแล้วค่อยเด้ง error ตอนจ่ายเงิน
                     'sales_open' => $this->bots->salesOpen(),
@@ -444,20 +458,35 @@ class AiBotController extends Controller
         ]);
     }
 
-    /** สร้างคำขอเติมเครดิต — ยอดจะเพิ่มหลังยืนยันการชำระเงินที่หลังบ้าน */
-    public function topup(Request $request): JsonResponse
+    /**
+     * เติมเครดิตด้วยการโอน TPIX บนเชน — สองจังหวะในเส้นทางเดียว.
+     *
+     *  ไม่มี tx_hash → ใบแจ้งชำระ (แพ็ก · ยอด · กระเป๋ารับเงิน · เชน) ยังไม่ลงเครดิต
+     *  มี tx_hash    → อ่านธุรกรรมจากเชนแล้วลงเครดิตครั้งเดียวต่อธุรกรรม
+     *                  เชนยังไม่ยืนยัน/ถามเชนไม่ได้ = ตอบ status "pending" ให้ถามซ้ำ ไม่ลงเครดิต
+     *
+     * กระเป๋ารับเงินและราคามาจากเซิร์ฟเวอร์เท่านั้น — client ส่งได้แค่รหัสแพ็กกับ tx hash
+     */
+    public function topup(Request $request, CreditTopupService $topups): JsonResponse
     {
         $validated = $request->validate([
             'pack' => ['required', 'string', 'max:40'],
+            'tx_hash' => ['sometimes', 'nullable', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
+        ], [
+            'tx_hash.regex' => __('รูปแบบ tx hash ไม่ถูกต้อง — ต้องขึ้นต้นด้วย 0x ตามด้วยอักขระ 64 ตัว'),
         ]);
 
+        $wallet = $this->wallet($request);
+
         try {
-            $intent = $this->bots->createTopupIntent($this->wallet($request), $validated['pack']);
+            $result = empty($validated['tx_hash'])
+                ? $this->bots->createTopupIntent($wallet, $validated['pack'])
+                : $topups->confirm($wallet, $validated['pack'], $validated['tx_hash']);
         } catch (RuntimeException $e) {
             return $this->serviceFailure($e);
         }
 
-        return response()->json(['success' => true, 'data' => $intent]);
+        return response()->json(['success' => true, 'data' => $result]);
     }
 
     /** เช่าแพลน (ตัดเครดิตทันที) */

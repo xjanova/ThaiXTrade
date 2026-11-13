@@ -29,6 +29,17 @@ class ContentService
     ) {}
 
     /**
+     * แอดมินเปิดให้ AI เขียนคอนเทนต์อยู่ไหม (ตั้งค่า > AI > AI Content) — ไม่เคยตั้ง = เปิด.
+     *
+     * คนละสวิตช์กับ content.content_auto_enabled (บอทเขียนตามเวลา): ตัวนี้ปิด AI เขียนทุกทาง
+     * รวมถึงที่แอดมินกดสร้างเองในหลังบ้าน บทความที่ตั้งเวลาเผยแพร่ไว้แล้วยังออกตามปกติ
+     */
+    public static function aiContentEnabled(): bool
+    {
+        return AiTextService::featureEnabled('ai_content_enabled');
+    }
+
+    /**
      * บทความความรู้ทั่วไป — หลังบ้านกดสร้าง และบอทตามตารางเวลา.
      *
      * @param  string|null  $sourceKey  "topic:…" จากบอทตามตารางเวลา (ใช้กันหัวข้อวนซ้ำ)
@@ -98,6 +109,11 @@ class ContentService
      */
     private function write(string $prompt, array $brief): Article
     {
+        // ด่านสุดท้าย — ทุกทางที่ให้ AI เขียนบทความ (หลังบ้านกดเอง · บอทตามเวลา · ข่าวจากเหตุการณ์) ผ่านที่นี่
+        if (! self::aiContentEnabled()) {
+            throw new \RuntimeException(__('ปิดการสร้างคอนเทนต์ด้วย AI ไว้ชั่วคราว — เปิดได้ที่หน้า ตั้งค่า > AI'));
+        }
+
         $language = $brief['language'];
         $options = ['temperature' => 0.7, 'max_tokens' => 4096];
         if (! empty($brief['model'])) {

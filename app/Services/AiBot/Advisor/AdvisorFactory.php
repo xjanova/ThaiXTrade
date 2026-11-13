@@ -8,6 +8,7 @@ use App\Models\AiBotPlan;
  * TPIX TRADE — เลือกที่ปรึกษาตามแพลนของผู้ใช้.
  *
  * ฟรี → Gemini (โควตาฟรี) · เสียเงิน → OpenAI (เราออกค่า API จากค่าเช่า)
+ * เจ้าที่แพลนกำหนดยังไม่ได้ตั้งคีย์ → ใช้อีกเจ้าที่ตั้งคีย์แล้วแทน (ดู providerWithKey)
  *
  * ไม่มีคีย์ก็ไม่ throw — คืน NullAdvisor แทน เพราะระบบต้องทำงานได้ตามปกติ
  * แม้ยังไม่ได้ต่อ LLM (บอทตัดสินใจจากกฎ คำแนะนำเป็นของแถม)
@@ -27,7 +28,32 @@ class AdvisorFactory
             return new NullAdvisor(__('ปิดระบบที่ปรึกษาไว้ชั่วคราว'));
         }
 
-        return $this->make($this->settings->providerForTier($plan?->tier ?? 'free'));
+        return $this->build($this->providerWithKey($this->settings->providerForTier($plan?->tier ?? 'free')));
+    }
+
+    /**
+     * ผู้ให้บริการที่จะใช้จริง — ตัวที่แพลนกำหนดถ้ามีคีย์ ไม่งั้นตัวอื่นที่ตั้งคีย์ไว้แล้ว.
+     *
+     * ⚠️ production มีคีย์ OpenAI แต่ช่อง Gemini ว่าง → ผู้ใช้แพลนฟรี (ซึ่งคือทุกคนตอนนี้) กดขอคำแนะนำ
+     *    แล้วได้ "ยังไม่ได้ตั้งคีย์ของ gemini" ทุกครั้ง ทั้งที่ระบบมีที่ปรึกษาที่ใช้ได้อยู่อีกเจ้า
+     *
+     * สลับเฉพาะกรณี "ไม่มีคีย์" เท่านั้น — เจ้าที่มีคีย์แต่โควตาวันนี้หมดไม่ถูกสลับ (ไม่งั้นโควตาฟรีหมด
+     * แล้วไหลไปกินเจ้าที่เสียเงินต่อ) และตัวที่ถูกใช้แทนยังนับโควตาต่อวันของตัวเองตามเดิม
+     * ไม่มีเจ้าไหนมีคีย์เลย = คืนชื่อเดิม ให้ข้อความบอกว่าต้องตั้งคีย์ของเจ้าที่แพลนกำหนด
+     */
+    private function providerWithKey(string $preferred): string
+    {
+        if ($this->settings->isConfigured($preferred)) {
+            return $preferred;
+        }
+
+        foreach (array_keys((array) config('aibot_advisor.providers', [])) as $candidate) {
+            if ($candidate !== $preferred && $this->settings->isConfigured($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $preferred;
     }
 
     public function make(string $providerName): Advisor

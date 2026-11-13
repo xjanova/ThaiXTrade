@@ -469,7 +469,11 @@ class AiBotApiTest extends TestCase
     /** เปิดระบบชำระเงินแล้วต้องได้ใบแจ้งความจำนง และยังไม่แจกเครดิตจนกว่าเงินจะเข้า */
     public function test_topup_creates_a_pending_intent_once_payments_are_open(): void
     {
-        config(['aibot.credits.topup_enabled' => true]);
+        // เปิดจริง = ธงเปิด + ตั้งกระเป๋ารับเงินแล้ว (ทางยืนยันการโอนอยู่ใน AiBotTopupTest)
+        config([
+            'aibot.credits.topup_enabled' => true,
+            'aibot.credits.topup_wallet' => '0x7777777777777777777777777777777777777777',
+        ]);
 
         $this->postJson('/api/v1/ai-bot/topup', [
             'wallet_address' => $this->wallet,

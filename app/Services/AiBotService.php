@@ -6,11 +6,13 @@ use App\Models\AiBotConfig;
 use App\Models\AiBotCredit;
 use App\Models\AiBotPlan;
 use App\Models\AiBotSubscription;
+use App\Models\SiteSetting;
+use App\Support\Wei;
 use Database\Seeders\AiBotPlanSeeder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -38,7 +40,7 @@ class AiBotService
     /** idempotency key เดิมถูกส่งมากับแพลน/จำนวนวันที่ไม่ตรงกับครั้งแรก */
     public const ERR_IDEMPOTENCY_CONFLICT = 'IDEMPOTENCY_KEY_REUSED';
 
-    /** ยังไม่เปิดให้เติมเครดิต (ยังไม่มีรางรับเงินจริง) */
+    /** ยังไม่เปิดให้เติมเครดิต (ธงปิด หรือยังไม่ได้ตั้งกระเป๋ารับเงิน) */
     public const ERR_TOPUP_CLOSED = 'TOPUP_UNAVAILABLE';
 
     /** ยังไม่เปิดขายให้คนทั่วไป — อยู่ระหว่างทดสอบ */
@@ -156,46 +158,125 @@ class AiBotService
     }
 
     /**
-     * สร้างคำขอเติมเครดิต — ยังไม่เพิ่มยอดจนกว่าจะยืนยันการชำระเงิน.
+     * ใบแจ้งชำระของการเติมเครดิต — บอกว่าต้องโอน TPIX เท่าไหร่ ไปที่ไหน บนเชนไหน.
      *
-     * ตั้งใจไม่เพิ่มเครดิตทันที: เงินจริงยังไม่เข้า ถ้าเพิ่มก่อนจะเปิดช่องให้
-     * กดขอรัวๆ แล้วได้บอทฟรี การยืนยันทำที่หลังบ้าน (admin/webhook) แล้วเรียก record()
+     * ยังไม่เพิ่มยอดตรงนี้: เครดิตเข้าเมื่อ CreditTopupService::confirm() อ่านธุรกรรมบนเชน
+     * แล้วเห็นว่าเงินเข้ากระเป๋ารับเงินจริงเท่านั้น (เพิ่มก่อน = กดขอรัวๆ แล้วได้บอทฟรี)
      *
-     * @return array{reference: string, pack: array, status: string}
+     * ⚠️ กระเป๋ารับเงิน · เชน · ราคา มาจาก config ฝั่งเซิร์ฟเวอร์เท่านั้น — ไม่รับจาก client
+     *
+     * @return array{status: string, pack: array, currency: string, wallet_address: string, pay_to: string, chain_id: int, amount_tpix: string, amount_wei: string, credits: float}
      */
     public function createTopupIntent(string $wallet, string $packCode): array
     {
         /*
-         * ยังไม่มีรางรับเงินจริง — ต้องบอกตรงๆ ไม่ใช่ตอบ "สำเร็จ" แล้วเงียบหาย
+         * ยังไม่เปิดรับเงิน — ต้องบอกตรงๆ ไม่ใช่ตอบ "สำเร็จ" แล้วเงียบหาย
          *
-         * เมธอดนี้คืนแค่ใบแจ้งความจำนง (`pending_payment`) ไม่มีใครมารับเงินต่อ
-         * และไม่มีหน้าแอดมินยืนยันการเติม ผู้ใช้ที่กดแล้วเห็นข้อความ "ส่งคำขอแล้ว"
-         * จะรอเครดิตที่ไม่มีวันมา แล้วกลับมากดซ้ำ — เสียความเชื่อถือมากกว่าบอกว่า
-         * ยังไม่เปิดตั้งแต่แรก
-         *
-         * เปิดใช้เมื่อไหร่ให้ตั้ง `aibot.credits.topup_enabled` เป็น true พร้อมกับ
-         * ต่อตัวรับเงินจริง (ใช้ซ้ำจาก TradingTopupService ที่ยืนยันบนเชนได้แล้ว)
+         * เปิดเมื่อ `aibot.credits.topup_enabled` เป็น true **และ** ตั้งกระเป๋ารับเงิน
+         * (AIBOT_TOPUP_WALLET) แล้วเท่านั้น — เปิดธงโดยไม่มีกระเป๋า = ผู้ใช้ไม่มีที่ให้โอน
          */
-        if (! config('aibot.credits.topup_enabled', false)) {
+        if (! $this->topupAvailableFor($wallet)) {
             throw new RuntimeException(self::ERR_TOPUP_CLOSED);
         }
 
-        $pack = collect(config('aibot.credits.packs', []))
-            ->firstWhere('code', $packCode);
+        $pack = $this->creditPack($packCode);
 
         if (! $pack) {
             throw new RuntimeException('INVALID_PACK');
         }
 
-        $reference = 'topup:'.Str::uuid()->toString();
-
         return [
-            'reference' => $reference,
+            'status' => 'pending_payment',
             'pack' => $pack,
             'currency' => config('aibot.credits.currency', 'TPIX'),
             'wallet_address' => $this->normalize($wallet),
-            'status' => 'pending_payment',
+            'pay_to' => $this->topupWallet(),
+            'chain_id' => $this->topupChainId(),
+            // ส่งเป็นข้อความ — ยอดที่ต้องโอนต้องตรงทุกหลัก ห้ามผ่าน float ระหว่างทาง
+            'amount_tpix' => $this->packPriceTpix($pack),
+            'amount_wei' => Wei::toWei($this->packPriceTpix($pack)),
+            'credits' => $this->packCredits($pack),
         ];
+    }
+
+    /** รางรับเงินพร้อมไหม — ธงเปิด และมีกระเป๋ารับเงินที่ใช้ได้ */
+    public function topupAvailable(): bool
+    {
+        return (bool) config('aibot.credits.topup_enabled', false) && $this->topupWallet() !== '';
+    }
+
+    /**
+     * กระเป๋านี้เติมเครดิตได้ไหม — รางรับเงินพร้อม และ "เอาเครดิตไปใช้ได้จริง".
+     *
+     * เครดิตใช้ได้อย่างเดียวคือเช่าแพลน ถ้ายังไม่เปิดขาย (aibot.sales_open) ผู้ใช้ทั่วไปเช่าไม่ได้
+     * การรับ TPIX แลกเครดิตตอนนั้นคือรับเงินค่าของที่ยังส่งมอบไม่ได้ — จึงปิดไว้จนกว่าจะเปิดขาย
+     * ทีมงานผ่านได้เสมอ เพื่อทดสอบรางรับเงินบน production ก่อนเปิดให้คนทั่วไป
+     */
+    public function topupAvailableFor(string $wallet): bool
+    {
+        return $this->topupAvailable() && ($this->salesOpen() || $this->isAdminWallet($wallet));
+    }
+
+    /**
+     * กระเป๋าที่ผู้ใช้โอน TPIX ค่าเครดิตบอทเข้ามา — คืนค่าว่างเมื่อยังใช้ไม่ได้.
+     *
+     * ⚠️ ต้องเป็นคนละใบกับกระเป๋าเติมคลังค่าธรรมเนียมเทรด (trading.tpix_topup_wallet)
+     *    ทั้งสองระบบยืนยันด้วย "ธุรกรรมโอน TPIX เข้ากระเป๋ารับเงิน" เหมือนกัน ถ้าใช้ใบเดียวกัน
+     *    ธุรกรรมใบเดียวเอาไปขอเครดิตได้ทั้งสองบัญชี (TradingTopupService ไม่รู้จักบัญชีเครดิตบอท)
+     *    แยกใบแล้วด่าน "ผู้รับไม่ตรง" ของแต่ละฝั่งกันให้เองทั้งสองทิศ — ตั้งซ้ำกัน = ถือว่ายังไม่เปิด
+     */
+    public function topupWallet(): string
+    {
+        $wallet = $this->normalize((string) config('aibot.credits.topup_wallet', ''));
+
+        if (preg_match('/^0x[a-f0-9]{40}$/', $wallet) !== 1) {
+            return '';
+        }
+
+        try {
+            $tradingTreasury = $this->normalize((string) SiteSetting::get('trading', 'tpix_topup_wallet', ''));
+        } catch (\Throwable $e) {
+            // อ่านไม่ได้ = พิสูจน์ไม่ได้ว่าไม่ซ้ำ → ปิดไว้ก่อน (ฝั่งที่ไม่มีใครได้เครดิตฟรี)
+            Log::warning('aibot topup: อ่านกระเป๋าเติมคลังเทรดไม่ได้ ปิดการเติมเครดิตบอทไว้ก่อน', ['error' => $e->getMessage()]);
+
+            return '';
+        }
+
+        if ($tradingTreasury !== '' && $tradingTreasury === $wallet) {
+            Log::warning('aibot topup: AIBOT_TOPUP_WALLET ซ้ำกับกระเป๋าเติมคลังเทรด — ปิดการเติมเครดิตบอทไว้จนกว่าจะแยกใบ');
+
+            return '';
+        }
+
+        return $wallet;
+    }
+
+    /** เชนที่รับชำระค่าเครดิต — TPIX เป็นเหรียญหลักของเชน 4289 */
+    public function topupChainId(): int
+    {
+        return (int) config('aibot.credits.topup_chain_id', 4289);
+    }
+
+    /** แพ็กเครดิตตามรหัส (null = ไม่มีแพ็กนี้) */
+    public function creditPack(string $code): ?array
+    {
+        $pack = collect(config('aibot.credits.packs', []))->firstWhere('code', $code);
+
+        return is_array($pack) ? $pack : null;
+    }
+
+    /** ราคาแพ็กเป็น TPIX แบบข้อความ (ไม่มีเลขยกกำลัง ไม่มีศูนย์ท้าย) — ใช้เทียบกับยอดบนเชนแบบตรงตัว */
+    public function packPriceTpix(array $pack): string
+    {
+        $price = number_format((float) ($pack['price_tpix'] ?? 0), 8, '.', '');
+
+        return str_contains($price, '.') ? rtrim(rtrim($price, '0'), '.') : $price;
+    }
+
+    /** เครดิตที่ได้จากแพ็กนี้ทั้งหมด (ตัวแพ็ก + โบนัส) */
+    public function packCredits(array $pack): float
+    {
+        return round((float) ($pack['credits'] ?? 0) + (float) ($pack['bonus'] ?? 0), 4);
     }
 
     // =========================================================================

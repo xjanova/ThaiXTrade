@@ -375,7 +375,10 @@ class AiBotTierTest extends TestCase
     public function a_topup_intent_states_tpix_as_the_currency(): void
     {
         // ค่าปริยายคือปิดรับเงิน — เทสต์นี้สนใจสกุลเงิน จึงเปิดให้ถึงตัวที่จะวัด
-        config(['aibot.credits.topup_enabled' => true]);
+        config([
+            'aibot.credits.topup_enabled' => true,
+            'aibot.credits.topup_wallet' => '0x7777777777777777777777777777777777777777',
+        ]);
 
         $intent = app(AiBotService::class)->createTopupIntent(self::WALLET, 'pack_500');
 

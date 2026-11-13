@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Log;
  * TPIX TRADE — งานข้อความด้วย AI (ผู้ช่วยตอบคำถาม · วิเคราะห์ตลาด · เขียนข่าว).
  *
  * แทนที่ `GroqService` ที่ผูกกับผู้ให้บริการเดียว — หน้าตาเมธอดเหมือนเดิมทุกตัว
- * เพื่อให้สลับได้โดยไม่ต้องแก้ผู้เรียกทั้งสี่จุด
+ * เพื่อให้สลับได้โดยไม่ต้องแก้ผู้เรียกทั้งสี่จุด (ชั้นนี้ไม่เรียก GroqService แล้ว — ยิงเองทุกเจ้า
+ * ด้วยโมเดลจาก config/ai_text.php)
  *
  * ═══ ทำไมต้องมีชั้นนี้ ═══
  *
@@ -35,7 +36,29 @@ class AiTextService
     /** ผู้ให้บริการที่รองรับ เรียงตามลำดับที่จะลอง */
     private const PROVIDERS = ['openai', 'groq'];
 
-    public function __construct(private readonly GroqService $groq) {}
+    /**
+     * สวิตช์เปิด/ปิดฟีเจอร์ AI ที่แอดมินตั้งในหลังบ้าน (กลุ่ม ai) — ไม่เคยตั้ง = เปิด.
+     *
+     * ⚠️ `ai_chatbot_enabled` กับ `ai_content_enabled` ถูกบันทึกจากแท็บ AI มาตลอด แต่ไม่มีโค้ดฝั่ง
+     *    เซิร์ฟเวอร์ตัวไหนอ่านเลย — แอดมินปิดแล้วทุกอย่างยังทำงานต่อ (และกินโควตา API ต่อ)
+     *
+     * อ่านค่าไม่ได้ (ฐานข้อมูลมีปัญหา) = ถือว่าเปิด: สวิตช์นี้มีไว้ปิดบริการชั่วคราว ไม่ใช่ด่านความปลอดภัย
+     * การล่มของฐานข้อมูลไม่ควรกลายเป็น "ปิดผู้ช่วย AI" เพิ่มอีกอาการ
+     */
+    public static function featureEnabled(string $key): bool
+    {
+        try {
+            $value = SiteSetting::get('ai', $key);
+        } catch (\Throwable) {
+            return true;
+        }
+
+        if ($value === null || $value === '') {
+            return true;
+        }
+
+        return is_bool($value) ? $value : filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
 
     /**
      * ถาม AI หนึ่งครั้ง — ลอง OpenAI ก่อน ตกไป Groq ถ้าไม่ได้.
@@ -55,9 +78,14 @@ class AiTextService
                 continue;
             }
 
-            $result = $provider === 'groq'
-                ? $this->groq->chat($message, $systemPrompt, $options)
-                : $this->send($config, $message, $systemPrompt, $options);
+            /*
+             * ทุกเจ้ายิงผ่าน send() ตัวเดียวกัน ด้วยโมเดลของเจ้านั้นจาก config/ai_text.php
+             *
+             * ⚠️ เดิมสาย Groq เรียก GroqService::chat() ซึ่งไม่อ่าน config นี้เลย — ใช้ค่าปริยายที่ฝังใน
+             *    คลาส (llama-3.3-70b-versatile ที่ Groq ถอดแล้ว) หรือค่าเก่าที่ค้างในหลังบ้าน
+             *    "ตัวสำรอง" จึงตายพร้อมตัวหลักทุกครั้ง: OpenAI ล้มเมื่อไหร่ Groq ก็ตอบ 404 ตามทันที
+             */
+            $result = $this->send($config, $message, $systemPrompt, $this->optionsFor($provider, $options));
 
             if ($result['success'] ?? false) {
                 return $result + ['provider' => $provider];
@@ -79,7 +107,7 @@ class AiTextService
     }
 
     /** วิเคราะห์ตลาด — เนื้อหา prompt เหมือนเดิม เปลี่ยนแค่ทางที่ยิงออก */
-    public function analyzeMarket(string $symbol, string $type = 'technical', array $marketData = []): array
+    public function analyzeMarket(string $symbol, string $type = 'technical', array $marketData = [], ?string $model = null): array
     {
         $systemPrompt = 'You are an expert cryptocurrency market analyst for TPIX TRADE exchange. Provide professional, data-driven analysis. Always include risk warnings. Format output with clear sections. Respond in the language specified by the user.';
 
@@ -92,10 +120,12 @@ class AiTextService
             'market_analysis' => "Provide a comprehensive market overview for {$symbol}. Include price action analysis, volume analysis, market cap trends, and comparison with overall crypto market. {$dataContext}",
         ];
 
-        return $this->chat($prompts[$type] ?? $prompts['market_analysis'], $systemPrompt, [
+        // โมเดลที่แอดมินเลือก (ถ้ามี) — ใช้ได้เฉพาะกับผู้ให้บริการที่มีโมเดลนั้น ดู optionsFor()
+        return $this->chat($prompts[$type] ?? $prompts['market_analysis'], $systemPrompt, array_filter([
             'temperature' => 0.5,
             'max_tokens' => 4096,
-        ]);
+            'model' => $model,
+        ], fn ($value) => $value !== null && $value !== ''));
     }
 
     /** เขียนข่าว */
@@ -123,6 +153,17 @@ class AiTextService
      * @return array<string, string>
      */
     public function getModels(): array
+    {
+        return self::modelOptions();
+    }
+
+    /**
+     * รายการเดียวกับ getModels() แบบไม่ต้องมีตัว service — ใช้ตรวจค่าที่ส่งมาจากฟอร์มหลังบ้าน
+     * (อ่านจาก config ล้วน ไม่แตะคีย์หรือฐานข้อมูล).
+     *
+     * @return array<string, string>
+     */
+    public static function modelOptions(): array
     {
         $models = [];
 
@@ -170,11 +211,46 @@ class AiTextService
 
         $model = trim((string) (SiteSetting::get('ai', $base['model_setting'] ?? '') ?: ''));
 
+        /*
+         * โมเดลที่ผู้ให้บริการถอดไปแล้ว = ถือว่าไม่ได้ตั้ง แล้วใช้ค่าปริยายจาก config
+         *
+         * ค่าในหลังบ้านไม่ได้เน่าเพราะใครแก้ — มันถูกบันทึกไว้ตอนโมเดลยังอยู่ (production ยังเก็บ
+         * llama-3.3-70b-versatile) รอให้แอดมินเข้าไปเลือกใหม่เอง = ตัวสำรองใช้ไม่ได้ไปจนกว่าจะมีคนสังเกต
+         */
+        if ($model !== '' && in_array($model, (array) ($base['retired_models'] ?? []), true)) {
+            $model = '';
+        }
+
         return [
             'api_key' => $key,
             'endpoint' => $base['endpoint'],
             'model' => $model !== '' ? $model : $base['default_model'],
         ];
+    }
+
+    /**
+     * ตัวเลือกของคำขอสำหรับผู้ให้บริการรายนี้ — โมเดลที่ผู้เรียกระบุมาใช้ได้เฉพาะกับเจ้าที่มีโมเดลนั้น.
+     *
+     * ผู้เรียกระบุโมเดลได้ตัวเดียว แต่ระบบลองหลายเจ้าตามลำดับ — ส่งชื่อโมเดลของ Groq ไปให้ OpenAI
+     * (หรือกลับกัน) ได้ 404 แน่นอน ทั้งที่เจ้านั้นตอบด้วยโมเดลของตัวเองได้ จึงทิ้งชื่อที่ไม่ใช่ของเจ้านั้น
+     * (รวมถึงชื่อที่ถูกถอดแล้ว) แล้วปล่อยให้ใช้โมเดลตามค่าตั้ง
+     */
+    private function optionsFor(string $provider, array $options): array
+    {
+        $requested = $options['model'] ?? null;
+
+        if ($requested === null) {
+            return $options;
+        }
+
+        $known = array_keys((array) config("ai_text.providers.{$provider}.models", []));
+        $retired = (array) config("ai_text.providers.{$provider}.retired_models", []);
+
+        if (! is_string($requested) || ! in_array($requested, $known, true) || in_array($requested, $retired, true)) {
+            unset($options['model']);
+        }
+
+        return $options;
     }
 
     /** ยิงจริง — รูปแบบ chat completions ที่ทั้ง OpenAI และ Groq ใช้เหมือนกัน */
@@ -201,7 +277,13 @@ class AiTextService
                     'max_tokens' => $options['max_tokens'] ?? 2048,
                 ]);
         } catch (\Throwable $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
+            /*
+             * ข้อความดิบของ exception (URL ปลายทาง · รายละเอียด cURL) อยู่ใน log เท่านั้น
+             * ผลของเมธอดนี้ถูกส่งต่อไปถึงหน้าจอแอดมินและถูกบันทึกลงฐานข้อมูล (error_message)
+             */
+            Log::warning('AI text: เชื่อมต่อผู้ให้บริการไม่ได้', ['endpoint' => $config['endpoint'], 'error' => $e->getMessage()]);
+
+            return ['success' => false, 'error' => __('เชื่อมต่อผู้ให้บริการไม่ได้ (หมดเวลาหรือเครือข่ายขัดข้อง)')];
         }
 
         if ($response->failed()) {

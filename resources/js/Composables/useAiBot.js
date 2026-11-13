@@ -182,6 +182,17 @@ function readError(err, fallback = null) {
     if (response?.status === 429) return { code: 'RATE_LIMITED', message: t('aiTrade.errRateLimited') };
     if (!response && err?.request) return { code: 'NETWORK', message: t('aiTrade.errNetwork') };
 
+    /*
+     * ข้อมูลไม่ผ่านการตรวจ (422 ของ Laravel) มาในรูป { errors: { field: [ข้อความ] } } ไม่ใช่ { error }
+     * เดิมจึงตกไปเป็น "ทำรายการไม่สำเร็จ" เฉยๆ ทั้งที่เซิร์ฟเวอร์บอกเหตุผลจริงมาแล้ว
+     * เช่น "กลยุทธ์นี้ยังเปิดใช้งานไม่ได้ — เร็วๆ นี้" ตอนสร้างบอทด้วยกลยุทธ์ที่ยังไม่เปิด
+     */
+    const validation = !payload && response?.status === 422 ? response.data?.errors : null;
+    const firstInvalid = validation && typeof validation === 'object' ? Object.values(validation)[0] : null;
+    const validationMessage = Array.isArray(firstInvalid) && typeof firstInvalid[0] === 'string' ? firstInvalid[0] : null;
+
+    if (validationMessage) return { code: 'VALIDATION', message: validationMessage };
+
     return { code: code || 'REQUEST_FAILED', message: payload?.message || fallback || t('aiTrade.errGeneric') };
 }
 
@@ -398,6 +409,52 @@ function subscribeKeyFor(address, planCode, days) {
     const next = { address, planCode, days, key: newRequestKey(), createdAt: Date.now() };
     writePendingSubscribe(next);
     return next.key;
+}
+
+/*
+ * ธุรกรรมเติมเครดิตที่ "โอนออกไปแล้ว แต่เซิร์ฟเวอร์ยังไม่ตอบผลสุดท้าย"
+ *
+ * เงินออกจากกระเป๋าผู้ใช้ตั้งแต่กระเป๋าส่งธุรกรรม — ถ้า tx hash อยู่แค่ในหน่วยความจำ ปิดแท็บ/รีโหลด
+ * ระหว่างรอเชนยืนยันแล้ว hash หาย ผู้ใช้จ่ายแล้วไม่ได้เครดิตและไม่รู้ว่าต้องเอาอะไรมายืนยัน
+ * เก็บลง localStorage จนกว่าจะได้ผลสุดท้าย (ลงเครดิต หรือถูกปฏิเสธถาวร) หน้า /ai-trade
+ * จะชวนให้ตรวจต่อเมื่อเปิดมาเจอรายการค้างของกระเป๋าที่เชื่อมอยู่
+ */
+const TOPUP_PENDING_STORAGE = 'tpix.aiBot.pendingTopup';
+const TOPUP_PENDING_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+let pendingTopupMemory = null;   // สำรองเมื่อ localStorage ใช้ไม่ได้ (โหมดส่วนตัว)
+const pendingTopupVersion = ref(0);   // ให้หน้าจอที่อ่านรายการค้างคำนวณใหม่เมื่อมีการเขียน
+
+/** รายการเติมที่ค้างยืนยันของกระเป๋านี้ — { address, pack, hash, createdAt } หรือ null */
+export function readPendingTopup(address) {
+    // อ่านตัวนับก่อนเสมอ — computed ที่เรียกฟังก์ชันนี้จะคำนวณใหม่เมื่อมีการเขียนครั้งถัดไป
+    if (pendingTopupVersion.value < 0) return null;
+
+    let stored = pendingTopupMemory;
+    try {
+        const parsed = JSON.parse(localStorage.getItem(TOPUP_PENDING_STORAGE) || 'null');
+        if (parsed && typeof parsed === 'object') stored = parsed;
+    } catch {
+        // อ่านไม่ได้ — ใช้ค่าในหน่วยความจำ
+    }
+
+    if (!stored || typeof stored.hash !== 'string' || !/^0x[a-fA-F0-9]{64}$/.test(stored.hash)) return null;
+    if (typeof stored.pack !== 'string' || !address) return null;
+    if (normalizeAddress(stored.address) !== normalizeAddress(address)) return null;
+    if (Date.now() - Number(stored.createdAt || 0) > TOPUP_PENDING_TTL_MS) return null;
+
+    return stored;
+}
+
+/** จำ/ล้างรายการเติมที่ค้างยืนยัน (null = ล้าง) */
+export function writePendingTopup(value) {
+    pendingTopupMemory = value ? { ...value, createdAt: value.createdAt || Date.now() } : null;
+    try {
+        if (pendingTopupMemory) localStorage.setItem(TOPUP_PENDING_STORAGE, JSON.stringify(pendingTopupMemory));
+        else localStorage.removeItem(TOPUP_PENDING_STORAGE);
+    } catch {
+        // เก็บไม่ได้ (โหมดส่วนตัว/พื้นที่เต็ม) — จำในหน่วยความจำอย่างเดียว อยู่ได้จนกว่าจะรีโหลดหน้า
+    }
+    pendingTopupVersion.value++;
 }
 
 /** ยิง action ที่เขียนข้อมูล แล้ว sync status กลับมา */
@@ -705,8 +762,19 @@ export function useAiBot() {
         axios.post('/api/v1/ai-bot/welcome', { wallet_address: address })
     );
 
+    /** ใบแจ้งชำระของแพ็ก — ยอด · กระเป๋ารับเงิน · เชน มาจากเซิร์ฟเวอร์เท่านั้น (ยังไม่ลงเครดิต) */
     const requestTopup = (pack) => mutate(address =>
         axios.post('/api/v1/ai-bot/topup', { wallet_address: address, pack })
+    , { refresh: false });
+
+    /**
+     * ยืนยันการโอน TPIX ด้วย tx hash — เซิร์ฟเวอร์อ่านธุรกรรมจากเชนเอง
+     *
+     * ผล `data.status`: 'credited' = ลงเครดิตแล้ว · 'pending' = เชนยังไม่ยืนยัน ถามซ้ำได้
+     * ไม่ refresh สถานะทุกครั้งที่ถาม (ตอนรอเชนจะถามซ้ำหลายรอบ) — ผู้เรียกโหลดเองเมื่อได้เครดิต
+     */
+    const confirmTopup = (pack, txHash) => mutate(address =>
+        axios.post('/api/v1/ai-bot/topup', { wallet_address: address, pack, tx_hash: txHash })
     , { refresh: false });
 
     const createBot = (payload) => mutate(address =>
@@ -867,13 +935,20 @@ export function useAiBot() {
      * แล้วค่อยเปิดเมื่อรู้จริง — เดาว่าเปิดไว้ก่อนแล้วผิด แปลว่าผู้ใช้กดปุ่มที่ใช้ไม่ได้
      */
     const liveEnabled = computed(() => catalog.value?.features?.live_trading === true);
-    const topupEnabled = computed(() => catalog.value?.features?.credit_topup === true);
-
     /** เปิดให้คนทั่วไปเช่าแล้วหรือยัง — ทีมงานข้ามด่านนี้ได้ */
     const salesOpen = computed(() => catalog.value?.features?.sales_open === true);
 
     /** กระเป๋านี้เป็นของทีมงานไหม (เซิร์ฟเวอร์เป็นคนตัดสิน หน้าเว็บแค่แสดงผลตาม) */
     const isAdminWallet = computed(() => status.value?.is_admin === true);
+
+    /*
+     * เติมเครดิตได้ไหม — คนทั่วไป: รางรับเงินพร้อมและเปิดขายแล้ว (credit_topup)
+     * ทีมงาน: รางรับเงินพร้อมก็พอ (credit_topup_ready) เพื่อทดสอบก่อนเปิดขาย — เซิร์ฟเวอร์ตัดสินซ้ำอีกชั้นเสมอ
+     */
+    const topupEnabled = computed(() =>
+        catalog.value?.features?.credit_topup === true
+        || (isAdminWallet.value && catalog.value?.features?.credit_topup_ready === true)
+    );
 
     /** เช่าได้ไหมในตอนนี้ — ปิดขายอยู่และไม่ใช่ทีมงาน = ยังเช่าไม่ได้ */
     const canRent = computed(() => salesOpen.value || isAdminWallet.value);
@@ -1058,7 +1133,7 @@ export function useAiBot() {
         demoEquity, demoPnl, demoPnlPct, demoResetsLeft, demoUnrealized, demoTotalPnl,
         runsInCloud, browserBots,
         // actions
-        loadCatalog, loadStatus, subscribe, cancel, claimWelcome, requestTopup,
+        loadCatalog, loadStatus, subscribe, cancel, claimWelcome, requestTopup, confirmTopup,
         createBot, updateBot, setBotState, setBotMode, deleteBot,
         loadDemo, resetDemo, loadRisk, askAdvice, loadMarketView,
         loadTrades,
