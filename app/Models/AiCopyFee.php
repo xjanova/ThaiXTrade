@@ -8,8 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * TPIX TRADE — บัญชีค่าบริการ Copy Trade หนึ่งรายการ.
  *
- * ⚠️ เป็นบัญชี ไม่ใช่การโอน — `recorded` คือคำนวณไว้ให้เห็นเฉยๆ (ยังไม่เปิดเก็บ) ไม่มีเหรียญเปลี่ยนมือ
- *    ยังไม่มีโค้ดส่วนไหนเก็บ TPIX จากผู้ตามหรือจ่ายให้มาสเตอร์ สถานะ settled จึงยังไม่ถูกเขียนโดยระบบ
+ * `recorded` คือคำนวณไว้ให้เห็นเฉยๆ (ตอนนั้นยังไม่เปิดเก็บ) ไม่มีเหรียญเปลี่ยนมือ และไม่ถูกเก็บย้อนหลัง
+ * `accrued` → `settled` เขียนโดย FeeCollector เมื่อหักจากคลัง TPIX ของผู้ตามและลงส่วนของมาสเตอร์สำเร็จ
  *
  * Developed by Xman Studio.
  */
@@ -18,7 +18,7 @@ class AiCopyFee extends Model
     /** คำนวณไว้เฉยๆ — ยังไม่เปิดเก็บค่าบริการ (config aibot.copy_trade.fees.collect = false) */
     public const STATUS_RECORDED = 'recorded';
 
-    /** เปิดเก็บแล้ว รายการนี้ค้างเก็บ */
+    /** เปิดเก็บแล้ว รายการนี้ค้างเก็บ (ยอดในคลังของผู้ตามยังไม่พอ หรือยังไม่ถึงรอบเก็บ) */
     public const STATUS_ACCRUED = 'accrued';
 
     public const STATUS_SETTLED = 'settled';
@@ -28,7 +28,7 @@ class AiCopyFee extends Model
     protected $fillable = [
         'ai_copy_follow_id', 'ai_copy_master_id', 'ai_bot_trade_id', 'follower_wallet', 'master_wallet',
         'profit_usd', 'fee_rate_pct', 'platform_share_pct', 'fee_usd', 'master_usd', 'platform_usd',
-        'tpix_usd_price', 'fee_tpix', 'master_tpix', 'platform_tpix', 'status', 'charged_at',
+        'tpix_usd_price', 'fee_tpix', 'master_tpix', 'platform_tpix', 'status', 'charged_at', 'settled_at',
     ];
 
     protected function casts(): array
@@ -45,6 +45,7 @@ class AiCopyFee extends Model
             'master_tpix' => 'float',
             'platform_tpix' => 'float',
             'charged_at' => 'datetime',
+            'settled_at' => 'datetime',
         ];
     }
 

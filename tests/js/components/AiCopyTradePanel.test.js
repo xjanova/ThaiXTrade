@@ -8,6 +8,9 @@
  *  - ค่าบริการที่ยังไม่ถูกเก็บถูกนำเสนอเหมือนเก็บไปแล้ว
  *  - เลิกตาม/ปิดโปรไฟล์โดยไม่ถามยืนยัน · กดซ้ำแล้วยิงซ้ำ
  *  - ของกระเป๋าก่อนหน้าค้างอยู่หลังสลับกระเป๋า
+ *  - เปิดเก็บค่าบริการแล้ว แต่กดตามได้ทั้งที่ยอด TPIX ไม่พอ หรือไม่มีคำเตือนว่าต้องเติมอีกเท่าไหร่
+ *  - ค่าบริการค้างจ่ายแล้วผู้ตามไม่รู้ว่าทำไมบอทไม่เปิดไม้ใหม่
+ *  - คลิปแนะนำเกินเพดาน · ตั้งได้ทั้งที่ถูกถอนสิทธิ์
  * (เทสต์รันด้วย locale = en ตาม tests/js/setup.js)
  *
  * Developed by Xman Studio
@@ -16,6 +19,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils';
 import AiCopyTradePanel from '@/Components/AiTrade/AiCopyTradePanel.vue';
+
+// ตัวเติม TPIX มีเทสต์ของตัวเองและต้องใช้ store ของกระเป๋า — ที่นี่ดูแค่ว่าถูกเปิดเมื่อไหร่
+vi.mock('@/Components/Trading/TpixTopupModal.vue', () => ({
+    default: { name: 'TpixTopupModal', props: ['show'], emits: ['close', 'credited'], template: '<div data-testid="topup-modal" />' },
+}));
 
 enableAutoUnmount(afterEach);
 afterEach(() => vi.restoreAllMocks());
@@ -62,7 +70,7 @@ function makeApi(board = boardData(), mine = mineData()) {
         loadMine: vi.fn(() => Promise.resolve({ ok: true, data: mine })),
         registerMaster: ok(), updateMaster: ok(), closeMaster: ok(), follow: ok(), stopFollow: ok(), acceptRate: ok(),
         loadReviews: ok({ rating: { avg: 3.5, count: 2 }, reviews: [] }), review: ok(), reportReview: ok({ reported: true }),
-        loadMedia: ok({ embed: false, items: [] }), addMedia: ok(), removeMedia: ok(),
+        loadMedia: ok({ embed: false, items: [] }), addMedia: ok(), removeMedia: ok(), featureMedia: ok(),
     };
 }
 
@@ -234,11 +242,19 @@ describe('AiCopyTradePanel — my follows', () => {
         expect(row).toContain('nothing has been charged');
     });
 
-    it('says fees are due once collection is on', async () => {
-        const { wrapper } = await mountPanel(makeApi(boardData(), mineData({ follows: [follow({ fees_collect: true })] })));
+    it('says how much was deducted from the prepaid balance once collection is on', async () => {
+        const { wrapper } = await mountPanel(makeApi(boardData(), mineData({ follows: [follow({ fees_collect: true, fees_paid_tpix: 48, fees_owed_tpix: 0, fees_owed_count: 0 })] })));
+        const row = byId(wrapper, 'copy-follow-row-9');
 
-        expect(byId(wrapper, 'copy-follow-row-9').text()).toContain('Due');
-        expect(byId(wrapper, 'copy-follow-row-9').text()).not.toContain('nothing has been charged');
+        expect(row.text()).toContain('48 TPIX deducted from your prepaid balance');
+        expect(row.text()).not.toContain('nothing has been charged');
+        expect(byId(wrapper, 'copy-follow-owed-9').exists()).toBe(false);
+    });
+
+    it('flags a follow with unpaid fees', async () => {
+        const { wrapper } = await mountPanel(makeApi(boardData(), mineData({ follows: [follow({ fees_collect: true, fees_paid_tpix: 0, fees_owed_tpix: 48, fees_owed_count: 1 })] })));
+
+        expect(byId(wrapper, 'copy-follow-owed-9').text()).toBe('48 TPIX unpaid — top up TPIX so the bot can open new trades again');
     });
 
     it('keeps the old rate visible until the follower accepts the new one', async () => {
@@ -599,5 +615,220 @@ describe('AiCopyTradePanel — lives and clips', () => {
         await byId(wrapper, 'copy-media-remove-3').trigger('click');
         await flushPromises();
         expect(api.removeMedia).toHaveBeenCalledWith(3);
+    });
+});
+
+describe('AiCopyTradePanel — prepaid TPIX for fees', () => {
+    const FEES = {
+        collect: true, currency: 'TPIX', rate_pct: { min: 5, max: 30, default: 20 }, platform_share_pct: { min: 20, max: 50, default: 20 },
+        min_balance_tpix: 10, reserve_profit_pct: 5, tpix_usd_price: 0.5,
+    };
+    const balance = (overrides = {}) => ({
+        balance_tpix: 50, minimum_tpix: 10, owed_tpix: 0, owed_usd: 0, owed_count: 0, shortfall_tpix: 0, blocked: false, ...overrides,
+    });
+    const collecting = (feeBalance, mine = {}) => makeApi(boardData({ fees: FEES }), mineData({ fee_balance: feeBalance, ...mine }));
+    const activeFollow = {
+        id: 9, status: 'active', bot_id: 44, master: { id: 1, display_name: 'Alpha', status: 'active', fee_rate_pct: 20 },
+        fee_rate_pct: 20, realized_pnl: 0, fees_usd: 0, fees_tpix: 0, fees_collect: true,
+    };
+
+    it('shows no balance box while fees are not collected', async () => {
+        const { wrapper } = await mountPanel();
+
+        expect(byId(wrapper, 'copy-fee-balance').exists()).toBe(false);
+    });
+
+    it('shows the balance and what it is for', async () => {
+        const { wrapper } = await mountPanel(collecting(balance()));
+        const box = byId(wrapper, 'copy-fee-balance');
+
+        expect(box.text()).toContain('50 TPIX');
+        expect(box.text()).toContain('keep at least 10 TPIX');
+        expect(byId(wrapper, 'copy-fee-owed').exists()).toBe(false);
+        expect(byId(wrapper, 'copy-fee-low').exists()).toBe(false);
+    });
+
+    it('warns about unpaid fees and says how much to top up', async () => {
+        const { wrapper } = await mountPanel(collecting(balance({ owed_tpix: 400, owed_count: 1, shortfall_tpix: 360, blocked: true }), { follows: [activeFollow] }));
+
+        expect(byId(wrapper, 'copy-fee-owed').text()).toBe(
+            'You owe 400 TPIX in fees — your copy bots open no new trades and you cannot follow another master until you top up at least 360 TPIX (open positions still close with the master)',
+        );
+    });
+
+    it('warns a follower whose balance fell under the minimum, but not a wallet that follows nobody', async () => {
+        const low = balance({ balance_tpix: 5, shortfall_tpix: 5, blocked: true });
+
+        const following = await mountPanel(collecting(low, { follows: [activeFollow] }));
+        expect(byId(following.wrapper, 'copy-fee-low').text()).toContain('top up 5 TPIX');
+
+        const idle = await mountPanel(collecting(low));
+        expect(byId(idle.wrapper, 'copy-fee-low').exists()).toBe(false);
+    });
+
+    it('opens the top-up dialog and reloads once TPIX is credited', async () => {
+        const { wrapper, api } = await mountPanel(collecting(balance()));
+
+        expect(byId(wrapper, 'topup-modal').exists()).toBe(false);
+        await byId(wrapper, 'copy-fee-topup').trigger('click');
+        expect(byId(wrapper, 'topup-modal').exists()).toBe(true);
+
+        const loads = api.loadMine.mock.calls.length;
+        wrapper.findComponent({ name: 'TpixTopupModal' }).vm.$emit('credited');
+        await flushPromises();
+
+        expect(api.loadMine.mock.calls.length).toBe(loads + 1);
+    });
+
+    it('blocks the confirm button and says how much is missing when the balance is too low', async () => {
+        const { wrapper, api } = await mountPanel(collecting(balance({ balance_tpix: 4 })));
+
+        await byId(wrapper, 'copy-follow-1').trigger('click');
+
+        // ทุน 100 · กำไร 5% · ค่าบริการ 20% = 1 USD = 2 TPIX → ต่ำกว่าขั้นต่ำ 10 → ต้องมี 10
+        expect(byId(wrapper, 'copy-follow-balance').text()).toContain('needs at least 10 TPIX, you have 4 TPIX, 6 TPIX short');
+        expect(byId(wrapper, 'copy-follow-confirm').attributes('disabled')).toBeDefined();
+        expect(byId(wrapper, 'copy-follow-topup').exists()).toBe(true);
+
+        await byId(wrapper, 'copy-follow-form').trigger('submit');
+        await flushPromises();
+        expect(api.follow).not.toHaveBeenCalled();
+    });
+
+    it('raises the needed balance with the capital the follower sets', async () => {
+        const { wrapper, api } = await mountPanel(collecting(balance({ balance_tpix: 50 })));
+
+        await byId(wrapper, 'copy-follow-1').trigger('click');
+        expect(byId(wrapper, 'copy-follow-balance').text()).toContain('needs at least 10 TPIX (you have 50 TPIX)');
+        expect(byId(wrapper, 'copy-follow-confirm').attributes('disabled')).toBeUndefined();
+
+        // ทุน 5000 → 5000 × 5% × 20% / 0.5 = 100 TPIX
+        await byId(wrapper, 'copy-follow-max_position_usd').setValue(5000);
+        expect(byId(wrapper, 'copy-follow-balance').text()).toContain('needs at least 100 TPIX, you have 50 TPIX, 50 TPIX short');
+        expect(byId(wrapper, 'copy-follow-confirm').attributes('disabled')).toBeDefined();
+
+        await byId(wrapper, 'copy-follow-max_position_usd').setValue(100);
+        await byId(wrapper, 'copy-follow-form').trigger('submit');
+        await flushPromises();
+        expect(api.follow).toHaveBeenCalledTimes(1);
+    });
+
+    it('counts unpaid fees on top of what following needs', async () => {
+        const { wrapper } = await mountPanel(collecting(balance({ balance_tpix: 400, owed_tpix: 400, owed_count: 1, blocked: true })));
+
+        await byId(wrapper, 'copy-follow-1').trigger('click');
+
+        expect(byId(wrapper, 'copy-follow-balance').text()).toContain('needs at least 410 TPIX');
+        expect(byId(wrapper, 'copy-follow-confirm').attributes('disabled')).toBeDefined();
+    });
+
+    it('tells a master how much reached the prepaid balance and how much is pending', async () => {
+        const own = { ...master({ followers: 4 }), earnings: { master_usd: 140, collect: true, master_tpix_paid: 280, master_tpix_pending: 56 } };
+        const { wrapper } = await mountPanel(collecting(balance(), { master: own }));
+
+        expect(byId(wrapper, 'copy-my-earnings-note').text()).toContain('280 TPIX credited to your prepaid balance · 56 TPIX waiting for followers to top up');
+    });
+});
+
+describe('AiCopyTradePanel — profile page, introduction and featured clips', () => {
+    const clip = (overrides = {}) => ({
+        id: 3, kind: 'clip', provider: 'youtube', title: 'Intro', status: 'visible', featured: true,
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', embed_url: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ', ...overrides,
+    });
+    const media = (items = [], overrides = {}) => ({
+        unlocked: false, revoked: false, tier: { need: 3, have: 1 }, revenue_usd: { need: 50, have: 0 }, max_items: 10, featured_max: 3, items, ...overrides,
+    });
+    const own = (overrides = {}) => ({ ...master(), intro: 'I trade the 4h trend.', earnings: { master_usd: 0, collect: false }, media: media(), ...overrides });
+    const mountOwn = (profile) => mountPanel(makeApi(boardData(), mineData({ master: profile })));
+
+    it('links every master card to its profile page', async () => {
+        const { wrapper } = await mountPanel();
+
+        expect(byId(wrapper, 'copy-profile-link-1').attributes('href')).toBe('/ai-trade/master/1');
+        expect(byId(wrapper, 'copy-profile-link-2').attributes('href')).toBe('/ai-trade/master/2');
+    });
+
+    it('saves the introduction only after it was edited, and sends null for an empty one', async () => {
+        const { wrapper, api } = await mountOwn(own());
+
+        expect(byId(wrapper, 'copy-my-profile-link').attributes('href')).toBe('/ai-trade/master/1');
+        expect(byId(wrapper, 'copy-intro-input').element.value).toBe('I trade the 4h trend.');
+        expect(byId(wrapper, 'copy-intro-save').attributes('disabled')).toBeDefined();
+
+        await byId(wrapper, 'copy-intro-input').setValue('  New intro  ');
+        await byId(wrapper, 'copy-intro-save').trigger('click');
+        await flushPromises();
+        expect(api.updateMaster).toHaveBeenLastCalledWith({ intro: 'New intro' });
+
+        await byId(wrapper, 'copy-intro-input').setValue('   ');
+        await byId(wrapper, 'copy-intro-save').trigger('click');
+        await flushPromises();
+        expect(api.updateMaster).toHaveBeenLastCalledWith({ intro: null });
+    });
+
+    it('lets a master without the media unlock add a featured clip', async () => {
+        const { wrapper, api } = await mountOwn(own());
+
+        expect(byId(wrapper, 'copy-featured-count').text()).toBe('0/3');
+        expect(byId(wrapper, 'copy-media-locked').exists()).toBe(true);
+        expect(byId(wrapper, 'copy-featured-add').attributes('disabled')).toBeDefined();
+
+        await byId(wrapper, 'copy-featured-url').setValue(' https://youtu.be/dQw4w9WgXcQ ');
+        await byId(wrapper, 'copy-featured-title').setValue('Who I am');
+        await byId(wrapper, 'copy-featured-form').trigger('submit');
+        await flushPromises();
+
+        expect(api.addMedia).toHaveBeenCalledWith({ kind: 'clip', url: 'https://youtu.be/dQw4w9WgXcQ', title: 'Who I am', featured: true });
+    });
+
+    it('hides the form at the limit and still lets the master take a clip off', async () => {
+        const items = [clip({ id: 1 }), clip({ id: 2 }), clip({ id: 3 }), clip({ id: 4, featured: false })];
+        const { wrapper, api } = await mountOwn(own({ media: media(items) }));
+
+        expect(byId(wrapper, 'copy-featured-count').text()).toBe('3/3');
+        expect(byId(wrapper, 'copy-featured-form').exists()).toBe(false);
+        // เต็มแล้ว: คลิปธรรมดาตั้งเพิ่มไม่ได้ · คลิปแนะนำถอดได้ · คลังนับเฉพาะรายการที่ไม่ใช่คลิปแนะนำ
+        expect(byId(wrapper, 'copy-media-feature-4').exists()).toBe(false);
+        expect(byId(wrapper, 'copy-my-media').text()).toContain('1/10 items');
+
+        await byId(wrapper, 'copy-media-feature-2').trigger('click');
+        await flushPromises();
+        expect(api.featureMedia).toHaveBeenCalledWith(2, false);
+    });
+
+    it('features an existing clip but never a live', async () => {
+        const items = [clip({ id: 5, featured: false }), clip({ id: 6, featured: false, kind: 'live' })];
+        const { wrapper, api } = await mountOwn(own({ media: media(items, { unlocked: true }) }));
+
+        expect(byId(wrapper, 'copy-media-feature-6').exists()).toBe(false);
+
+        await byId(wrapper, 'copy-media-feature-5').trigger('click');
+        await flushPromises();
+        expect(api.featureMedia).toHaveBeenCalledWith(5, true);
+    });
+
+    it('offers no way to feature while the team has revoked media', async () => {
+        const items = [clip({ id: 1 }), clip({ id: 5, featured: false })];
+        const { wrapper } = await mountOwn(own({ media: media(items, { revoked: true }) }));
+
+        expect(byId(wrapper, 'copy-featured-form').exists()).toBe(false);
+        expect(byId(wrapper, 'copy-media-feature-5').exists()).toBe(false);
+        // ของที่ตั้งไว้แล้วยังถอดเองได้
+        expect(byId(wrapper, 'copy-media-feature-1').exists()).toBe(true);
+    });
+
+    it('highlights the master it was sent to from a profile page without following for the user', async () => {
+        window.history.replaceState({}, '', '/ai-trade?master=2');
+
+        try {
+            const { wrapper, api } = await mountPanel();
+
+            expect(byId(wrapper, 'copy-master-2').classes()).toContain('ring-1');
+            expect(byId(wrapper, 'copy-master-1').classes()).not.toContain('ring-1');
+            expect(byId(wrapper, 'copy-follow-form').exists()).toBe(false);
+            expect(api.follow).not.toHaveBeenCalled();
+        } finally {
+            window.history.replaceState({}, '', '/');
+        }
     });
 });

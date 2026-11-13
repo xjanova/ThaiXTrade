@@ -17,6 +17,7 @@ use App\Services\AiBot\MacroTrendService;
 use App\Services\AiBot\NewsFeedService;
 use App\Services\AiBot\PaperBroker;
 use App\Services\MarketDataService;
+use App\Services\Trading\TradingCreditService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -1238,8 +1239,13 @@ class BotRunnerTest extends TestCase
      * บอทผู้ตามในเทสต์นี้เดินโหมดทดลอง (โบรกเกอร์กระดาษ) เพื่อดูว่าตัวรันส่งข้อมูลของมาสเตอร์ให้กลยุทธ์ถูกต้อง
      * — ของจริง API บังคับให้บอทผู้ตามเป็นโหมดเงินจริงเท่านั้น (AiCopyTradeTest)
      */
-    private function makeFollower(?float $exposureUsd, bool $openedAfterFollow = true): AiBotConfig
+    private function makeFollower(?float $exposureUsd, bool $openedAfterFollow = true, float $prepaidTpix = 100.0): AiBotConfig
     {
+        // ค่าบริการ Copy Trade หักจากคลัง TPIX ที่เติมไว้ — ผู้ตามที่ไม่มียอดจะไม่เปิดไม้ใหม่ (ดูเทสต์ท้ายหมวดนี้)
+        if ($prepaidTpix > 0) {
+            app(TradingCreditService::class)->topup(self::WALLET, $prepaidTpix, '0x'.str_repeat('f', 64));
+        }
+
         $masterBot = AiBotConfig::create([
             'wallet_address' => '0x9999999999999999999999999999999999999999', 'name' => 'master', 'pair' => 'BTC/USDT',
             'strategy' => 'momentum', 'timeframe' => '1h', 'status' => 'running', 'mode' => 'live',
@@ -1325,5 +1331,44 @@ class BotRunnerTest extends TestCase
 
         $this->assertSame('sell', $result['action']);
         $this->assertStringContainsString('ถึงจุดตัดขาดทุนที่ตั้งไว้', $result['reason']);
+    }
+
+    /** คลัง TPIX สำหรับค่าบริการไม่พอ → ไม่เปิดไม้ใหม่ และบอกเหตุผลตรงๆ */
+    #[Test]
+    public function a_copy_bot_without_prepaid_tpix_opens_no_new_trade(): void
+    {
+        $bot = $this->makeFollower(500.0, prepaidTpix: 0.0);
+        $this->candles = $this->flatCandles(80);
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('hold', $result['action']);
+        $this->assertStringContainsString('ยอด TPIX ที่เติมไว้ไม่พอจ่ายค่าบริการ', $result['reason']);
+        $this->assertSame(0, AiBotTrade::count());
+    }
+
+    /** ปิดธงเก็บค่าบริการ = ไม่มีด่านยอด — ผู้ตามที่ไม่มี TPIX ในคลังเข้าตามได้ตามปกติ */
+    #[Test]
+    public function a_copy_bot_needs_no_prepaid_tpix_while_fee_collection_is_off(): void
+    {
+        config(['aibot.copy_trade.fees.collect' => false]);
+        $bot = $this->makeFollower(500.0, prepaidTpix: 0.0);
+        $this->candles = $this->flatCandles(80);
+
+        $this->assertSame('buy', $this->runner->tick($bot)['action']);
+    }
+
+    /** คลังไม่พอห้ามแค่ "ซื้อ" — ไม้ที่ถืออยู่ยังปิดตามมาสเตอร์ได้ (ไม่ขังผู้ตามไว้กับไม้ที่มาสเตอร์ออกไปแล้ว) */
+    #[Test]
+    public function a_copy_bot_without_prepaid_tpix_still_closes_with_the_master(): void
+    {
+        $bot = $this->makeFollower(null, prepaidTpix: 0.0);
+        $this->giveBotAPosition($bot, 100.0, 1.0);
+        $this->candles = $this->flatCandles(80);
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('sell', $result['action']);
+        $this->assertSame('มาสเตอร์ปิดไม้แล้ว — ปิดตาม', $result['reason']);
     }
 }

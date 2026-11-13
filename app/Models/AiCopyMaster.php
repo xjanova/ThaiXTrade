@@ -25,7 +25,7 @@ class AiCopyMaster extends Model
     public const STATUS_CLOSED = 'closed';
 
     protected $fillable = [
-        'wallet_address', 'ai_bot_config_id', 'display_name', 'bio',
+        'wallet_address', 'ai_bot_config_id', 'display_name', 'bio', 'intro',
         'fee_rate_pct', 'platform_share_pct', 'status', 'stats', 'stats_at',
         'registered_at', 'closed_at',
         'rank_tier', 'rank_score', 'rank_below_since', 'rank_evaluated_at', 'rating_avg', 'rating_count',

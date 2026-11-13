@@ -225,6 +225,12 @@ Route::get('/ai-trade', function () {
     return Inertia::render('AiTrade');
 })->name('ai-trade');
 
+// หน้าแนะนำตัวมาสเตอร์ Copy Trade — ข้อมูลมาจาก /api/v1/ai-bot/copy/masters/{id} ฝั่ง client
+// (ปิดระบบ/ไม่พบมาสเตอร์ = หน้าบอกว่าไม่พบ ไม่ใช่ 500) · รหัสยาวเกิน int ไม่เข้า route นี้เลย (404 ไม่ใช่ TypeError)
+Route::get('/ai-trade/master/{id}', function (int $id) {
+    return Inertia::render('AiTradeMaster', ['masterId' => $id]);
+})->where('id', '[0-9]{1,15}')->name('ai-trade.master');
+
 // TPIX Stability Reserve — หน้าความโปร่งใสของกองทุนพยุงราคา
 // ข้อมูลทั้งหมดมาจาก /api/v1/stability ฝั่ง client (เชนช้า/ล่มต้องไม่ทำให้หน้านี้เปิดไม่ขึ้น)
 Route::get('/stability', function () {

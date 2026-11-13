@@ -925,6 +925,7 @@ export function useAiBot() {
     /** ตัวเรียก API ของแผง Copy Trade — ส่งให้ AiCopyTradePanel ทั้งก้อน */
     const copyTrade = {
         loadMasters: () => copyRequest('get', '/masters', {}, false),
+        loadMaster: (masterId) => copyRequest('get', `/masters/${masterId}`, {}, false),
         loadMine: () => copyRequest('get', '/me'),
         registerMaster: (payload) => copyRequest('post', '/master', payload),
         updateMaster: (payload) => copyRequest('put', '/master', payload),
@@ -949,6 +950,8 @@ export function useAiBot() {
         loadMedia: (masterId) => copyRequest('get', `/masters/${masterId}/media`, {}, false),
         addMedia: (payload) => copyRequest('post', '/master/media', payload),
         removeMedia: (id) => copyRequest('delete', `/master/media/${id}`),
+        // คลิปแนะนำบนหน้าโปรไฟล์ — ตั้ง/ถอดจากลิงก์ที่แปะไว้แล้ว (แปะใหม่เป็นคลิปแนะนำ = addMedia พร้อม featured: true)
+        featureMedia: (id, featured) => copyRequest('put', `/master/media/${id}`, { featured }),
     };
 
     // ── โหมดทดลอง ────────────────────────────────────────────────────────────

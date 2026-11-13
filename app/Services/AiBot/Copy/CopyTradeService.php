@@ -11,7 +11,6 @@ use App\Models\AiCopyFollow;
 use App\Models\AiCopyMaster;
 use App\Services\AiBot\Live\LiveBroker;
 use App\Services\AiBotService;
-use App\Services\TpixDexService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -64,6 +63,7 @@ class CopyTradeService
     public function __construct(
         private readonly AiBotService $bots,
         private readonly LiveBroker $live,
+        private readonly FeeCollector $fees,
     ) {}
 
     public function enabled(): bool
@@ -166,6 +166,7 @@ class CopyTradeService
                 'ai_bot_config_id' => $bot->id,
                 'display_name' => $profile['display_name'],
                 'bio' => $profile['bio'] ?? null,
+                'intro' => $this->introText($profile['intro'] ?? null),
                 'fee_rate_pct' => $profile['fee_rate_pct'],
                 'platform_share_pct' => $profile['platform_share_pct'],
                 'status' => AiCopyMaster::STATUS_ACTIVE,
@@ -184,13 +185,17 @@ class CopyTradeService
     /**
      * แก้โปรไฟล์/อัตรา — อัตราใหม่มีผลกับผู้ตามใหม่เท่านั้น ผู้ตามเดิมอยู่ที่อัตราที่ตัวเองยอมรับไว้.
      *
-     * @param  array{display_name?: string, bio?: string|null, fee_rate_pct?: float, platform_share_pct?: float, status?: string}  $changes
+     * @param  array{display_name?: string, bio?: string|null, intro?: string|null, fee_rate_pct?: float, platform_share_pct?: float, status?: string}  $changes
      */
     public function updateMaster(AiCopyMaster $master, array $changes): AiCopyMaster
     {
         $this->assertEnabled();
 
         $allowed = array_intersect_key($changes, array_flip(['display_name', 'bio', 'fee_rate_pct', 'platform_share_pct']));
+
+        if (array_key_exists('intro', $changes)) {
+            $allowed['intro'] = $this->introText($changes['intro']);
+        }
 
         // พักรับ/กลับมารับผู้ตามใหม่ — การปิดโปรไฟล์ใช้ closeMaster (ต้องปลดผู้ตามทุกคนด้วย)
         if (in_array($changes['status'] ?? null, [AiCopyMaster::STATUS_ACTIVE, AiCopyMaster::STATUS_PAUSED], true) && $master->isOpen()) {
@@ -302,8 +307,23 @@ class CopyTradeService
 
         // สิทธิ์ตามแพลน + โควตาจำนวนบอท — ด่านเดียวกับการสร้างบอททุกตัว
         $subscription = $this->bots->assertCanRunBot($wallet, self::STRATEGY);
+        $risk = $this->bots->sanitizeRisk($riskInput, $subscription->plan instanceof AiBotPlan ? $subscription->plan : null);
 
-        return DB::transaction(function () use ($wallet, $master, $riskInput, $subscription) {
+        /*
+         * ด่านคลังค่าบริการ (เจ้าของสั่ง 2026-11-13: ยอดไม่พอ = กดตามไม่ได้) — เก็บของที่ค้างก่อน แล้วค่อยดูยอด
+         * ยอดที่ต้องมีคิดจากทุนที่ผู้ตามตั้งและอัตราของมาสเตอร์คนนี้ + ค่าบริการที่ยังค้างจ่ายทั้งหมดของกระเป๋า
+         */
+        if ($this->fees->collecting()) {
+            $this->fees->collect($wallet);
+
+            $gate = $this->fees->gate($wallet, $this->fees->requiredToFollow((float) ($risk['max_position_usd'] ?? 0), $master->fee_rate_pct));
+
+            if (! $gate['ok']) {
+                throw new FeeBalanceLow($gate);
+            }
+        }
+
+        return DB::transaction(function () use ($wallet, $master, $risk, $subscription) {
             $existing = AiCopyFollow::where('ai_copy_master_id', $master->id)
                 ->where('follower_wallet', $wallet)
                 ->lockForUpdate()
@@ -321,7 +341,7 @@ class CopyTradeService
                 'strategy' => self::STRATEGY,
                 'timeframe' => $master->bot->timeframe,
                 'params' => $this->bots->sanitizeParams(self::STRATEGY, []),
-                'risk' => $this->bots->sanitizeRisk($riskInput, $subscription->plan instanceof AiBotPlan ? $subscription->plan : null),
+                'risk' => $risk,
                 'status' => 'paused',
                 'mode' => 'live',
             ]);
@@ -436,6 +456,8 @@ class CopyTradeService
             // ไม้ที่มาสเตอร์เปิดไว้ก่อนเริ่มตามไม่ถูกก๊อปปี้ — ผู้ตามจะเข้าที่ราคาคนละจุดกับที่มาสเตอร์ได้
             'opened_after_follow' => $position && $position->opened_at !== null && $position->opened_at->gte($follow->started_at),
             'follower_cap' => (float) (($followerBot->risk ?? [])['max_position_usd'] ?? 100),
+            // ค้างค่าบริการ หรือยอด TPIX ต่ำกว่าขั้นต่ำ = ไม่เปิด/ไม่เติมไม้ใหม่ (ไม้ที่ถืออยู่ยังปิดตามมาสเตอร์ได้เสมอ)
+            'fee_blocked' => $this->feeBlocked($follow),
         ];
     }
 
@@ -449,9 +471,21 @@ class CopyTradeService
      * high-water mark: ค่าบริการคิดจากส่วนที่กำไรสะสม "ขึ้นสูงกว่าจุดสูงสุดเดิม" เท่านั้น
      * ผู้ตามขาดทุน 100 แล้วกำไรคืน 100 = ยังไม่ได้กำไรเลย ไม่เสียค่าบริการ
      *
+     * เปิดเก็บค่าบริการอยู่ = ลงบัญชีแล้วหักจากคลัง TPIX ของผู้ตามทันที (ดู FeeCollector) — ยอดไม่พอ รายการค้างไว้
+     * และถูกลองเก็บใหม่ทุกครั้งที่เมธอดนี้ถูกเรียก (ทุกรอบของบอท · ทุกครั้งที่ผู้ตามเปิดหน้า Copy Trade)
+     *
      * @return int จำนวนรายการค่าบริการที่ลงใหม่
      */
     public function settleFees(AiCopyFollow $follow): int
+    {
+        $created = $this->ledgerFees($follow);
+
+        $this->fees->collect($follow->follower_wallet);
+
+        return $created;
+    }
+
+    private function ledgerFees(AiCopyFollow $follow): int
     {
         $bot = $follow->bot;
 
@@ -479,8 +513,9 @@ class CopyTradeService
             $highWater = $follow->high_water_mark;
             $feesUsd = $follow->fees_usd;
             $created = 0;
-            $tpixPrice = $this->tpixUsdPrice();
-            $status = (bool) config('aibot.copy_trade.fees.collect', false) ? AiCopyFee::STATUS_ACCRUED : AiCopyFee::STATUS_RECORDED;
+            // ไม่มีราคา TPIX = ลงบัญชีเป็น USD ไว้ก่อน ยังไม่แปลง (ไม่เดาราคา)
+            $tpixPrice = $this->fees->tpixUsdPrice();
+            $status = $this->fees->collecting() ? AiCopyFee::STATUS_ACCRUED : AiCopyFee::STATUS_RECORDED;
 
             foreach ($sells as $trade) {
                 $cumulative += (float) $trade->realized_pnl;
@@ -531,18 +566,27 @@ class CopyTradeService
         });
     }
 
-    /** ราคา TPIX เป็น USD จากพูลของเราเอง — ไม่มีราคา = ลงบัญชีเป็น USD ไว้ก่อน ยังไม่แปลง (ไม่เดาราคา) */
-    private function tpixUsdPrice(): ?float
+    /**
+     * คลังค่าบริการของผู้ตามไม่พอ/ค้างจ่ายอยู่ไหม — อ่านไม่ได้ให้ถือว่า "ไม่พอ".
+     *
+     * ทิศที่ปลอดภัยคือไม่เปิดไม้ใหม่ และต้องไม่โยน exception ออกไป: รอบคิดของบอทต้องเดินต่อ
+     * เพื่อดูแลไม้ที่ถืออยู่ (stop loss · ปิดตามมาสเตอร์)
+     */
+    private function feeBlocked(AiCopyFollow $follow): bool
     {
         try {
-            $price = app(TpixDexService::class)->tpixUsdPrice();
-
-            return $price !== null && $price > 0 ? (float) $price : null;
+            return ! $this->fees->gate($follow->follower_wallet)['ok'];
         } catch (\Throwable $e) {
-            Log::warning('copy trade: อ่านราคา TPIX ไม่ได้ ลงบัญชีค่าบริการเป็น USD ไว้ก่อน', ['error' => $e->getMessage()]);
+            Log::warning('copy trade: อ่านคลังค่าบริการไม่ได้ — งดเปิดไม้ใหม่รอบนี้', ['follow' => $follow->id, 'error' => $e->getMessage()]);
 
-            return null;
+            return true;
         }
+    }
+
+    /** ข้อความแนะนำตัวบนหน้าโปรไฟล์ — ข้อความล้วน (ตัดแท็กที่เซิร์ฟเวอร์ แม้หน้าเว็บจะ escape ตอนแสดงอยู่แล้ว) */
+    private function introText(mixed $text): ?string
+    {
+        return is_string($text) ? ReviewService::plainText($text, (int) config('aibot.copy_trade.master.max_intro_length', 1500)) : null;
     }
 
     private function assertEnabled(): void
