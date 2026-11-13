@@ -730,7 +730,9 @@ return [
     | ถูกปฏิเสธตอนสร้าง/แก้บอทและตอน backtest (App\Services\AiBot\Custom\RuleSet::validate)
     | หน้าเว็บวาดตัวสร้างกฎจากรายการเดียวกันนี้ผ่าน /api/v1/ai-bot/catalog (custom_rules)
     |
-    | ชนิดของช่อง: int (จำนวนเต็ม) · number (ทศนิยม) · select (ต้องมี options + option_labels)
+    | ชนิดของช่อง: int (จำนวนเต็ม หน่วยเป็น "แท่ง" เสมอ — หน้าเว็บแปลงเป็นเวลาตามกรอบเวลาที่เลือกให้ผู้ใช้เห็น
+    |              ถ้าวันหนึ่งมีช่องจำนวนเต็มที่ไม่ใช่จำนวนแท่ง ต้องแก้ AiRuleBuilder.barsAsTime ด้วย)
+    |              · number (ทศนิยม) · select (ต้องมี options + option_labels)
     | use: ฝั่งที่ใช้บล็อกนี้ได้ (entry = เงื่อนไขเข้า · exit = เงื่อนไขออก)
     |
     | ทุกบล็อกต้องมีโค้ดประเมินใน RuleEvaluator และทุกช่องต้องถูกอ่านจริง — SettingsEffectTest ไล่ตรวจให้
