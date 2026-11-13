@@ -20,6 +20,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, useTemplateRef } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import { useElementSize } from '@vueuse/core';
+import AiTradeTopupModal from '@/Components/AiTrade/AiTradeTopupModal.vue';
 import { useAiBot } from '@/Composables/useAiBot';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTranslation } from '@/Composables/useTranslation';
@@ -179,12 +180,33 @@ async function confirmRent() {
     }
 }
 
-async function requestPack(code) {
-    const result = await bot.requestTopup(code);
-    gateNotice.value = result.ok
-        ? { type: 'success', text: t('aiTrade.topupOk') }
-        : { type: 'error', text: result.error.message };
+/**
+ * เติมเครดิต — เปิดหน้าต่างเติม (โอน TPIX บนเชน → เซิร์ฟเวอร์ตรวจธุรกรรม → เครดิตเข้า).
+ *
+ * เดิมยิงคำขอแล้วขึ้นว่า "ส่งคำขอแล้ว เครดิตจะเข้าหลังทีมงานยืนยัน" ทั้งที่ไม่มีใครมายืนยัน
+ * ตอนนี้ใช้หน้าต่างเดียวกับหน้า /ai-trade ซึ่งพาจ่ายจนเครดิตเข้าจริง
+ */
+const topupPack = ref(null);
+
+function requestPack(pack) {
+    playClickSound();
+    gateNotice.value = null;
+    topupPack.value = pack;
 }
+
+/** เครดิตเข้าแล้ว — หน้าต่างเติมโหลดสถานะใหม่ให้เอง ปุ่มเช่าจึงกดได้ทันทีถ้าเครดิตพอ */
+function onTopupCredited() {
+    playNotificationSound();
+}
+
+/*
+ * จำนวนกลยุทธ์ที่ "พร้อมใช้จริง" — ไม่นับตัวที่ถอดออกจากการขายหรือยังเป็น "เร็วๆ นี้"
+ * เดิมนับทุกรายการในแคตตาล็อก การ์ดจึงโฆษณาว่าพร้อมใช้มากกว่าที่สร้างบอทได้จริง
+ * (แคตตาล็อกยังไม่โหลด = ใช้จำนวนปัจจุบันไปก่อน)
+ */
+const readyStrategyCount = computed(() =>
+    bot.strategies.value.filter(s => s.available !== false).length || 6
+);
 
 /**
  * เริ่ม/พักบอท — ไม่ผ่านต้องบอกผู้ใช้ แบบเดียวกับหน้า /ai-trade.
@@ -277,6 +299,10 @@ watch(() => walletStore.address, (address) => {
                     <p class="text-sm font-bold text-white mb-1 leading-snug">{{ t('aiTrade.headline') }}</p>
                     <p v-if="!isCompact" class="text-[11px] text-dark-400 leading-relaxed mb-3">
                         {{ t('aiTrade.subheadline') }}
+                    </p>
+                    <!-- "ให้บอทเทรดแทนคุณ" ต้องมาคู่กับความจริงว่าตอนนี้เป็นโหมดทดลอง — โหมดเงินจริงยังไม่เปิด -->
+                    <p v-if="!bot.liveEnabled.value" class="text-[10px] text-amber-300/90 leading-relaxed mb-1">
+                        {{ t('aiTrade.liveComingSoon') }}
                     </p>
                     <button type="button" class="w-full btn-brand py-2.5 text-sm mt-2" @click="openGate">
                         {{ t('aiTrade.connectToStart') }}
@@ -418,7 +444,10 @@ watch(() => walletStore.address, (address) => {
                     <div class="min-w-0">
                         <p class="text-sm font-bold text-white leading-tight">{{ t('aiTrade.cloudBot') }}</p>
                         <p class="text-[11px] text-dark-400 leading-relaxed mt-0.5">
-                            {{ t('aiTrade.pitch', { count: bot.strategies.value.length || 8 }) }}
+                            {{ t('aiTrade.pitch', { count: readyStrategyCount }) }}
+                        </p>
+                        <p v-if="!bot.liveEnabled.value" class="text-[10px] text-amber-300/90 leading-relaxed mt-0.5">
+                            {{ t('aiTrade.liveComingSoon') }}
                         </p>
                     </div>
                 </div>
@@ -599,7 +628,7 @@ watch(() => walletStore.address, (address) => {
                                                 : 'border-white/10 bg-white/5 hover:border-white/20']"
                                         :disabled="bot.isWorking.value || !bot.topupEnabled.value"
                                         :title="bot.topupEnabled.value ? '' : t('aiTrade.topupClosed')"
-                                        @click="requestPack(pack.code)"
+                                        @click="requestPack(pack)"
                                     >
                                         <span class="block text-xs font-bold text-white font-mono">
                                             {{ pack.credits.toLocaleString() }}
@@ -649,6 +678,14 @@ watch(() => walletStore.address, (address) => {
                 </div>
             </Transition>
         </Teleport>
+
+        <!-- หน้าต่างเติมเครดิต — ตัวเดียวกับหน้า /ai-trade (อยู่เหนือป๊อปอัพเช่า) -->
+        <AiTradeTopupModal
+            :show="!!topupPack"
+            :pack="topupPack"
+            @close="topupPack = null"
+            @credited="onTopupCredited"
+        />
     </div>
 </template>
 

@@ -14,13 +14,20 @@ import PageArt from '@/Components/PageArt.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import AiDemoPanel from '@/Components/Trading/AiDemoPanel.vue';
 import AiBotWalletPanel from '@/Components/Trading/AiBotWalletPanel.vue';
+import AiLivePortfolio from '@/Components/Trading/AiLivePortfolio.vue';
+import AiPlanPrice from '@/Components/AiTrade/AiPlanPrice.vue';
+import AiRuleBuilder from '@/Components/AiTrade/AiRuleBuilder.vue';
+import AiRuleBacktest from '@/Components/AiTrade/AiRuleBacktest.vue';
+import AiCopyTradePanel from '@/Components/AiTrade/AiCopyTradePanel.vue';
 import AiRiskPanel from '@/Components/Trading/AiRiskPanel.vue';
 import AiMarketViewPanel from '@/Components/Trading/AiMarketViewPanel.vue';
-import { useAiBot } from '@/Composables/useAiBot';
+import AiTradeTopupModal from '@/Components/AiTrade/AiTradeTopupModal.vue';
+import { useAiBot, readPendingTopup } from '@/Composables/useAiBot';
 import { useWalletStore } from '@/Stores/walletStore';
 import { useTranslation } from '@/Composables/useTranslation';
 import { showToast } from '@/Composables/useToasts';
 import { playClickSound, playErrorSound, playNotificationSound } from '@/Composables/useSounds';
+import { cloneValue, problemMessage, rulesPayload, rulesProblems, sameRules } from '@/utils/aiRules';
 
 const walletStore = useWalletStore();
 const bot = useAiBot();
@@ -118,9 +125,45 @@ const paramSpecs = computed(() => {
  * ซ่อนไว้ก่อนเพื่อไม่ให้ฟอร์มมี 10 ช่องตั้งแต่แรก ผู้ใช้ที่อยากละเอียดกดเปิดเอง
  * (ค่าปริยายของช่องขั้นสูงคือชุดที่ผ่านการทดสอบแล้ว — ไม่กดเปิดก็ได้ของดี)
  */
-const basicSpecs = computed(() => paramSpecs.value.filter((spec) => (spec.group ?? 'basic') !== 'advanced'));
-const advancedSpecs = computed(() => paramSpecs.value.filter((spec) => (spec.group ?? 'basic') === 'advanced'));
+/*
+ * ช่องชนิด rules (กฎเข้า/ออกของโหมด "วางกลยุทธ์เอง") ไม่ใช่ตัวเลข/ตัวเลือก/สวิตช์ — วาดด้วยตัวสร้างกฎ
+ * ต้องแยกออกจากตารางช่องธรรมดา ไม่งั้นจะตกไปสาขาสุดท้ายแล้วกลายเป็นช่องติ๊กถูกอันเดียว
+ */
+const rulesSpec = computed(() => paramSpecs.value.find((spec) => spec.type === 'rules') ?? null);
+const flatSpecs = computed(() => paramSpecs.value.filter((spec) => spec.type !== 'rules'));
+const basicSpecs = computed(() => flatSpecs.value.filter((spec) => (spec.group ?? 'basic') !== 'advanced'));
+const advancedSpecs = computed(() => flatSpecs.value.filter((spec) => (spec.group ?? 'basic') === 'advanced'));
 const showAdvanced = ref(false);
+
+const rulesSchema = computed(() => bot.catalog.value?.custom_rules ?? null);
+
+/** ปัญหาแรกของกฎในฟอร์ม เป็นข้อความ (ว่าง = กฎใช้ได้ หรือกลยุทธ์นี้ไม่มีกฎ) — ใช้กันบันทึกและกันทดสอบ */
+const rulesProblemText = computed(() => {
+    if (!rulesSpec.value) return '';
+
+    const first = rulesProblems(form.value.params[rulesSpec.value.key], rulesSchema.value)[0];
+
+    return first ? problemMessage(first, rulesSchema.value, t, locale.value) : '';
+});
+
+/** พารามิเตอร์ที่ส่งให้เซิร์ฟเวอร์ — กฎถูกจัดเป็นรูปมาตรฐาน (ตัดธง invalid ที่ติดมากับบอทเดิม) */
+function paramsPayload() {
+    const params = { ...form.value.params };
+
+    if (rulesSpec.value) {
+        params[rulesSpec.value.key] = rulesPayload(params[rulesSpec.value.key], rulesSchema.value);
+    }
+
+    return params;
+}
+
+/** คำขอทดสอบย้อนหลังของฟอร์มตอนนี้ — แผงทดสอบใช้เทียบด้วยว่าผลล่าสุดยังเป็นของชุดนี้อยู่ไหม */
+const backtestRequest = computed(() => ({
+    pair: form.value.pair,
+    timeframe: form.value.timeframe,
+    params: paramsPayload(),
+    risk: { ...(form.value.risk || {}) },
+}));
 
 /** เทมเพลตของกลยุทธ์ที่เลือก (conservative / balanced / aggressive) — ทีมงานตั้งค่าและ backtest ไว้ */
 const templates = computed(() => selectedStrategy.value?.templates ?? []);
@@ -131,9 +174,16 @@ const templates = computed(() => selectedStrategy.value?.templates ?? []);
  * ผู้ใช้กดเทมเพลตแล้วแก้ช่องหนึ่ง ป้ายต้องหลุดทันที ไม่งั้นจะเข้าใจผิดว่ายังใช้ชุด
  * ของทีมงานอยู่ทั้งที่แก้ไปแล้ว การเทียบค่าจริงทำให้ไม่มีสถานะให้ลืมรีเซ็ต
  */
+/** ค่าในฟอร์มตรงกับค่าของเทมเพลตไหม — กฎ (ออบเจกต์) เทียบทั้งก้อน ไม่งั้นทุกชุดกลายเป็น "[object Object]" เท่ากันหมด */
+function sameParam(current, value) {
+    return value !== null && typeof value === 'object'
+        ? sameRules(current, value, rulesSchema.value)
+        : String(current) === String(value);
+}
+
 const activeTemplate = computed(() => templates.value.find((tpl) =>
     (!tpl.timeframe || tpl.timeframe === form.value.timeframe)
-    && Object.entries(tpl.params ?? {}).every(([key, value]) => String(form.value.params[key]) === String(value))
+    && Object.entries(tpl.params ?? {}).every(([key, value]) => sameParam(form.value.params[key], value))
     && Object.entries(tpl.risk ?? {}).every(([key, value]) => Number(form.value.risk[key]) === Number(value)),
 )?.code ?? null);
 
@@ -153,7 +203,8 @@ function applyTemplate(tpl) {
 
     const params = {};
     paramSpecs.value.forEach((spec) => {
-        params[spec.key] = tpl.params?.[spec.key] ?? form.value.params[spec.key] ?? spec.default;
+        // สำเนาลึก — กฎของเทมเพลตเป็นของแคตตาล็อกที่ใช้ร่วมกัน แก้ในฟอร์มแล้วต้องไม่ไปแก้ต้นฉบับ
+        params[spec.key] = cloneValue(tpl.params?.[spec.key] ?? form.value.params[spec.key] ?? spec.default);
     });
     form.value.params = params;
     form.value.risk = { ...form.value.risk, ...(tpl.risk ?? {}) };
@@ -207,6 +258,14 @@ function isRunnable(s) {
 
 function isSelectable(s) {
     return isUnlocked(s.code) && isRunnable(s);
+}
+
+/**
+ * ป้ายของกลยุทธ์ที่ยังใช้ไม่ได้ — "เร็วๆ นี้" (ยังไม่มีตัวลงมือจริง เช่นอาร์บิทราจ)
+ * ต่างจาก "ยังไม่เปิด" (ถอดออกจากการขาย/รอเงื่อนไขอื่น) เซิร์ฟเวอร์เป็นคนบอกผ่าน coming_soon
+ */
+function unavailableBadge(s) {
+    return s?.coming_soon ? t('aiTrade.comingSoon') : t('aiTrade.notReady');
 }
 
 // ── ที่ปรึกษา AI ────────────────────────────────────────────────────────────
@@ -398,7 +457,17 @@ async function cancelPlan() {
     else flash('error', result.error.message);
 }
 
-async function topup(code) {
+// ── เติมเครดิต (โอน TPIX บนเชน → เซิร์ฟเวอร์ตรวจธุรกรรม → เครดิตเข้า) ─────────────
+/** แพ็กที่กำลังเติมอยู่ในหน้าต่างเติมเครดิต (null = ปิดหน้าต่าง) */
+const topupPack = ref(null);
+
+/** ธุรกรรมที่โอนไปแล้วแต่ยังไม่ได้ผลสุดท้ายของกระเป๋านี้ — ต้องชวนให้ตรวจต่อ ไม่ใช่ปล่อยเงินค้าง */
+const pendingTopup = computed(() => readPendingTopup(walletStore.address));
+const pendingTopupPack = computed(() =>
+    pendingTopup.value ? bot.packs.value.find(p => p.code === pendingTopup.value.pack) ?? null : null
+);
+
+function openTopup(pack) {
     playClickSound();
 
     if (!walletStore.isConnected) {
@@ -406,9 +475,26 @@ async function topup(code) {
         return;
     }
 
-    const result = await bot.requestTopup(code);
-    if (result.ok) flash('success', t('aiTrade.topupOk'));
-    else flash('error', result.error.message);
+    // ยังไม่เปิดรับเงิน — ปุ่มถูกปิดอยู่แล้ว กันไว้อีกชั้นเผื่อถูกเรียกจากทางอื่น
+    if (!bot.topupEnabled.value) {
+        flash('error', t('aiTrade.topupClosed'));
+        return;
+    }
+
+    /*
+     * มีรายการที่โอนไปแล้วค้างยืนยัน → เปิดรายการนั้นก่อนเสมอ
+     * ปล่อยให้เริ่มแพ็กใหม่ทั้งที่รายการเดิมยังไม่จบ = ผู้ใช้จ่ายซ้ำเพราะคิดว่าครั้งแรกไม่ติด
+     */
+    topupPack.value = pendingTopupPack.value ?? pack;
+}
+
+function resumeTopup() {
+    playClickSound();
+    if (pendingTopupPack.value) topupPack.value = pendingTopupPack.value;
+}
+
+function onTopupCredited() {
+    playNotificationSound();
 }
 
 /**
@@ -443,7 +529,8 @@ function openBuilder(existing = null) {
             pair: existing.pair,
             strategy: existing.strategy,
             timeframe: existing.timeframe,
-            params: { ...existing.params },
+            // สำเนาลึก — กฎเป็นออบเจกต์ซ้อน แก้ในฟอร์มแล้วกดยกเลิกต้องไม่เปลี่ยนบอทที่โชว์อยู่ในรายการ
+            params: cloneValue(existing.params),
             risk: { ...existing.risk },
         };
     } else {
@@ -474,8 +561,28 @@ async function saveBot() {
         return;
     }
 
+    /*
+     * "ทุนสูงสุดต่อไม้" ที่ผู้ใช้แก้ในฟอร์ม ต้องเป็นค่าที่เซิร์ฟเวอร์ใช้
+     *
+     * ⚠️ บอทที่แก้ไขมี risk.max_position_usd_requested (ค่าที่เคยขอไว้) ติดมากับฟอร์ม
+     *    เซิร์ฟเวอร์ใช้ค่านั้นเป็นฐานก่อนเสมอ (AiBotService::sanitizeRisk) — ส่งค่าเก่ากลับไปด้วย
+     *    = แก้ตัวเลขในฟอร์มกี่ครั้งก็ไม่ติด โดยไม่มีอะไรบอก (แอปมือถือส่งถูกอยู่แล้ว)
+     * ผู้ใช้แก้ตัวเลขนี้ → ทิ้งค่าที่ขอเก่า · ไม่ได้แก้ → คงไว้ (ค่าที่ขอต้องรอดข้ามการอัปเกรดแพลน)
+     */
+    // กฎที่ยังผิดไม่ส่งไปให้เซิร์ฟเวอร์ปฏิเสธ — บอกตรงนี้เลยว่าต้องแก้อะไร (เซิร์ฟเวอร์ยังตรวจซ้ำเสมอ)
+    if (rulesProblemText.value) {
+        flash('error', t('aiTrade.rules.fixBeforeSave', { problem: rulesProblemText.value }));
+        return;
+    }
+
+    const risk = { ...(form.value.risk || {}) };
+    const before = editingId.value ? bot.bots.value.find(b => b.id === editingId.value)?.risk : null;
+    if (!before || Number(risk.max_position_usd) !== Number(before.max_position_usd)) {
+        delete risk.max_position_usd_requested;
+    }
+
     // ส่งรหัสเทมเพลตไปด้วย (ถ้ายังตรงอยู่) — เซิร์ฟเวอร์ใช้เป็นฐาน ค่าในฟอร์มทับอีกที
-    const payload = { ...form.value, name: form.value.name.trim(), template: activeTemplate.value };
+    const payload = { ...form.value, params: paramsPayload(), risk, name: form.value.name.trim(), template: activeTemplate.value };
     const result = editingId.value
         ? await bot.updateBot(editingId.value, payload)
         : await bot.createBot(payload);
@@ -495,11 +602,62 @@ async function setState(item, action) {
     if (!result.ok) flash('error', result.error.message);
 }
 
+/** แพลนนี้ตัดเครดิตไหม — ดูจากสิ่งที่เซิร์ฟเวอร์ตัดจริง (credits_per_day) ไม่ใช่ราคา TPIX ที่ไม่ได้ใช้ตัด */
+function isPaidPlan(plan) {
+    return Number(plan?.credits_per_day) > 0;
+}
+
+/** ตัวเลขเงินในข้อความยืนยัน — ไม่มีทศนิยมถ้าเป็นจำนวนเต็ม */
+function usd(value) {
+    return Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+/**
+ * ข้อความยืนยันก่อนสลับบอทเป็นโหมดจริง (เฉพาะเมื่อบอทส่งคำสั่งเองจริง).
+ *
+ * บอกสามเรื่องที่ผู้ใช้ต้องรู้ก่อนกด: ใช้เงินจริง · ส่งคำสั่งบนเชนเองโดยไม่ถามทีละไม้ · ขาดทุนได้
+ * ขนาดคำสั่งต่อไม้ใส่เมื่อรู้ค่าจากเซิร์ฟเวอร์แล้วเท่านั้น — ไม่เดาตัวเลข
+ */
+function liveSwitchConfirmText(item) {
+    const lines = [t('aiTrade.live.switchConfirm', { name: item.name, pair: item.pair })];
+    const orderLimits = bot.live.value?.limits;
+
+    if (orderLimits && Number(orderLimits.max_order_usd) > 0) {
+        lines.push(t('aiTrade.live.switchConfirmLimits', {
+            min: usd(orderLimits.min_order_usd),
+            max: usd(orderLimits.max_order_usd),
+        }));
+    }
+
+    return lines.join('\n');
+}
+
 /** สลับบอทระหว่างโหมดทดลองกับโหมดจริง */
 async function toggleMode(item) {
     playClickSound();
 
     const next = item.mode === 'demo' ? 'live' : 'demo';
+
+    // โหมดเงินจริงยังไม่เปิด — บอกตรงนี้เลย ไม่ต้องยิงไปให้เซิร์ฟเวอร์ปฏิเสธ
+    if (next === 'live' && !bot.liveEnabled.value) {
+        showToast({ text: t('aiTrade.liveComingSoon'), type: 'info' });
+        return;
+    }
+
+    /*
+     * โหมดจริงที่บอทส่งคำสั่งเอง = เงินจริงออกจากกระเป๋าบอทโดยไม่ถามทีละไม้ — ต้องถามก่อนสลับ
+     * (ตอนที่โหมดจริงยังเป็นแค่สัญญาณรอยืนยัน ไม่มีเงินขยับ จึงสลับได้ทันทีเหมือนเดิม)
+     */
+    if (next === 'live' && bot.liveExecution.value) {
+        // คู่ที่ยังเทรดเงินจริงไม่ได้ — เซิร์ฟเวอร์ปฏิเสธอยู่แล้ว บอกก่อนดีกว่าถามยืนยันแล้วเด้ง
+        if (item.live_supported === false) {
+            flash('error', t('aiTrade.live.pairUnsupportedSwitch', { pair: item.pair }));
+            return;
+        }
+
+        if (!window.confirm(liveSwitchConfirmText(item))) return;
+    }
+
     const result = await bot.setBotMode(item.id, next);
 
     if (!result.ok) {
@@ -510,6 +668,8 @@ async function toggleMode(item) {
     flash('success', t('aiTrade.modeSwitched'));
     // ไม้ของโหมดใหม่คนละชุดกับโหมดเดิม — ต้องโหลดพอร์ตทดลองใหม่
     bot.loadDemo();
+    // ออกจากโหมดจริงอาจมีคำสั่งปิดไม้เข้าคิว — พอร์ตเงินจริงต้องเห็นทันที
+    if (bot.liveExecution.value) bot.loadLive({ force: true });
 }
 
 async function resetDemo() {
@@ -614,6 +774,14 @@ bot.keepBrowserBotsRunning();
                     </div>
                     <h1 class="text-2xl sm:text-3xl font-black text-white leading-tight mb-2">{{ t('aiTrade.title') }}</h1>
                     <p class="text-sm text-dark-300 max-w-2xl leading-relaxed">{{ t('aiTrade.intro') }}</p>
+                    <!-- โหมดเงินจริงยังไม่เปิด — ต้องบอกตั้งแต่บรรทัดแรก ไม่ใช่ให้เข้าใจว่าบอทเทรดเงินจริงให้แล้ว -->
+                    <p
+                        v-if="bot.catalog.value && !bot.liveEnabled.value"
+                        class="mt-2 flex items-start gap-1.5 max-w-2xl text-[12px] text-amber-200/90 leading-relaxed"
+                    >
+                        <span class="shrink-0 px-1.5 py-px rounded text-[10px] font-semibold bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/25">{{ t('aiTrade.modeDemoShort') }}</span>
+                        <span>{{ t('aiTrade.introDemoNote') }}</span>
+                    </p>
                 </div>
             </section>
 
@@ -759,6 +927,8 @@ bot.keepBrowserBotsRunning();
                     <span class="text-primary-400 shrink-0">ℹ️</span>
                     <!-- อ่านธงจากเซิร์ฟเวอร์ — วันที่เปิดโหมดจริงจะได้ไม่ต้องไล่แก้ทุกหน้า -->
                     <span v-if="!bot.liveEnabled.value">{{ t('aiTrade.demoOnlyNotice') }}</span>
+                    <!-- บอทส่งคำสั่งเองแล้ว — ห้ามบอกว่า "ระบบส่งคำสั่งแทนไม่ได้" อีก -->
+                    <span v-else-if="bot.liveExecution.value" data-testid="live-open-notice">{{ t('aiTrade.live.openNotice') }}</span>
                     <span v-else>{{ t('aiTrade.liveOpenNotice') }}</span>
                 </p>
 
@@ -799,21 +969,11 @@ bot.keepBrowserBotsRunning();
                             {{ bot.planDescription(plan) }}
                         </p>
 
-                        <p v-if="plan.price_tpix_per_day > 0" class="text-2xl font-black font-mono text-white leading-none">
-                            {{ Number(plan.price_tpix_per_day).toLocaleString() }}
-                            <span class="text-[11px] font-normal text-dark-400">{{ t('aiTrade.tpixPerDay') }}</span>
-                        </p>
-                        <p v-else class="text-2xl font-black font-mono text-trading-green leading-none">
-                            {{ t('aiTrade.freeForever') }}
-                        </p>
-
-                        <p v-if="plan.price_tpix_per_day > 0" class="text-[11px] text-dark-500 mt-1 mb-3 font-mono">
-                            {{ t('aiTrade.totalCostTpix', {
-                                days: selectedDays,
-                                tpix: (Number(plan.price_tpix_per_day) * selectedDays).toLocaleString(),
-                            }) }}
-                        </p>
-                        <p v-else class="text-[11px] text-dark-500 mt-1 mb-3">{{ t('aiTrade.noPaymentNeeded') }}</p>
+                        <!--
+                            ราคาที่โชว์ = สิ่งที่ถูกตัดจริง (เครดิต/วัน × จำนวนวัน)
+                            เดิมโชว์ price_tpix_per_day ซึ่งไม่ใช่ยอดที่เซิร์ฟเวอร์ตัด — TPIX เป็นแค่ค่าประมาณจากเรตแพ็ก
+                        -->
+                        <AiPlanPrice :plan="plan" :days="selectedDays" :tpix-per-credit="bot.tpixPerCredit.value" />
 
                         <ul class="space-y-1.5 mb-4 flex-1">
                             <li v-for="feature in bot.planFeatures(plan)" :key="feature" class="flex gap-1.5 text-[11px] text-dark-300 leading-relaxed">
@@ -829,23 +989,35 @@ bot.keepBrowserBotsRunning();
                             @click="rent(plan.code)"
                         >
                             {{ bot.subscription.value?.plan_code === plan.code
-                                ? (plan.price_tpix_per_day > 0 ? t('aiTrade.renewFor', { days: selectedDays }) : t('aiTrade.currentPlan'))
-                                : (plan.price_tpix_per_day > 0 ? t('aiTrade.rentFor', { days: selectedDays }) : t('aiTrade.startFree')) }}
+                                ? (isPaidPlan(plan) ? t('aiTrade.renewFor', { days: selectedDays }) : t('aiTrade.currentPlan'))
+                                : (isPaidPlan(plan) ? t('aiTrade.rentFor', { days: selectedDays }) : t('aiTrade.startFree')) }}
                         </button>
                     </div>
                 </div>
             </section>
 
             <!-- เติมเครดิต -->
-            <section>
+            <section id="topup">
                 <h2 class="text-lg font-bold text-white mb-1">{{ t('aiTrade.topupTitle') }}</h2>
                 <p class="text-[11px] text-dark-400 mb-3">{{ t('aiTrade.topupSub') }}</p>
 
                 <!--
-                    ยังไม่มีรางรับเงินจริง — บอกไว้ตรงนี้ก่อนผู้ใช้กด
+                    โอนไปแล้วแต่ยังไม่ได้ผลสุดท้าย (ปิดแท็บ/เน็ตหลุดระหว่างรอเชน) — ชวนให้ตรวจต่อ
+                    โชว์แม้ตอนปิดรับเติมชั่วคราว: เงินที่โอนไปแล้วต้องมีทางตามต่อเสมอ
+                -->
+                <div
+                    v-if="walletStore.isConnected && pendingTopupPack"
+                    class="flex flex-wrap items-center gap-3 px-3 py-2 mb-3 rounded-xl bg-primary-500/10 ring-1 ring-primary-500/25"
+                >
+                    <p class="min-w-0 flex-1 text-[11px] text-primary-200 leading-relaxed">{{ t('aiTrade.topup.unpaidPending') }}</p>
+                    <button type="button" class="btn-brand px-3 py-1.5 text-[11px] shrink-0" @click="resumeTopup">
+                        {{ t('aiTrade.topup.resume') }}
+                    </button>
+                </div>
 
-                    ปุ่มที่กดแล้วตอบว่า "ส่งคำขอแล้ว" ทั้งที่ไม่มีใครมารับเงินต่อ
-                    ทำให้ผู้ใช้รอเครดิตที่ไม่มีวันมา แล้วกลับมากดซ้ำ
+                <!--
+                    ยังไม่เปิดรับเงิน — บอกไว้ตรงนี้ก่อนผู้ใช้กด ไม่ใช่ปุ่มที่กดแล้วไปไม่ถึงไหน
+                    (เปิดจริงเมื่อเซิร์ฟเวอร์เปิดธงและตั้งกระเป๋ารับเงินแล้ว — ดู features.credit_topup)
                 -->
                 <p
                     v-if="!bot.topupEnabled.value"
@@ -862,7 +1034,7 @@ bot.keepBrowserBotsRunning();
                         class="rounded-2xl border border-white/10 bg-dark-900/50 p-4 text-left hover:border-primary-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         :disabled="bot.isWorking.value || !bot.topupEnabled.value"
                         :title="bot.topupEnabled.value ? '' : t('aiTrade.topupClosed')"
-                        @click="topup(pack.code)"
+                        @click="openTopup(pack)"
                     >
                         <p class="text-xl font-black font-mono text-white leading-none">
                             {{ pack.credits.toLocaleString() }}
@@ -925,6 +1097,12 @@ bot.keepBrowserBotsRunning();
 
                 <!-- กระเป๋าบอท — กระเป๋าแยกสำหรับโหมดจริง (โอนเข้า / ดูยอด / ถอนกลับหาตัวเอง) -->
                 <AiBotWalletPanel />
+
+                <!--
+                    พอร์ตเงินจริง — โผล่เมื่อบอทส่งคำสั่งเองจริงแล้วเท่านั้น
+                    ตอนที่โหมดจริงยังเป็นแค่สัญญาณ ไม่มีของจริงให้ดู แผงว่างจะทำให้เข้าใจว่าบอทเทรดเงินจริงอยู่
+                -->
+                <AiLivePortfolio v-if="bot.liveExecution.value" />
             </template>
 
             <!-- ด่านความเสี่ยงยังดูได้แม้ยังไม่เชื่อมกระเป๋า (เป็นข้อมูลตลาด) -->
@@ -977,6 +1155,13 @@ bot.keepBrowserBotsRunning();
                                         class="shrink-0 px-1.5 py-px rounded text-[9px] font-medium bg-trading-red/15 text-trading-red"
                                         :title="offlineReasonText(item)"
                                     >{{ t('aiTrade.offline') }}</span>
+                                    <!-- มีคำสั่งที่ยังรอเชนยืนยัน — ยังไม่ใช่ไม้ จึงบอกว่า "กำลังส่ง" ไม่ใช่ซื้อ/ขายแล้ว -->
+                                    <span
+                                        v-if="bot.pendingOrderFor(item.id)"
+                                        class="shrink-0 px-1.5 py-px rounded text-[9px] font-medium bg-sky-400/10 text-sky-300"
+                                        :title="t('aiTrade.live.orderInProgressHint')"
+                                        data-testid="bot-order-pending"
+                                    >{{ t('aiTrade.live.orderInProgress') }}</span>
                                 </p>
                                 <p class="text-[11px] text-dark-400 font-mono truncate">
                                     {{ item.pair }} · {{ bot.strategyLabel(item) }} · {{ item.timeframe }} ·
@@ -989,11 +1174,20 @@ bot.keepBrowserBotsRunning();
                                 <p v-else-if="bot.isStale(item)" class="text-[11px] text-amber-300 mt-0.5">
                                     {{ t('aiTrade.botStale', { n: bot.minutesSinceRun(item) }) }}
                                 </p>
+                                <!-- อยู่โหมดจริงแต่คู่นี้เทรดเงินจริงไม่ได้ — ไม่บอก ผู้ใช้จะรอคำสั่งที่ไม่มีวันถูกส่ง -->
+                                <p
+                                    v-if="bot.liveExecution.value && item.mode === 'live' && item.live_supported === false"
+                                    class="text-[11px] text-amber-300 mt-0.5"
+                                    data-testid="bot-live-unsupported"
+                                >
+                                    {{ t('aiTrade.live.pairUnsupported', { pair: item.pair }) }}
+                                </p>
 
                                 <!-- บอทกำลังคิดอะไรอยู่ — ผู้ใช้ต้องเห็นเหตุผล ไม่ใช่แค่ไฟกะพริบ -->
                                 <p v-if="item.last_reason" class="text-[11px] text-dark-500 truncate mt-0.5">
+                                    <!-- "รอคุณยืนยัน" เป็นคำของโหมดสัญญาณ — เมื่อบอทส่งคำสั่งเองแล้ว ไม่มีอะไรให้ผู้ใช้ยืนยัน -->
                                     <span
-                                        v-if="item.last_reason.startsWith('[รอยืนยัน]')"
+                                        v-if="!bot.liveExecution.value && item.last_reason.startsWith('[รอยืนยัน]')"
                                         class="text-primary-300 font-medium"
                                     >{{ t('aiTrade.awaitingConfirm') }} · </span>{{ item.last_reason.replace('[รอยืนยัน] ', '') }}
                                 </p>
@@ -1002,15 +1196,22 @@ bot.keepBrowserBotsRunning();
                                 </p>
                             </div>
 
-                            <!-- โหมด: กดสลับได้ตรงนี้เลย -->
+                            <!--
+                                โหมด: กดสลับได้ตรงนี้ — แต่โหมดเงินจริงยังไม่เปิด ปุ่มจึงกดไปโหมดจริงไม่ได้
+                                และบอกเหตุผล (เร็วๆ นี้) แทนการปล่อยให้กดแล้วเด้ง error
+                                บอทที่ค้างอยู่โหมดจริงจากก่อนหน้ายังกดกลับมาโหมดทดลองได้เสมอ
+                            -->
                             <button
                                 type="button"
-                                :class="['px-2 py-0.5 rounded-full text-[10px] font-medium ring-1 transition-colors',
+                                :class="['px-2 py-0.5 rounded-full text-[10px] font-medium ring-1 transition-colors disabled:cursor-not-allowed',
                                     item.mode === 'live'
                                         ? 'bg-primary-500/15 text-primary-300 ring-primary-500/25 hover:bg-primary-500/25'
                                         : 'bg-white/5 text-dark-300 ring-white/10 hover:text-white']"
-                                :title="item.mode === 'live' ? t('aiTrade.switchToDemo') : t('aiTrade.switchToLive')"
-                                :disabled="bot.isWorking.value"
+                                :title="item.mode === 'live'
+                                    ? t('aiTrade.switchToDemo')
+                                    : (bot.liveEnabled.value ? t('aiTrade.switchToLive') : t('aiTrade.liveComingSoon'))"
+                                :disabled="bot.isWorking.value || (item.mode !== 'live' && !bot.liveEnabled.value)"
+                                data-testid="bot-mode-toggle"
                                 @click="toggleMode(item)"
                             >
                                 {{ item.mode === 'live' ? t('aiTrade.modeLiveShort') : t('aiTrade.modeDemoShort') }}
@@ -1101,8 +1302,11 @@ bot.keepBrowserBotsRunning();
                                 <span class="flex items-center gap-1.5 mb-1">
                                     <span class="text-xs font-bold text-white truncate">{{ bot.strategyLabel(s) }}</span>
                                     <!-- ยังเปิดใช้ไม่ได้ สำคัญกว่าเรื่องระดับแพลน — อัปเกรดแพลนก็ยังใช้ไม่ได้อยู่ดี -->
-                                    <span v-if="!isRunnable(s)" class="text-[9px] px-1 rounded bg-dark-600 text-dark-300 shrink-0">
-                                        {{ t('aiTrade.notReady') }}
+                                    <span
+                                        v-if="!isRunnable(s)"
+                                        :class="['text-[9px] px-1 rounded shrink-0', s.coming_soon ? 'bg-amber-500/15 text-amber-300' : 'bg-dark-600 text-dark-300']"
+                                    >
+                                        {{ unavailableBadge(s) }}
                                     </span>
                                     <span v-else-if="!isUnlocked(s.code)" class="text-[9px] px-1 rounded bg-warm-500/20 text-warm-300 shrink-0">
                                         {{ tierText(s.tier) }}
@@ -1121,9 +1325,10 @@ bot.keepBrowserBotsRunning();
 
                     <!-- เทมเพลต — ชุดตั้งค่าที่ทีมงาน backtest ไว้ กดแล้วแก้ต่อได้ -->
                     <div v-if="templates.length">
+                        <!-- โหมดวางกลยุทธ์เอง: เป็น "ตัวอย่างโครงกฎ" ไม่ใช่ชุดที่ทีมงาน backtest ไว้ — ห้ามใช้ป้ายเดียวกัน -->
                         <p class="text-[11px] text-dark-400 mb-2">
-                            {{ t('aiTrade.templates') }}
-                            <span class="text-dark-500">— {{ t('aiTrade.templateHint') }}</span>
+                            {{ rulesSpec ? t('aiTrade.rules.examples') : t('aiTrade.templates') }}
+                            <span class="text-dark-500">— {{ rulesSpec ? t('aiTrade.rules.examplesHint') : t('aiTrade.templateHint') }}</span>
                         </p>
                         <div class="grid gap-2 sm:grid-cols-3">
                             <button
@@ -1143,6 +1348,16 @@ bot.keepBrowserBotsRunning();
                         </div>
                         <p v-if="!activeTemplate" class="mt-1.5 text-[10px] text-dark-500">{{ t('aiTrade.customSettings') }}</p>
                     </div>
+
+                    <!-- วางกลยุทธ์เอง: ตัวสร้างกฎเข้า/ออก (กลยุทธ์อื่นไม่มีช่องชนิด rules จึงไม่วาด) -->
+                    <AiRuleBuilder
+                        v-if="rulesSpec"
+                        v-model="form.params[rulesSpec.key]"
+                        :schema="rulesSchema"
+                        :timeframe="form.timeframe"
+                    />
+
+                    <p v-if="rulesSpec" class="text-[11px] text-dark-400 -mb-2">{{ t('aiTrade.rules.settingsTitle') }}</p>
 
                     <!-- Timeframe + พารามิเตอร์พื้นฐานของกลยุทธ์ -->
                     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1241,6 +1456,15 @@ bot.keepBrowserBotsRunning();
                         </div>
                     </div>
 
+                    <!-- วางกลยุทธ์เอง: ทดสอบกฎกับราคาย้อนหลังก่อนสร้าง/บันทึก -->
+                    <AiRuleBacktest
+                        v-if="rulesSpec"
+                        :request="backtestRequest"
+                        :schema="rulesSchema"
+                        :runner="bot.runBacktest"
+                        :blocked-reason="rulesProblemText"
+                    />
+
                     <div class="flex gap-2">
                         <button
                             type="button"
@@ -1254,6 +1478,15 @@ bot.keepBrowserBotsRunning();
                     </div>
                 </section>
             </template>
+
+            <!-- Master / Copy Trade — กระดานเป็นสาธารณะ จึงอยู่นอกบล็อกที่ต้องเชื่อมกระเป๋า -->
+            <AiCopyTradePanel
+                v-if="bot.copyTrade"
+                :api="bot.copyTrade"
+                :wallet="walletStore.address || ''"
+                :limits="limits"
+                @notify="({ type, text }) => flash(type, text)"
+            />
 
             <!-- ที่ปรึกษา AI — อ่านสถิติของบอทแล้วให้ความเห็น สั่งเทรดเองไม่ได้ -->
             <!-- มุมมองที่มีผลต่อการเทรดจริง วางก่อนคำแนะนำที่อ่านประกอบเฉยๆ -->
@@ -1310,8 +1543,11 @@ bot.keepBrowserBotsRunning();
                     >
                         <div class="flex items-center gap-2 mb-2">
                             <h3 class="text-sm font-bold text-white">{{ bot.strategyLabel(s) }}</h3>
-                            <span v-if="!isRunnable(s)" class="ml-auto text-[9px] px-1.5 py-0.5 rounded bg-dark-600 text-dark-300">
-                                {{ t('aiTrade.notReady') }}
+                            <span
+                                v-if="!isRunnable(s)"
+                                :class="['ml-auto text-[9px] px-1.5 py-0.5 rounded', s.coming_soon ? 'bg-amber-500/15 text-amber-300' : 'bg-dark-600 text-dark-300']"
+                            >
+                                {{ unavailableBadge(s) }}
                             </span>
                             <!-- ติดป้ายเฉพาะระดับที่มีคำแปล — `free` กับ `basic` ไม่ต้องติด -->
                             <span v-else-if="tierText(s.tier) && s.tier !== 'basic'" class="ml-auto text-[9px] px-1.5 py-0.5 rounded bg-warm-500/15 text-warm-300">
@@ -1344,6 +1580,14 @@ bot.keepBrowserBotsRunning();
                 </div>
             </section>
         </div>
+
+        <!-- หน้าต่างเติมเครดิต — โอน TPIX จากกระเป๋าที่เชื่อมอยู่ แล้วให้เซิร์ฟเวอร์ตรวจบนเชน -->
+        <AiTradeTopupModal
+            :show="!!topupPack"
+            :pack="topupPack"
+            @close="topupPack = null"
+            @credited="onTopupCredited"
+        />
     </AppLayout>
 </template>
 

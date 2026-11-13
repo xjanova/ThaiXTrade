@@ -19,6 +19,11 @@ use Illuminate\Support\Facades\Process;
  */
 class BotWalletSigner
 {
+    private const TRANSFER_SCRIPT = 'bot-wallet-transfer.cjs';
+
+    /** ไม้ของบอท: หาเส้นทาง / เซ็น approve / เซ็นสวอป — การส่งขึ้นเชนยังใช้สคริปต์โอนตัวเดิม */
+    private const SWAP_SCRIPT = 'bot-wallet-swap.cjs';
+
     /**
      * @return array{ok: bool, address?: string, nonce?: int, txHash?: string, raw?: string, error?: string, code?: string}
      */
@@ -47,6 +52,99 @@ class BotWalletSigner
     public function send(string $rawTx): array
     {
         return $this->runNode(['BW_ACTION' => 'send', 'BW_RAW_TX' => $rawTx], 'send');
+    }
+
+    /**
+     * สำรวจก่อนเซ็นไม้ของบอท (ไม่ใช้กุญแจ): ยอด · สิทธิ์ที่ให้ router ไว้ · เส้นทางที่ได้เหรียญมากสุดตอนนี้.
+     *
+     * @param  string|null  $routerPin  'v2' | 'v3' — บังคับชนิด router (approve ไปแล้วต้องใช้ตัวเดิม)
+     * @return array{ok: bool, balanceIn?: string, nativeBalance?: string, decimalsIn?: int, decimalsOut?: int,
+     *               allowance?: array{v2: string, v3: string}, best?: array|null, bnbQuote?: string|null,
+     *               gasPrice?: string|null, error?: string, code?: string}
+     */
+    public function planSwap(string $owner, string $tokenIn, string $tokenOut, string $amountInWei, ?string $routerPin = null): array
+    {
+        return $this->runNode([
+            'BW_ACTION' => 'plan',
+            'BW_OWNER' => $owner,
+            'BW_TOKEN_IN' => $tokenIn,
+            'BW_TOKEN_OUT' => $tokenOut,
+            'BW_AMOUNT_IN' => $amountInWei,
+            'BW_ROUTER_PIN' => (string) ($routerPin ?? ''),
+            'BW_QUOTE_TOKEN' => (string) config('aibot.bot_wallet.assets.'.config('aibot.live.quote_asset', 'USDT').'.address', ''),
+        ] + $this->dexEnv(), 'plan', self::SWAP_SCRIPT);
+    }
+
+    /**
+     * เซ็น approve ให้ router ของ DEX ดึงเหรียญได้ "เท่าจำนวนของไม้นี้".
+     *
+     * @return array{ok: bool, address?: string, nonce?: int, txHash?: string, raw?: string, error?: string, code?: string}
+     */
+    public function signApprove(string $privateKeyHex, string $expectAddress, string $token, string $spender, string $amountWei): array
+    {
+        return $this->runNode([
+            'BW_ACTION' => 'sign-approve',
+            'BW_PRIVATE_KEY' => $privateKeyHex,
+            'BW_EXPECT_ADDRESS' => $expectAddress,
+            'BW_TOKEN' => $token,
+            'BW_SPENDER' => $spender,
+            'BW_AMOUNT' => $amountWei,
+        ] + $this->dexEnv(), 'sign-approve', self::SWAP_SCRIPT);
+    }
+
+    /**
+     * เซ็นสวอป — เหรียญที่ได้กลับเข้ากระเป๋าที่เซ็นเสมอ (สคริปต์ไม่รับที่อยู่ผู้รับ).
+     *
+     * @param  array{kind: string, tokens: array<int, string>, fees?: array<int, int>}  $route  จาก planSwap()
+     * @return array{ok: bool, address?: string, nonce?: int, txHash?: string, raw?: string, error?: string, code?: string}
+     */
+    public function signSwap(
+        string $privateKeyHex,
+        string $expectAddress,
+        string $tokenIn,
+        string $tokenOut,
+        string $amountInWei,
+        string $minOutWei,
+        int $deadline,
+        array $route,
+    ): array {
+        return $this->runNode([
+            'BW_ACTION' => 'sign-swap',
+            'BW_PRIVATE_KEY' => $privateKeyHex,
+            'BW_EXPECT_ADDRESS' => $expectAddress,
+            'BW_TOKEN_IN' => $tokenIn,
+            'BW_TOKEN_OUT' => $tokenOut,
+            'BW_AMOUNT_IN' => $amountInWei,
+            'BW_MIN_OUT' => $minOutWei,
+            'BW_DEADLINE' => (string) $deadline,
+            'BW_ROUTE' => (string) json_encode([
+                'kind' => (string) ($route['kind'] ?? ''),
+                'tokens' => array_values((array) ($route['tokens'] ?? [])),
+                'fees' => array_values(array_map('intval', (array) ($route['fees'] ?? []))),
+            ]),
+        ] + $this->dexEnv(), 'sign-swap', self::SWAP_SCRIPT);
+    }
+
+    /** ที่อยู่ router ที่ระบบยอมให้ approve/สวอป — จาก config เท่านั้น */
+    public function router(string $kind): ?string
+    {
+        $address = config('aibot.live.contracts.'.($kind === 'v3' ? 'v3_router' : 'v2_router'));
+
+        return is_string($address) && $address !== '' && in_array($kind, ['v2', 'v3'], true) ? strtolower($address) : null;
+    }
+
+    /** สัญญาของ DEX ที่สคริปต์ใช้ — อ่านจาก config เท่านั้น ไม่รับจากแถวคำสั่งในฐานข้อมูล */
+    private function dexEnv(): array
+    {
+        $contracts = (array) config('aibot.live.contracts', []);
+
+        return [
+            'BW_WBNB' => (string) ($contracts['wbnb'] ?? ''),
+            'BW_V2_ROUTER' => (string) ($contracts['v2_router'] ?? ''),
+            'BW_V3_ROUTER' => (string) ($contracts['v3_router'] ?? ''),
+            'BW_V3_QUOTER' => (string) ($contracts['v3_quoter'] ?? ''),
+            'BW_MULTICALL3' => (string) ($contracts['multicall3'] ?? ''),
+        ];
     }
 
     public function isAvailable(): bool
@@ -143,13 +241,13 @@ class BotWalletSigner
         }
     }
 
-    private function runNode(array $env, string $label): array
+    private function runNode(array $env, string $label, string $scriptName = self::TRANSFER_SCRIPT): array
     {
         if (! $this->isAvailable()) {
             return ['ok' => false, 'code' => 'not_cli', 'error' => 'เซ็นธุรกรรมได้เฉพาะฝั่ง CLI เท่านั้น'];
         }
 
-        $script = base_path('scripts/blockchain/bot-wallet-transfer.cjs');
+        $script = base_path('scripts/blockchain/'.$scriptName);
 
         if (! is_readable($script)) {
             return ['ok' => false, 'code' => 'script_missing', 'error' => 'ไม่พบสคริปต์เซ็นของกระเป๋าบอท'];

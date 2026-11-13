@@ -37,7 +37,7 @@ class AiBotWalletTransferResolve extends Command
 
     public function handle(BotWalletSigner $signer): int
     {
-        $transfer = AiBotWalletTransfer::withdrawals()->find((int) $this->argument('id'));
+        $transfer = AiBotWalletTransfer::outgoing()->find((int) $this->argument('id'));
 
         if (! $transfer) {
             $this->error('ไม่พบรายการถอนนี้');

@@ -312,18 +312,19 @@ class _AiPlanSectionState extends State<AiPlanSection> {
           strong: features.liveTrading,
           title: features.liveTrading
               ? (th ? 'โหมดจริงเปิดแล้ว' : 'Live mode is open')
-              : (th ? 'ตอนนี้เปิดเฉพาะโหมดทดลอง' : 'Demo mode only for now'),
+              : (th
+                  ? 'โหมดเงินจริง — เร็วๆ นี้'
+                  : 'Real-money mode — coming soon'),
+          // โหมดจริงใช้กระเป๋าบอทที่ระบบดูแลกุญแจ — ห้ามบอกว่า "ระบบไม่ถือกุญแจ"
           body: features.liveTrading
               ? (th
-                  ? 'บอทจะเสนอสัญญาณให้คุณกดยืนยันในกระเป๋าเอง ระบบไม่ถือกุญแจของคุณ '
-                      'จึงส่งคำสั่งแทนไม่ได้'
-                  : 'The bot proposes signals for you to confirm in your own wallet. '
-                      'We never hold your keys, so we cannot place orders for you.')
+                  ? 'โหมดจริงใช้เงินจริงจากกระเป๋าบอทที่คุณโอนทุนเข้าไป — ระบบดูแลกุญแจของกระเป๋าบอทและส่งคำสั่งแทนคุณ โอนเข้าเท่าที่พร้อมรับความเสี่ยงเท่านั้น'
+                  : 'Live mode trades real money from the bot wallet you fund. The platform keeps the key of that bot wallet and places orders for you — only move in what you can afford to risk.')
               : (th
-                  ? 'ทุกแพลนยังเทรดด้วยเครดิตจำลองที่ราคาจริง ยังไม่มีการส่งคำสั่งด้วยเงินจริง '
-                      'เราจะเปิดโหมดจริงเมื่อระบบผ่านการทดสอบครบถ้วน'
-                  : 'Every plan still trades simulated credits at real prices — no real '
-                      'orders yet. Live mode opens once the system is fully proven.'),
+                  ? 'ตอนนี้ทุกแพลนเทรดด้วยเครดิตจำลองที่ราคาจริง ยังไม่มีการส่งคำสั่งด้วยเงินจริง '
+                      'โหมดเงินจริงจะเปิดเมื่อระบบผ่านการทดสอบครบถ้วน'
+                  : 'For now every plan trades simulated credits at real prices — no real '
+                      'orders yet. Real-money mode opens once the system is fully proven.'),
           accent: accent,
         ),
         const SizedBox(height: 16),

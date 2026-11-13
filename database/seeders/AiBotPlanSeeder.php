@@ -111,14 +111,24 @@ class AiBotPlanSeeder extends Seeder
             'max_capital_usd' => 500,
             'badge' => null,
             'sort_order' => 10,
+            /*
+             * ⚠️ บรรทัด "โหมดทดลอง" ต้องอยู่จนกว่า aibot.live_enabled จะเปิดจริง
+             *
+             * ตอนนี้บอททุกแพลนเทรดพอร์ตทดลอง (ราคาตลาดจริง เงินไม่จริง) — ค่าเช่าคือค่าให้คลาวด์
+             * เดินบอทให้ 24 ชม. ไม่ใช่ค่าเทรดด้วยเงินจริง ต้องบอกในรายการคุณสมบัติของแพลนเลย
+             * ไม่ใช่ให้ผู้ใช้จ่ายแล้วมารู้ทีหลัง (แพลน Pro/VIP อ้าง "ทุกอย่างในแพลนก่อนหน้า" จึงรับช่วงไปด้วย)
+             * วันที่เปิดโหมดเงินจริงให้แก้สองบรรทัดนี้พร้อมกัน — seeder รันทุกครั้งที่ deploy
+             */
             'features' => [
                 '☁️ Runs on our cloud 24/7 — keeps trading with your browser closed',
+                'Demo mode today: bots trade a practice portfolio at real market prices — real-money trading is coming soon',
                 'Grid / DCA / Momentum strategies',
                 'Set your own Stop Loss and Take Profit',
                 'Shared between the TPIX web app and mobile app',
             ],
             'features_th' => [
                 '☁️ รันบนคลาวด์ของเรา 24 ชม. — ปิดเบราว์เซอร์ ปิดเครื่อง บอทก็ยังเทรดต่อ',
+                'ตอนนี้เป็นโหมดทดลอง: บอทเทรดพอร์ตทดลองด้วยราคาตลาดจริง — โหมดเงินจริงเร็วๆ นี้',
                 'กลยุทธ์ Grid / DCA / Momentum',
                 'ตั้ง Stop Loss + Take Profit ได้',
                 'ใช้ร่วมกันระหว่างเว็บและแอพ TPIX',
@@ -140,14 +150,15 @@ class AiBotPlanSeeder extends Seeder
             'sort_order' => 20,
             'features' => [
                 'Everything in Starter',
-                'Adds RSI Mean Reversion / Breakout / Scalper',
+                // สแกลป์ถูกถอดออกจากการขายแล้ว (retired ใน config/aibot.php) — ห้ามโฆษณาว่าได้
+                'Adds RSI Mean Reversion / Breakout',
                 'Three bots at once, each on its own pair',
                 'Capital per trade up to $10,000',
                 'Runs every 3 minutes instead of every 5',
             ],
             'features_th' => [
                 'ทุกอย่างในแพลนสตาร์ทเตอร์',
-                'เพิ่ม RSI Mean Reversion / Breakout / Scalper',
+                'เพิ่ม RSI Mean Reversion / Breakout',
                 'รันพร้อมกันได้ 3 บอท คนละคู่เทรด',
                 'เพดานทุนต่อไม้สูงถึง $10,000',
                 'เดินทุก 3 นาที แทนที่จะเป็น 5 นาที',
@@ -157,8 +168,8 @@ class AiBotPlanSeeder extends Seeder
             'code' => 'vip',
             'name' => 'VIP Cloud',
             'name_th' => 'วีไอพี คลาวด์',
-            'description' => 'Every strategy including TPIX AI Signal, a 1-minute cadence with queue priority, and no capital cap.',
-            'description_th' => 'ปลดล็อกทุกกลยุทธ์รวมถึงสัญญาณ AI ของ TPIX · เดินทุก 1 นาทีและได้คิวก่อน · ไม่จำกัดเพดานทุน',
+            'description' => 'Every available strategy including TPIX AI Signal, a 1-minute cadence with queue priority, and no capital cap.',
+            'description_th' => 'ปลดล็อกทุกกลยุทธ์ที่เปิดใช้แล้ว รวมถึงสัญญาณ AI ของ TPIX · เดินทุก 1 นาทีและได้คิวก่อน · ไม่จำกัดเพดานทุน',
             'tier' => 'vip',
             'execution' => 'cloud',
             'credits_per_day' => 240,
@@ -170,14 +181,15 @@ class AiBotPlanSeeder extends Seeder
             'features' => [
                 'Everything in Pro Trader',
                 'TPIX AI Signal — the full model, not a teaser',
-                'Spread arbitrage — opens when the TPIX DEX pool goes live',
+                // ยังไม่มีตัวลงมือจริง (implemented = false ใน config/aibot.php) — DEX พร้อมแล้วก็ยังไม่เปิด
+                'Spread arbitrage — coming soon (not available yet)',
                 'Ten bots at once, first in the execution queue, every minute',
                 'No capital cap per trade',
             ],
             'features_th' => [
                 'ทุกอย่างในแพลนโปรเทรดเดอร์',
                 'สัญญาณ AI ของ TPIX แบบเต็มความสามารถ',
-                'อาร์บิทราจส่วนต่างราคา — เปิดใช้เมื่อพูล DEX ของ TPIX พร้อม',
+                'อาร์บิทราจส่วนต่างราคา — เร็วๆ นี้ (ยังไม่เปิดใช้)',
                 'รันพร้อมกันได้ 10 บอท · ได้คิวก่อนทุกแพลน · เดินทุก 1 นาที',
                 'ไม่จำกัดเพดานทุนต่อไม้',
             ],

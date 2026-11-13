@@ -45,8 +45,12 @@ return [
         /*
          * Groq — สำรอง endpoint เข้ากันได้กับ OpenAI อยู่แล้ว
          *
-         * โมเดล Llama ถูกถอดออกหมดแล้ว รายการนี้คือที่เหลือจริงเมื่อ 22 ส.ค. 2026
+         * โมเดล Llama ถูกถอดออกหมดแล้ว รายการนี้คือโมเดลแชตที่เหลือจริงเมื่อ 13 พ.ย. 2026
          * (ยิง /openai/v1/models ตรวจก่อนใส่ ไม่ได้คัดจากความจำ)
+         *
+         * retired_models = ชื่อที่ Groq ถอดไปแล้วแต่ยังอาจค้างอยู่ในหลังบ้าน (ai.groq_default_model)
+         * หรือถูกส่งมาจากหน้าจอรุ่นเก่า — เจอเมื่อไหร่ถือว่า "ไม่ได้ตั้ง" แล้วใช้ default_model แทน
+         * โมเดลไหนถูกถอดเพิ่ม ให้ย้ายจาก models มาไว้ที่นี่ ไม่ใช่ลบทิ้งเฉยๆ
          */
         'groq' => [
             'endpoint' => 'https://api.groq.com/openai/v1/chat/completions',
@@ -57,8 +61,15 @@ return [
             'models' => [
                 'openai/gpt-oss-120b' => 'GPT-OSS 120B (Groq)',
                 'openai/gpt-oss-20b' => 'GPT-OSS 20B (Groq)',
-                'qwen/qwen3.6-27b' => 'Qwen 3.6 27B (Groq)',
-                'groq/compound' => 'Groq Compound',
+                'qwen/qwen3.8-27b' => 'Qwen 3.8 27B (Groq)',
+            ],
+            'retired_models' => [
+                'llama-3.3-70b-versatile',
+                'llama-3.1-8b-instant',
+                'mixtral-8x7b-32768',
+                'gemma2-9b-it',
+                'qwen/qwen3.6-27b',
+                'groq/compound',
             ],
         ],
     ],

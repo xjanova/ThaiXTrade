@@ -8,6 +8,8 @@ use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
 use App\Models\AiBotSubscription;
 use App\Models\AiBotTrade;
+use App\Models\AiCopyFollow;
+use App\Models\AiCopyMaster;
 use App\Models\AiMarketView;
 use App\Models\MarketNews;
 use App\Services\AiBot\BotRunner;
@@ -16,6 +18,7 @@ use App\Services\AiBot\NewsFeedService;
 use App\Services\AiBot\PaperBroker;
 use App\Services\MarketDataService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -1117,5 +1120,210 @@ class BotRunnerTest extends TestCase
         $this->assertSame('paused', $bot->fresh()->status);
         $this->assertStringContainsString('ถอด', $bot->fresh()->last_reason);
         $this->assertSame(0, AiBotTrade::count(), 'ห้ามเทรดด้วยกลยุทธ์ที่ถอดแล้ว');
+    }
+
+    // ─────────────────────── 10) วางกลยุทธ์เอง (custom) ───────────────────────
+
+    /** บอทวางกลยุทธ์เองที่ปิดอิทธิพลภายนอกทั้งหมด — เหลือแต่กฎของผู้ใช้ */
+    private function makeCustomBot(array $entry, array $params = []): AiBotConfig
+    {
+        // ระดับแพลนของโหมดนี้ยังรอเจ้าของตัดสิน — เทสต์ลำดับการตัดสินใจไม่ควรขึ้นกับค่านั้น
+        config(['aibot.strategies' => collect(config('aibot.strategies'))->map(
+            fn (array $s) => $s['code'] === 'custom' ? ['tier' => 'free'] + $s : $s
+        )->all()]);
+
+        return $this->makeBot([
+            'strategy' => 'custom',
+            'params' => $params + [
+                'rules' => ['entry' => ['match' => 'all', 'blocks' => $entry], 'exit' => ['match' => 'any', 'blocks' => []]],
+                'ai_gate' => false, 'news_mode' => 'off', 'macro_filter' => false,
+            ],
+        ]);
+    }
+
+    /**
+     * กฎของผู้ใช้เดินผ่านตัวรันจริง: เข้าเมื่อเงื่อนไขเป็นจริง ด้วยขนาดไม้ที่ผู้ใช้ตั้ง และบันทึกว่าเข้าเพราะอะไร.
+     */
+    #[Test]
+    public function a_custom_bot_enters_on_the_owners_rule_with_the_owners_order_size(): void
+    {
+        $bot = $this->makeCustomBot(
+            [['type' => 'ema_cross', 'when' => 'crosses_above', 'fast' => 12, 'slow' => 26]],
+            ['order_size_usd' => 40],
+        );
+        $this->candles = $this->risingCandles();
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('buy', $result['action']);
+        $this->assertSame('เงื่อนไขเข้าเป็นจริง: EMA 12 ตัดขึ้นเหนือ EMA 26', $result['reason']);
+
+        $trade = AiBotTrade::firstOrFail();
+        $this->assertSame('custom', $trade->strategy);
+        $this->assertEqualsWithDelta(40.0, (float) $trade->gross_value, 0.5, 'ขนาดไม้ = order_size_usd ไม่ใช่เพดานทุน 1000');
+    }
+
+    /** เงื่อนไขไม่เป็นจริง = ถือ พร้อมบอกว่ารออะไร (ผู้ใช้ต้องเห็นว่าบอทไม่ได้ตาย) */
+    #[Test]
+    public function a_custom_bot_waits_and_says_which_condition_is_missing(): void
+    {
+        $bot = $this->makeCustomBot([['type' => 'ema_cross', 'when' => 'crosses_above', 'fast' => 12, 'slow' => 26]]);
+        $this->candles = $this->flatCandles(80);
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('hold', $result['action']);
+        $this->assertSame('ยังไม่เข้าไม้ — รอ: EMA 12 ตัดขึ้นเหนือ EMA 26', $result['reason']);
+        $this->assertSame(0, AiBotTrade::count());
+    }
+
+    /**
+     * "พักหลังปิดไม้" นับเป็นแท่งที่ปิดแล้ว ไม่ใช่ปัดเศษจากนาฬิกา — ต้องตรงกับที่ backtest นับ.
+     *
+     * ไม้เกิดหลังแท่งปิดไม่กี่นาทีเสมอ: ถ้าปัดเศษจากเวลาจริง ผ่านไป 3 แท่งจะนับได้ 2 แล้วบอทจริง
+     * เข้าไม้ช้ากว่าผลทดสอบย้อนหลังหนึ่งแท่งทุกครั้ง
+     */
+    #[Test]
+    public function a_custom_bots_cooldown_counts_closed_candles_like_the_backtester(): void
+    {
+        $bot = $this->makeCustomBot([['type' => 'interval', 'bars' => 1]], ['cooldown_bars' => 4, 'order_size_usd' => 40]);
+        $this->candles = $this->flatCandles(80);
+
+        // แท่งปิดล่าสุดที่บอทเห็น (ตัวสุดท้ายของชุดคือแท่งที่กำลังวิ่ง ถูกตัดทิ้ง)
+        $lastClosed = (int) $this->candles[count($this->candles) - 2]['time'];
+        $step = 3_600_000;
+
+        // ปิดไม้ 5 นาทีหลังแท่ง (ล่าสุด − 3) ปิด → ผ่านมา 3 แท่งพอดี
+        $sell = AiBotTrade::create([
+            'ai_bot_config_id' => $bot->id, 'wallet_address' => $bot->wallet_address, 'pair' => $bot->pair,
+            'mode' => 'demo', 'side' => 'sell', 'price' => 100, 'quantity' => 1, 'gross_value' => 100,
+            'fee' => 0.1, 'slippage_cost' => 0.08, 'realized_pnl' => -1, 'strategy' => 'custom', 'reason' => 'ทดสอบ',
+        ]);
+        // createFromTimestampMs คืนเวลา UTC — ต้องแปลงเป็นโซนของแอปก่อนเก็บ ไม่งั้นเวลาที่อ่านกลับมาเลื่อนไปตามโซน (CI ใช้ Asia/Bangkok)
+        $sell->created_at = Carbon::createFromTimestampMs($lastClosed - 2 * $step + 5 * 60_000)->setTimezone(config('app.timezone'));
+        $sell->save();
+
+        $waiting = $this->runner->tick($bot->fresh());
+
+        $this->assertSame('hold', $waiting['action']);
+        $this->assertSame('พักหลังปิดไม้ อีก 1 แท่ง', $waiting['reason']);
+
+        // แท่งถัดไปปิด → ครบ 4 แท่ง → เข้าได้
+        $this->candles = $this->flatCandles(81);
+        $entered = $this->runner->tick($bot->fresh());
+
+        $this->assertSame('buy', $entered['action']);
+        $this->assertSame(1, AiBotTrade::where('side', 'buy')->count());
+    }
+
+    /** ถือของอยู่และผู้ใช้ไม่ได้เปิด "ซื้อเพิ่ม" = ไม่ซื้อซ้ำ แม้เงื่อนไขเข้าจะยังเป็นจริง */
+    #[Test]
+    public function a_custom_bot_does_not_add_to_its_position_by_default(): void
+    {
+        $bot = $this->makeCustomBot([['type' => 'ema_cross', 'when' => 'is_above', 'fast' => 5, 'slow' => 10]], ['order_size_usd' => 40]);
+        $this->giveBotAPosition($bot, 100.0, 1.0);
+        $this->candles = $this->risingCandles();
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('hold', $result['action']);
+        $this->assertSame(0, AiBotTrade::count());
+    }
+
+    // ─────────────────────── 11) ก๊อปปี้เทรด (copy) ───────────────────────
+
+    /**
+     * บอทผู้ตามที่ผูกกับมาสเตอร์ซึ่งถือไม้เงินจริงอยู่ $exposureUsd จากเพดาน $1000.
+     *
+     * บอทผู้ตามในเทสต์นี้เดินโหมดทดลอง (โบรกเกอร์กระดาษ) เพื่อดูว่าตัวรันส่งข้อมูลของมาสเตอร์ให้กลยุทธ์ถูกต้อง
+     * — ของจริง API บังคับให้บอทผู้ตามเป็นโหมดเงินจริงเท่านั้น (AiCopyTradeTest)
+     */
+    private function makeFollower(?float $exposureUsd, bool $openedAfterFollow = true): AiBotConfig
+    {
+        $masterBot = AiBotConfig::create([
+            'wallet_address' => '0x9999999999999999999999999999999999999999', 'name' => 'master', 'pair' => 'BTC/USDT',
+            'strategy' => 'momentum', 'timeframe' => '1h', 'status' => 'running', 'mode' => 'live',
+            'params' => ['fast_ema' => 5], 'risk' => ['max_position_usd' => 1000],
+        ]);
+
+        $master = AiCopyMaster::create([
+            'wallet_address' => $masterBot->wallet_address, 'ai_bot_config_id' => $masterBot->id, 'display_name' => 'Master',
+            'fee_rate_pct' => 20, 'platform_share_pct' => 30, 'status' => 'active', 'registered_at' => now()->subDays(40),
+        ]);
+
+        $bot = $this->makeBot(['strategy' => 'copy', 'params' => ['news_mode' => 'off', 'macro_filter' => false, 'ai_gate' => false], 'risk' => ['max_position_usd' => 200]]);
+
+        AiCopyFollow::create([
+            'ai_copy_master_id' => $master->id, 'follower_wallet' => self::WALLET, 'ai_bot_config_id' => $bot->id,
+            'fee_rate_pct' => 20, 'platform_share_pct' => 30, 'status' => 'active', 'started_at' => now()->subHour(),
+        ]);
+
+        if ($exposureUsd !== null) {
+            AiBotPosition::create([
+                'ai_bot_config_id' => $masterBot->id, 'pair' => 'BTC/USDT', 'mode' => 'live', 'quantity' => $exposureUsd / 100,
+                'entry_price' => 100.0, 'cost_basis' => $exposureUsd, 'entry_count' => 1,
+                'opened_at' => $openedAfterFollow ? now()->subMinutes(10) : now()->subDay(),
+            ]);
+        }
+
+        return $bot;
+    }
+
+    /** มาสเตอร์เปิดไม้หลังเริ่มตาม → ผู้ตามเข้าด้วยสัดส่วนทุนเดียวกันของเพดานตัวเอง */
+    #[Test]
+    public function a_copy_bot_enters_with_the_masters_share_of_its_own_capital(): void
+    {
+        $bot = $this->makeFollower(500.0);
+        $this->candles = $this->flatCandles(80);
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('buy', $result['action']);
+        $this->assertSame('มาสเตอร์เปิดไม้ — เข้าตามด้วยสัดส่วนทุนเดียวกัน', $result['reason']);
+        // มาสเตอร์ใช้ 50% ของเพดาน $1000 → ผู้ตามลง 50% ของเพดาน $200
+        $this->assertEqualsWithDelta(100.0, (float) AiBotTrade::firstOrFail()->gross_value, 1.0);
+    }
+
+    /** มาสเตอร์ไม่ได้ถือของ หรือถือไม้ที่เปิดไว้ก่อนเริ่มตาม → ผู้ตามไม่เข้า */
+    #[Test]
+    public function a_copy_bot_stays_out_until_the_master_opens_a_new_trade(): void
+    {
+        $bot = $this->makeFollower(500.0, openedAfterFollow: false);
+        $this->candles = $this->flatCandles(80);
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('hold', $result['action']);
+        $this->assertStringContainsString('ก่อนคุณเริ่มตาม', $result['reason']);
+        $this->assertSame(0, AiBotTrade::count());
+    }
+
+    /** มาสเตอร์ปิดไม้แล้ว → ผู้ตามที่ถือของอยู่ปิดตาม */
+    #[Test]
+    public function a_copy_bot_closes_when_the_master_is_flat(): void
+    {
+        $bot = $this->makeFollower(null);
+        $this->giveBotAPosition($bot, 100.0, 1.0);
+        $this->candles = $this->flatCandles(80);
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('sell', $result['action']);
+        $this->assertSame('มาสเตอร์ปิดไม้แล้ว — ปิดตาม', $result['reason']);
+    }
+
+    /** stop loss ของผู้ตามชนะมาสเตอร์เสมอ — มาสเตอร์ยังถืออยู่ ผู้ตามก็ออกตามกรอบของตัวเอง */
+    #[Test]
+    public function a_followers_own_stop_loss_beats_the_master(): void
+    {
+        $bot = $this->makeFollower(500.0);
+        $bot->update(['risk' => ['max_position_usd' => 200, 'stop_loss_pct' => 5]]);
+        $this->giveBotAPosition($bot, 120.0, 1.0);
+        $this->candles = $this->flatCandles(80);
+
+        $result = $this->runner->tick($bot->fresh());
+
+        $this->assertSame('sell', $result['action']);
+        $this->assertStringContainsString('ถึงจุดตัดขาดทุนที่ตั้งไว้', $result['reason']);
     }
 }

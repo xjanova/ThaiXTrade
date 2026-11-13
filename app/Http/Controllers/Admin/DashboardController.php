@@ -11,6 +11,7 @@ use App\Models\TradingPair;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
@@ -71,13 +72,11 @@ class DashboardController extends Controller
         $swaps24h = 0;
 
         try {
-            $totalFeeCollected = Transaction::where('status', 'completed')
-                ->where('fee_amount', '>', 0)
-                ->sum('fee_amount');
+            $totalFeeCollected = (float) $this->settledSwaps()->sum('fee_usd');
 
             $since24h = now()->subHours(24);
 
-            $hasTrades = DB::select("SHOW TABLES LIKE 'trades'");
+            $hasTrades = (Schema::hasTable('trades') ? [true] : []);
             if (! empty($hasTrades)) {
                 $totalInternalTrades = DB::table('trades')->count();
                 $totalInternalVolume = (float) DB::table('trades')->sum('total');
@@ -88,13 +87,12 @@ class DashboardController extends Controller
                 $trades24h = DB::table('trades')->where('created_at', '>=', $since24h)->count();
             }
 
-            $hasOrders = DB::select("SHOW TABLES LIKE 'orders'");
+            $hasOrders = (Schema::hasTable('orders') ? [true] : []);
             if (! empty($hasOrders)) {
                 $openOrders = DB::table('orders')->whereIn('status', ['open', 'partially_filled'])->count();
             }
 
-            $swaps24h = Transaction::whereIn('type', ['swap'])
-                ->where('status', 'completed')
+            $swaps24h = $this->settledSwaps()
                 ->where('created_at', '>=', $since24h)
                 ->count();
         } catch (\Exception $e) {
@@ -131,6 +129,23 @@ class DashboardController extends Controller
      * คำนวณรายได้จากทุกแหล่ง + daily trend สำหรับกราฟ
      * แยกตาม token type (TPIX native / wTPIX wrapped) และ chain.
      */
+    /**
+     * ไม้สวอปที่ยืนยันบนเชนแล้วและมีค่าธรรมเนียมที่ตีมูลค่าเป็นดอลลาร์ได้.
+     *
+     * ⚠️ เดิมหน้านี้นับเฉพาะ status = 'completed' แล้วบวก fee_amount ตรงๆ
+     *    - ไม้สวอปถูกบันทึกเป็น 'confirmed' (BscSwapRecorder / DexSwapIndexer) → รายได้สวอปขึ้น 0 ตลอดไป
+     *    - fee_amount เป็นหน่วยของเหรียญขาเข้า (USDT ปน BNB ปน PEPE) บวกกันไม่ได้
+     *    ใช้กติกาเดียวกับหน้า Finance: สถานะ confirmed/completed + fee_usd (มูลค่า ณ ตอนบันทึก)
+     *    ไม้ที่ตีมูลค่าไม่ได้ (ไม่มีฝั่งไหนเป็นสเตเบิล) มี fee_usd = null และไม่ถูกนับ
+     */
+    private function settledSwaps(): \Illuminate\Database\Eloquent\Builder
+    {
+        return Transaction::query()
+            ->where('type', 'swap')
+            ->whereIn('status', ['confirmed', 'completed'])
+            ->where('fee_usd', '>', 0);
+    }
+
     private function getRevenueAnalytics(): array
     {
         // ─── Multi-wallet configuration ───
@@ -150,7 +165,7 @@ class DashboardController extends Controller
 
         try {
             // Trading/Order book fees
-            $hasTrades = DB::select("SHOW TABLES LIKE 'trades'");
+            $hasTrades = (Schema::hasTable('trades') ? [true] : []);
             if (! empty($hasTrades)) {
                 $tradingFees = (float) DB::table('trades')->sum(DB::raw('COALESCE(maker_fee, 0) + COALESCE(taker_fee, 0)'));
 
@@ -171,28 +186,22 @@ class DashboardController extends Controller
                 }
             }
 
-            // Swap fees จาก transactions
-            $swapFees = (float) Transaction::where('status', 'completed')
-                ->where('fee_amount', '>', 0)
-                ->sum('fee_amount');
+            /*
+             * Swap fees จาก transactions — มูลค่าดอลลาร์ (fee_usd) ของไม้ที่ยืนยันบนเชนแล้ว
+             * แยกตาม "เชนที่ไม้ลง": TPIX Chain → ช่อง tpix · เชนอื่น (BSC) → ช่อง wtpix (กระเป๋ารับรายได้ฝั่ง BSC)
+             * (เดิมแยกด้วย fee_currency = 'TPIX' / 'wTPIX' ซึ่งไม่มีไม้ไหนเป็นแบบนั้น — ค่าธรรมเนียมสวอป
+             *  จ่ายเป็นเหรียญขาเข้าของไม้ เช่น USDT / BNB)
+             */
+            $swapFees = (float) $this->settledSwaps()->sum('fee_usd');
 
-            // แยก swap fee ตาม fee_currency
-            $hasFeeCurrencyTx = DB::getSchemaBuilder()->hasColumn('transactions', 'fee_currency');
-            if ($hasFeeCurrencyTx) {
-                $revenueByToken['tpix']['swap'] = (float) Transaction::where('status', 'completed')
-                    ->where('fee_amount', '>', 0)
-                    ->where('fee_currency', 'TPIX')
-                    ->sum('fee_amount');
-                $revenueByToken['wtpix']['swap'] = (float) Transaction::where('status', 'completed')
-                    ->where('fee_amount', '>', 0)
-                    ->where('fee_currency', 'wTPIX')
-                    ->sum('fee_amount');
-            } else {
-                $revenueByToken['tpix']['swap'] = $swapFees;
-            }
+            $tpixChainRowId = Chain::where('chain_id', (int) config('blockchain.tpix_chain_id', 4289))->value('id');
+            $revenueByToken['tpix']['swap'] = $tpixChainRowId
+                ? (float) $this->settledSwaps()->where('chain_id', $tpixChainRowId)->sum('fee_usd')
+                : 0.0;
+            $revenueByToken['wtpix']['swap'] = round($swapFees - $revenueByToken['tpix']['swap'], 8);
 
             // Token Factory fees — จาก metadata ของ deployed tokens
-            $hasFactory = DB::select("SHOW TABLES LIKE 'factory_tokens'");
+            $hasFactory = (Schema::hasTable('factory_tokens') ? [true] : []);
             if (! empty($hasFactory)) {
                 $deployedTokens = FactoryToken::where('status', 'deployed')->get();
                 foreach ($deployedTokens as $token) {
@@ -279,7 +288,7 @@ class DashboardController extends Controller
         $factoryStats = ['total_created' => 0, 'total_deployed' => 0, 'pending' => 0];
 
         try {
-            $hasFactory = DB::select("SHOW TABLES LIKE 'factory_tokens'");
+            $hasFactory = (Schema::hasTable('factory_tokens') ? [true] : []);
             if (! empty($hasFactory)) {
                 $factoryStats = [
                     'total_created' => FactoryToken::count(),
@@ -399,7 +408,7 @@ class DashboardController extends Controller
 
         try {
             // Trading fees by day
-            $hasTrades = DB::select("SHOW TABLES LIKE 'trades'");
+            $hasTrades = (Schema::hasTable('trades') ? [true] : []);
             if (! empty($hasTrades)) {
                 $tradingByDay = DB::table('trades')
                     ->selectRaw('DATE(created_at) as day, SUM(COALESCE(maker_fee, 0) + COALESCE(taker_fee, 0)) as fees')
@@ -416,9 +425,8 @@ class DashboardController extends Controller
             }
 
             // Swap fees by day
-            $swapByDay = Transaction::selectRaw('DATE(created_at) as day, SUM(fee_amount) as fees')
-                ->where('status', 'completed')
-                ->where('fee_amount', '>', 0)
+            $swapByDay = $this->settledSwaps()
+                ->selectRaw('DATE(created_at) as day, SUM(fee_usd) as fees')
                 ->where('created_at', '>=', $startDate)
                 ->groupByRaw('DATE(created_at)')
                 ->get();
@@ -431,7 +439,7 @@ class DashboardController extends Controller
             }
 
             // Factory fees by day (จาก deployed_at ใน metadata)
-            $hasFactory = DB::select("SHOW TABLES LIKE 'factory_tokens'");
+            $hasFactory = (Schema::hasTable('factory_tokens') ? [true] : []);
             if (! empty($hasFactory)) {
                 $deployedTokens = FactoryToken::where('status', 'deployed')
                     ->where('created_at', '>=', $startDate)

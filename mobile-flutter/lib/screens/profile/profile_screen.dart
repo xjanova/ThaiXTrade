@@ -23,6 +23,7 @@ import '../../widgets/common/app_background.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
 import '../../widgets/common/kyc_status_badge.dart';
+import '../../widgets/wallet/disconnect_wallet_dialog.dart';
 import '../../widgets/wallet/profile_edit_sheet.dart';
 import '../../widgets/wallet/wallet_connect_sheet.dart';
 
@@ -80,57 +81,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> _disconnect(bool th) async {
-    // กระเป๋าในแอป (embedded): disconnect ลบ private key + วลีกู้คืนในเครื่องทิ้งจริง
-    // เดิมข้อความบอกว่า "ไม่ถูกลบ" — ผู้ใช้ที่ไม่ได้จดวลีกู้คืนเสียกระเป๋าไปเพราะเชื่อข้อความนี้
-    final embedded =
-        context.read<WalletProvider>().kind == WalletKind.embedded;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: AppColors.bgElevated,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: AppColors.tradingRed.withValues(alpha: 0.3)),
-        ),
-        title: Text(th ? 'ตัดการเชื่อมต่อ?' : 'Disconnect wallet?',
-            style: AppFonts.ui(
-                color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800)),
-        content: Text(
-          embedded
-              ? (th
-                  ? 'กุญแจของกระเป๋านี้จะถูกลบออกจากเครื่อง — กู้คืนได้ด้วยวลีกู้คืน 12 คำเท่านั้น ถ้ายังไม่ได้จดไว้ เงินในกระเป๋าจะเข้าถึงไม่ได้อีก'
-                  : 'This wallet\'s keys will be deleted from this phone. Only your 12-word recovery phrase can restore it — without it the funds are lost.')
-              : (th
-                  ? 'จะออกจากระบบกระเป๋านี้ในแอป (กุญแจอยู่ในแอปกระเป๋าของคุณ ไม่ถูกลบ)'
-                  : 'You will be signed out of this wallet in the app (your keys stay in your wallet app).'),
-          style: AppFonts.ui(fontSize: 13, color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(th ? 'ยกเลิก' : 'Cancel',
-                style: TextStyle(color: AppColors.textTertiary)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.tradingRed,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(th ? 'ตัดการเชื่อมต่อ' : 'Disconnect'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    await context.read<WalletProvider>().disconnect();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(th ? 'ตัดการเชื่อมต่อแล้ว' : 'Wallet disconnected'),
-      duration: const Duration(seconds: 2),
-    ));
-  }
+  /// ตัดการเชื่อมต่อ — หน้ายืนยัน/กติกาลบกุญแจอยู่ที่ [confirmAndDisconnectWallet] ที่เดียว
+  /// (กระเป๋าในแอป: ต้องยืนยันว่าสำรองวลีกู้คืนแล้ว · กระเป๋าที่ลิงก์/ภายนอก: ไม่แตะกุญแจในแอป)
+  Future<void> _disconnect() => confirmAndDisconnectWallet(context);
 
   @override
   Widget build(BuildContext context) {
@@ -172,7 +125,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       text: th ? 'ตัดการเชื่อมต่อกระเป๋า' : 'Disconnect Wallet',
                       variant: ButtonVariant.outline,
                       icon: Icons.logout_rounded,
-                      onPressed: () => _disconnect(th),
+                      onPressed: _disconnect,
                     ),
                   ),
                 ),

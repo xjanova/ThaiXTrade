@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AiBotWalletTransfer;
+use App\Services\AiBot\Wallet\BotWalletRemoteSigner;
 use App\Services\AiBot\Wallet\BotWalletService;
 use App\Services\AiBotService;
 use Illuminate\Database\QueryException;
@@ -34,6 +35,9 @@ class AiBotWalletController extends Controller
         BotWalletService::ERR_IN_FLIGHT => 'มีรายการถอนที่ยังไม่เสร็จอยู่ — รอให้รายการเดิมสำเร็จก่อน',
         BotWalletService::ERR_DAILY_CAP => 'เกินเพดานถอนต่อวันของกระเป๋าบอท',
         BotWalletService::ERR_NOT_CANCELLABLE => 'รายการนี้ถูกส่งไปแล้ว ยกเลิกไม่ได้ — รอผลจากเชน',
+        // ตัวเซ็นแยกเครื่องไม่ตอบ / ตอบผิดรูป = ยังไม่มีกระเป๋าเกิดขึ้น ลองใหม่ได้โดยไม่เสียอะไร
+        BotWalletRemoteSigner::ERR_UNAVAILABLE => 'ระบบกระเป๋าบอทไม่พร้อมชั่วคราว — ยังไม่มีการสร้างกระเป๋า ลองใหม่อีกครั้งในอีกสักครู่',
+        BotWalletRemoteSigner::ERR_BAD_REPLY => 'ระบบกระเป๋าบอทไม่พร้อมชั่วคราว — ยังไม่มีการสร้างกระเป๋า ลองใหม่อีกครั้งในอีกสักครู่',
         'REQUEST_FAILED' => 'ทำรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
     ];
 
@@ -66,7 +70,13 @@ class AiBotWalletController extends Controller
         try {
             $wallet = $this->wallets->ensure($owner);
         } catch (RuntimeException $e) {
-            return $this->serviceFailure($e, $e->getMessage() === BotWalletService::ERR_DISABLED ? 503 : 422);
+            $unavailable = in_array($e->getMessage(), [
+                BotWalletService::ERR_DISABLED,
+                BotWalletRemoteSigner::ERR_UNAVAILABLE,
+                BotWalletRemoteSigner::ERR_BAD_REPLY,
+            ], true);
+
+            return $this->serviceFailure($e, $unavailable ? 503 : 422);
         }
 
         return response()->json([
@@ -134,7 +144,9 @@ class AiBotWalletController extends Controller
 
     private function transfersOf(string $owner): array
     {
+        // ประวัติฝาก/ถอนเท่านั้น — คำสั่งเทรดของบอท (swap/approve) อยู่ในหน้าพอร์ตเงินจริง ไม่ใช่รายการโอน
         return AiBotWalletTransfer::where('owner_address', $owner)
+            ->whereIn('direction', [AiBotWalletTransfer::DIRECTION_WITHDRAW, AiBotWalletTransfer::DIRECTION_DEPOSIT])
             ->latest('id')
             ->limit(30)
             ->get()

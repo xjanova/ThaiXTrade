@@ -45,6 +45,8 @@ const tpix = computed(() => props.quote?.tpix ?? null);
 const onchain = computed(() => props.quote?.onchain ?? null);
 const tpixUsable = computed(() => tpix.value?.available === true);
 const hasEnough = computed(() => tpix.value?.has_enough === true);
+/** เซิร์ฟเวอร์ปิดทาง "จ่ายเป็นเหรียญ" ของไม้นี้ (TPIX Chain: ค่าวางไม้ต้องจ่ายด้วยเครดิต TPIX ทุกไม้) */
+const onchainClosed = computed(() => onchain.value?.available === false);
 
 /** ตัวเลขเล็กมากต้องไม่ปัดจนกลายเป็น 0 ที่อ่านว่า "ฟรี" */
 function fmt(value, maxDecimals = 8) {
@@ -103,15 +105,25 @@ function fmt(value, maxDecimals = 8) {
 
             <button
                 type="button"
-                :class="['fee-option', method === 'onchain' && 'fee-option--on']"
-                @click="emit('select-method', 'onchain')"
+                data-test="fee-option-onchain"
+                :disabled="onchainClosed"
+                :class="['fee-option', method === 'onchain' && !onchainClosed && 'fee-option--on',
+                    onchainClosed && 'opacity-40 cursor-not-allowed']"
+                @click="!onchainClosed && emit('select-method', 'onchain')"
             >
                 <span class="text-[10px] text-dark-400 block">{{ t('ui.tradingOrderFeeNotice.payOnchain') }}</span>
-                <span class="block text-sm font-mono font-semibold text-white">
-                    {{ fmt(onchain?.fee_usd) }}
-                    <span class="text-[10px] text-primary-300">{{ quoteSymbol }}</span>
-                </span>
-                <span class="block text-[9px] text-amber-300/90 leading-tight">{{ t('ui.tradingOrderFeeNotice.refundMinusGas') }}</span>
+                <!-- ทางนี้ถูกปิดสำหรับไม้นี้ — ไม่โชว์ตัวเลขที่จ่ายไม่ได้ บอกเหตุผลแทน -->
+                <template v-if="onchainClosed">
+                    <span class="block text-sm font-mono font-semibold text-dark-400">—</span>
+                    <span class="block text-[9px] text-dark-400 leading-tight">{{ onchain?.reason || t('ui.tradingOrderFeeNotice.onchainClosed') }}</span>
+                </template>
+                <template v-else>
+                    <span class="block text-sm font-mono font-semibold text-white">
+                        {{ fmt(onchain?.fee_usd) }}
+                        <span class="text-[10px] text-primary-300">{{ quoteSymbol }}</span>
+                    </span>
+                    <span class="block text-[9px] text-amber-300/90 leading-tight">{{ t('ui.tradingOrderFeeNotice.refundMinusGas') }}</span>
+                </template>
             </button>
         </div>
 
@@ -132,7 +144,7 @@ function fmt(value, maxDecimals = 8) {
 
         <!-- ⚠️ ข้อความนี้คือสิ่งที่เจ้าของสั่งให้ "แจ้งให้ทราบ" — ห้ามตัดออก -->
         <p v-if="!compact" class="text-[9px] text-dark-500 leading-relaxed border-t border-white/5 pt-1.5">
-            <template v-if="method === 'onchain'">
+            <template v-if="method === 'onchain' && !onchainClosed">
                 {{ t('ui.tradingOrderFeeNotice.note.onchain.before') }}
                 <span class="text-amber-300/90">{{ t('ui.tradingOrderFeeNotice.note.onchain.highlight') }}</span> ·
                 {{ t('ui.tradingOrderFeeNotice.note.onchain.after') }}

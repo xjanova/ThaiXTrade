@@ -5,8 +5,11 @@ namespace App\Services\AiBot;
 use App\Models\AiBotConfig;
 use App\Models\AiBotDecision;
 use App\Models\AiBotPosition;
+use App\Models\AiBotWalletTransfer;
 use App\Services\AiBot\Analyst\AiViewGate;
 use App\Services\AiBot\Analyst\AutoPairResolver;
+use App\Services\AiBot\Copy\CopyTradeService;
+use App\Services\AiBot\Live\LiveBroker;
 use App\Services\AiBotService;
 use App\Services\MarketDataService;
 use Illuminate\Support\Facades\Log;
@@ -25,8 +28,10 @@ use Illuminate\Support\Facades\Log;
  * ที่ให้ด่านความเสี่ยงมาก่อนกลยุทธ์เพราะกลยุทธ์ส่วนใหญ่ "ซื้อตอนราคาถูก" —
  * ในวันที่ตลาดพังจริงมันจะเห็นเป็นของถูกแล้วรับมีดตกตลอดทาง
  *
- * โหมด live ยังไม่ลงมือส่งธุรกรรมเอง — ระบบไม่ถือกุญแจของผู้ใช้ (non-custodial)
- * จึงบันทึกสัญญาณไว้ให้ผู้ใช้กดยืนยันเองในหน้าเว็บ
+ * โหมด live มีสองแบบ ตามธงของระบบ (ดู LiveBroker::operational):
+ *   - ยังไม่เปิดให้บอทส่งคำสั่งเอง → บันทึกเป็น "สัญญาณรอยืนยัน" ให้ผู้ใช้ไปลงมือเอง
+ *   - เปิดแล้ว → เข้าคิวคำสั่งสวอปจากกระเป๋าบอท (LiveBroker) ตัวเซ็นฝั่ง CLI ส่งขึ้นเชน
+ *     บัญชีไม้ถูกเขียนเมื่อธุรกรรมยืนยันบนเชนแล้วเท่านั้น รอบคิดที่มีคำสั่งค้างจึง "รอ" ไม่ตัดสินใจซ้ำ
  *
  * Developed by Xman Studio.
  */
@@ -78,6 +83,32 @@ class BotRunner
         'RSI :rsi เข้าเขตซื้อมากเกินไป — ขายทำกำไร' => [],
         'RSI :rsi ต่ำ แต่ราคาอยู่ใต้เส้นเทรนด์ใหญ่ (EMA 200) ถึง :pct% (ยอมได้ :tolerance%) — ไม่รับมีดตก' => [],
         'RSI :rsi เข้าเขตขายมากเกินไป — เข้าซื้อสวน' => [],
+        // วางกลยุทธ์เอง (CustomStrategy + RuleEvaluator) — รายการเงื่อนไขคั่นด้วย " · " แปลทีละข้อ
+        'เงื่อนไขเข้าเป็นจริง: :reasons' => ['reasons'],
+        'เงื่อนไขออกเป็นจริง: :reasons' => ['reasons'],
+        'ยังไม่เข้าไม้ — รอ: :reasons' => ['reasons'],
+        'พักหลังปิดไม้ อีก :bars แท่ง' => [],
+        'ราคาย่อจากจุดสูงสุด :drop% ถึง trailing stop ที่ตั้งไว้ (:limit%)' => [],
+        'ถือครบ :bars แท่งตามที่ตั้งไว้ — ปิดไม้ (time stop)' => [],
+        'EMA :fast ตัดขึ้นเหนือ EMA :slow' => [],
+        'EMA :fast ตัดลงใต้ EMA :slow' => [],
+        'EMA :fast อยู่เหนือ EMA :slow' => [],
+        'EMA :fast อยู่ใต้ EMA :slow' => [],
+        'RSI(:period) ต่ำกว่า :level (ตอนนี้ :value)' => [],
+        'RSI(:period) สูงกว่า :level (ตอนนี้ :value)' => [],
+        'ราคาปิดทะลุจุดสูงสุด :period แท่ง' => [],
+        'ราคาปิดหลุดจุดต่ำสุด :period แท่ง' => [],
+        'ATR(:period) สูงกว่า :pct% ของราคา (ตอนนี้ :value%)' => [],
+        'ATR(:period) ต่ำกว่า :pct% ของราคา (ตอนนี้ :value%)' => [],
+        'วอลุ่มสูงกว่า :ratio เท่าของค่าเฉลี่ย :period แท่ง (ตอนนี้ :value เท่า)' => [],
+        'วอลุ่มต่ำกว่า :ratio เท่าของค่าเฉลี่ย :period แท่ง (ตอนนี้ :value เท่า)' => [],
+        'ราคาเปลี่ยนใน :bars แท่งมากกว่า :pct% (ตอนนี้ :value%)' => [],
+        'ราคาเปลี่ยนใน :bars แท่งน้อยกว่า :pct% (ตอนนี้ :value%)' => [],
+        'ราคาอยู่เหนือเส้นเทรนด์ใหญ่ EMA :period' => [],
+        'ราคาอยู่ใต้เส้นเทรนด์ใหญ่ EMA :period' => [],
+        'ครบรอบซื้อทุก :bars แท่ง' => [],
+        // ก๊อปปี้เทรด (CopyStrategy)
+        'ราคาวิ่งเกินจุดเข้าของมาสเตอร์ไปแล้ว :drift% (ยอมได้ :limit%) — ไม่ไล่ราคา' => [],
         // AiViewGate (เหตุผลจาก AI ที่ซ้อนอยู่ในรายการของ BotRunner)
         'AI ไม่แนะนำเหรียญนี้ แต่ประวัติ avoid ที่ความมั่นใจระดับนี้ถูกแค่ :pct% — ไม่ห้ามเข้าไม้' => [],
         'AI ไม่แนะนำเหรียญนี้รอบนี้: :why' => ['why'],
@@ -101,6 +132,7 @@ class BotRunner
         private readonly MarketRiskService $risk,
         private readonly StrategyRegistry $registry,
         private readonly PaperBroker $broker,
+        private readonly LiveBroker $live,
         private readonly AiBotService $bots,
         private readonly AiViewGate $aiGate,
         private readonly AutoPairResolver $autoPair,
@@ -165,6 +197,25 @@ class BotRunner
             $bot->pauseBecause(AiBotConfig::PAUSE_PLAN_LOCKED, $reason);
 
             return $this->record($bot, 'stopped', $reason);
+        }
+
+        /*
+         * 1.15) โหมดเงินจริง: คำสั่งของรอบก่อนยังไม่รู้ผลบนเชน = ยังไม่คิดรอบใหม่
+         *
+         * บัญชีไม้ถูกเขียนเมื่อธุรกรรมยืนยันแล้วเท่านั้น ระหว่างนั้นภาพ "ถือของอยู่ไหม" ยังเป็นภาพก่อนสั่ง —
+         * ปล่อยให้คิดต่อ บอทจะเห็นว่า "ยังไม่มีของ" แล้วสั่งซื้อซ้ำ (หรือเห็นว่ายังถืออยู่แล้วสั่งขายซ้ำ)
+         *
+         * ⚠️ ต้องมาก่อนขั้นเลือกเหรียญ (1.2): คำสั่งซื้อที่ยังค้างคือ "ยังไม่ถือของ" ในสายตาของตัวเลือกเหรียญ
+         *    มันจึงย้ายบอทไปคู่ใหม่ได้ แล้วไม้ที่กำลังจะลงบล็อกกลายเป็นของคู่เดิมที่บอทไม่ได้ดูแล้ว
+         */
+        if ($bot->mode === 'live' && $this->live->operational()) {
+            if ($this->live->pendingOrder($bot)) {
+                return $this->record($bot, 'hold', 'รอผลคำสั่งเงินจริงบนเชน — ยังไม่ตัดสินใจรอบใหม่');
+            }
+
+            if (! $this->live->supports($bot->pair) && ! $this->live->position($bot)) {
+                return $this->record($bot, 'hold', 'คู่เหรียญนี้ยังเทรดเงินจริงไม่ได้ — ใช้ได้เฉพาะคู่ในรายการของโหมดเงินจริง');
+            }
         }
 
         /*
@@ -280,10 +331,10 @@ class BotRunner
 
         if ($risk['force_exit'] && $position) {
             $reason = 'ตลาดเข้าภาวะตื่นตระหนก — เทออกทั้งหมด: '.implode(' · ', array_slice($risk['reasons'], 0, 2));
-            $this->execute($bot, 'sell', $price, 0, $reason, $risk);
+            $exit = $this->execute($bot, 'sell', $price, 0, $reason, $risk);
 
             // ราคาต้องติดไปด้วย — ไม่งั้น analyst-report/harvest ให้คะแนนไม้ที่ด่านนี้สั่งไม่ได้
-            return $this->record($bot, 'sell', $reason, $risk['level'], [
+            return $this->recordExit($bot, $exit, $reason, $risk['level'], [
                 'price' => $price,
                 'has_position' => true,
                 'meta' => ['risk' => $risk['reasons'] ?? []],
@@ -332,9 +383,9 @@ class BotRunner
                 $ai['reasons'][] = 'กลยุทธ์นี้ถือผ่านขาลงโดยออกแบบ — ไม่ปิดไม้ตาม AI แต่ไม่เติมไม้ใหม่';
             } else {
                 $reason = 'AI สั่งปิดไม้: '.(implode(' · ', array_slice($ai['reasons'], 0, 2)) ?: 'ความเสี่ยงสูงขึ้น');
-                $this->execute($bot, 'sell', $price, 0, $reason, $risk);
+                $exit = $this->execute($bot, 'sell', $price, 0, $reason, $risk);
 
-                return $this->record($bot, 'sell', $reason, $risk['level'], [
+                return $this->recordExit($bot, $exit, $reason, $risk['level'], [
                     'price' => $price,
                     'has_position' => true,
                     'meta' => ['ai' => $ai],
@@ -363,9 +414,9 @@ class BotRunner
             $guard = $this->checkUserRiskLimits($bot, $position, $price);
 
             if ($guard !== null) {
-                $this->execute($bot, 'sell', $price, 0, $guard, $risk);
+                $exit = $this->execute($bot, 'sell', $price, 0, $guard, $risk);
 
-                return $this->record($bot, 'sell', $guard, $risk['level'], [
+                return $this->recordExit($bot, $exit, $guard, $risk['level'], [
                     'price' => $price,
                     'has_position' => true,
                 ]);
@@ -534,10 +585,55 @@ class BotRunner
     }
 
     /**
-     * ปิด/เปิดไม้ — โหมด live ยังไม่ส่งธุรกรรมเอง (ไม่ถือกุญแจผู้ใช้).
+     * บันทึกผลของการ "สั่งปิดไม้" ที่ด่านความเสี่ยง/กรอบของผู้ใช้เป็นคนสั่ง.
+     *
+     * โหมดเงินจริง คำสั่งปิดอาจเข้าคิวไม่ได้ (ค่าแก๊สหมด · คำสั่งก่อนหน้าเพิ่งล้ม) — บันทึกว่า "ขายแล้ว"
+     * ทั้งที่ยังถือของอยู่คือการบอกเจ้าของเงินผิด จึงบันทึกเป็นยังปิดไม่ได้พร้อมเหตุ และปล่อยให้บอท
+     * เดินต่อเพื่อสั่งปิดใหม่ในรอบถัดไป (ด่านขาดทุนต่อวันพักบอทไว้ก่อนสั่งขาย — พักทั้งที่ยังถือของ
+     * = ไม่มีใครสั่งปิดให้อีกเลย)
+     */
+    private function recordExit(AiBotConfig $bot, array $result, string $reason, string $riskLevel, array $context): array
+    {
+        /*
+         * คำสั่งปิดเข้าคิวแล้ว แต่รอบนี้พักบอทไปด้วย (ด่านขาดทุนต่อวัน) — ถ้าคำสั่งนั้นไม่ลงบล็อก
+         * (ราคาเบี่ยง / revert / หมดอายุ) จะเหลือไม้ที่ถืออยู่กับบอทที่ไม่เดินแล้ว ไม่มีใครสั่งปิดให้อีก
+         * ติดธงไว้ที่คำสั่ง: ตัวส่งธุรกรรมปลุกบอทกลับมาเมื่อคำสั่งนี้ล้ม (ดู AiBotWalletTransfers::markFailed)
+         */
+        if (($result['ok'] ?? false) && $bot->mode === 'live' && $bot->status === 'paused' && ($result['order'] ?? null) instanceof AiBotWalletTransfer) {
+            $result['order']->mergeMeta(['resume_bot_on_failure' => true])->save();
+        }
+
+        if (! ($result['ok'] ?? false) && $bot->mode === 'live' && $this->live->operational()) {
+            if ($bot->status === 'paused') {
+                $bot->update(['status' => 'running']);
+            }
+
+            return $this->record(
+                $bot,
+                'hold',
+                'ยังปิดไม้ไม่ได้: '.($result['reason'] ?? 'ลงมือไม่สำเร็จ').' · '.$reason,
+                $riskLevel,
+                $context,
+            );
+        }
+
+        return $this->record($bot, 'sell', $reason, $riskLevel, $context);
+    }
+
+    /**
+     * ปิด/เปิดไม้ — ทดลอง = โบรกเกอร์จำลอง · เงินจริง = เข้าคิวคำสั่งจากกระเป๋าบอท (ถ้าระบบเปิดแล้ว)
+     * ไม่งั้นบันทึกเป็นสัญญาณรอผู้ใช้ยืนยัน.
      */
     private function execute(AiBotConfig $bot, string $action, float $price, float $budget, string $reason, array $risk, array $meta = []): array
     {
+        if ($bot->mode === 'live' && $this->live->operational()) {
+            $context = ['reason' => $reason, 'meta' => $meta, 'risk_level' => $risk['level']];
+
+            return $action === Signal::BUY
+                ? $this->live->buy($bot, $price, $budget, $context)
+                : $this->live->sell($bot, $price, $context);
+        }
+
         if ($bot->mode !== 'demo') {
             // บันทึกเป็นสัญญาณรอผู้ใช้ยืนยัน — ไม่แกล้งทำเป็นว่าเทรดไปแล้ว
             $bot->update(['last_signal_at' => now()]);
@@ -685,6 +781,52 @@ class BotRunner
             $params['_bars_since_entry'] = $lastBuy
                 ? max(0, (int) floor($lastBuy->created_at->diffInMinutes(now()) / $minutesPerBar))
                 : PHP_INT_MAX;
+        }
+
+        if ($bot->strategy === CopyTradeService::STRATEGY) {
+            /*
+             * ก๊อปปี้เทรด: มาสเตอร์ถือของอยู่ไหม ใช้ทุนกี่ส่วน เข้าที่ราคาเท่าไหร่ — engine เป็นคนรู้
+             * (กลยุทธ์เป็น pure ห้ามอ่านฐานข้อมูลเอง) · ลงบัญชีค่าบริการของไม้ที่ปิดไปแล้วในรอบเดียวกัน
+             * เพราะไม้เงินจริงถูกเขียนตอนเชนยืนยัน ไม่ใช่ตอนที่รอบคิดนี้สั่ง
+             */
+            $copy = app(CopyTradeService::class);
+            $params['_copy'] = $copy->signalContext($bot);
+
+            if ($follow = $copy->followOfBot($bot)) {
+                try {
+                    $copy->settleFees($follow);
+                } catch (\Throwable $e) {
+                    // บัญชีค่าบริการล่มต้องไม่ทำให้บอทหยุดดูแลไม้ที่ถืออยู่ — รอบหน้าไล่ตรวจใหม่ได้ (ไม่นับซ้ำ)
+                    Log::warning('copy trade: ลงบัญชีค่าบริการไม่สำเร็จ', ['bot' => $bot->id, 'error' => $e->getMessage()]);
+                }
+            }
+        }
+
+        if ($bot->strategy === 'custom') {
+            /*
+             * วางกลยุทธ์เอง: บล็อก "ซื้อตามรอบเวลา" กับ "พักหลังปิดไม้" นับเป็นแท่ง — engine เป็นคนรู้
+             *
+             * นับจากแท่งปิดล่าสุด ณ ตอนที่ไม้เกิด ไม่ใช่จากนาฬิกา: ไม้เกิดหลังแท่งปิดไม่กี่นาทีเสมอ
+             * ถ้าปัดเศษจากเวลาจริง แท่งถัดไปจะนับได้ 0 (ยังไม่ครบ 1 แท่งเต็ม) ขณะที่ backtest นับได้ 1
+             * — บอทจริงจะช้ากว่าผลทดสอบย้อนหลังหนึ่งแท่งทุกครั้ง ทั้งที่ใช้กฎชุดเดียวกัน
+             */
+            $stepMs = $minutesPerBar * 60_000;
+            $lastClosed = (int) ($candles[count($candles) - 1]['time'] ?? 0);
+            $barsSince = function (string $side) use ($bot, $stepMs, $lastClosed): int {
+                $trade = $bot->trades()->where('mode', $bot->mode)->where('side', $side)->latest('created_at')->first();
+
+                if (! $trade || $lastClosed <= 0) {
+                    return PHP_INT_MAX;
+                }
+
+                // แท่งปิดล่าสุดตอนที่ไม้นั้นเกิด = แท่งก่อนหน้าแท่งที่กำลังวิ่งอยู่ ณ เวลานั้น
+                $closedThen = intdiv($trade->created_at->getTimestamp() * 1000, $stepMs) * $stepMs - $stepMs;
+
+                return max(0, intdiv($lastClosed - $closedThen, $stepMs));
+            };
+
+            $params['_bars_since_entry'] = $barsSince('buy');
+            $params['_bars_since_exit'] = $barsSince('sell');
         }
 
         if ($bot->strategy === 'scalping') {

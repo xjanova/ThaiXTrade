@@ -7,6 +7,7 @@ use App\Models\SiteSetting;
 use App\Models\SwapConfig;
 use App\Models\TradingPair;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * FeeCalculationService.
@@ -32,9 +33,45 @@ class FeeCalculationService
      */
     protected const DEFAULT_SLIPPAGE = 0.5;
 
+    /**
+     * ตัวนับรุ่นของแคชค่าธรรมเนียม — ทุกคีย์แคชของบริการนี้ (และของ /api/v1/fees) ฝังเลขรุ่นไว้
+     * แอดมินแก้ค่าธรรมเนียมที่ไหนก็ตาม → flush() เพิ่มเลขรุ่น → ค่าใหม่มีผลกับคำขอถัดไปทันที
+     *
+     * ⚠️ เดิมไม่มีใครล้างแคชพวกนี้เลย: แก้อัตราในหลังบ้านแล้วหน้าเว็บยังคิดอัตราเก่าต่ออีก 10 นาที
+     *    (15 นาทีที่ /api/v1/fees) · ตั้งกระเป๋าค่าธรรมเนียมแล้วยังขึ้น "ยังไม่ได้ตั้ง" อีก 5 นาที
+     */
+    public const GENERATION_KEY = 'fee_config:generation';
+
+    /** ที่อยู่ที่ใช้แทน "เหรียญหลักของเชน" (BNB / TPIX) — ในตาราง tokens เก็บเป็นที่อยู่ศูนย์ */
+    private const NATIVE_ALIASES = [
+        '0x0000000000000000000000000000000000000000',
+        '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    ];
+
     // =========================================================================
     // Public Methods
     // =========================================================================
+
+    /**
+     * ทิ้งแคชค่าธรรมเนียมทั้งหมด — เรียกทุกครั้งที่แอดมินแก้ค่าที่บริการนี้อ่าน
+     * (fee_configs · อัตราทับรายคู่ · swap_configs · ค่าตั้งกลุ่ม trading/revenue)
+     */
+    public static function flush(): void
+    {
+        Cache::forever(self::GENERATION_KEY, self::generation() + 1);
+    }
+
+    /** เลขรุ่นปัจจุบันของแคชค่าธรรมเนียม — ผู้เรียกภายนอกใช้ต่อท้ายคีย์แคชของตัวเอง */
+    public static function generation(): int
+    {
+        return (int) Cache::get(self::GENERATION_KEY, 0);
+    }
+
+    /** คีย์แคชของบริการนี้ ผูกกับเลขรุ่นปัจจุบัน */
+    private static function cacheKey(string $suffix): string
+    {
+        return self::CACHE_PREFIX.'.g'.self::generation().'.'.$suffix;
+    }
 
     /**
      * Calculate the swap fee for a given amount on a specific chain.
@@ -50,9 +87,14 @@ class FeeCalculationService
     {
         $feeRate = $this->resolveSwapFeeRate($chainId, $tradingPairId);
 
-        // Enforce max fee rate cap from site settings
-        $maxFeeRate = (float) SiteSetting::get('trading', 'max_fee_rate', 5.0);
-        $feeRate = min($feeRate, $maxFeeRate);
+        /*
+         * Enforce max fee rate cap from site settings
+         *
+         * ⚠️ เพดานที่ว่าง/ไม่ใช่ตัวเลข/ไม่เป็นบวก = "ไม่ได้ตั้ง" ใช้ค่าปริยาย ไม่ใช่เพดาน 0
+         *    เดิมแอดมินเผลอลบช่องนี้ทิ้งแล้วกดบันทึก → (float) '' = 0 → min(อัตรา, 0) = 0
+         *    ค่าธรรมเนียมของทุกไม้กลายเป็นศูนย์เงียบๆ และถูกบันทึกว่า "ไม่ต้องเก็บ"
+         */
+        $feeRate = min($feeRate, self::positiveSetting('max_fee_rate', 5.0));
 
         // Use bcmath for precise fee calculation
         // ⚠️ ห้ามใช้ (string) กับ float — PHP เขียนเลขเล็กเป็น "1.0E-5" แล้ว bcmath โยน ValueError
@@ -78,7 +120,7 @@ class FeeCalculationService
      */
     public function getEffectiveFeeRate(string $type, ?int $chainId = null): float
     {
-        $cacheKey = self::CACHE_PREFIX.".effective.{$type}.".($chainId ?? 'global');
+        $cacheKey = self::cacheKey("effective.{$type}.".($chainId ?? 'global'));
 
         return Cache::remember(
             $cacheKey,
@@ -107,9 +149,20 @@ class FeeCalculationService
                 }
 
                 // 3. Fall back to site setting default
-                return (float) SiteSetting::get('trading', 'default_fee_rate', 0.3);
+                // ช่องว่าง/ไม่ใช่ตัวเลข = ไม่ได้ตั้ง → 0.3 · เลข 0 ที่ตั้งใจพิมพ์ = เทรดฟรีจริง
+                $default = SiteSetting::get('trading', 'default_fee_rate', 0.3);
+
+                return is_numeric($default) && (float) $default >= 0 ? (float) $default : 0.3;
             }
         );
+    }
+
+    /** ค่าตั้งกลุ่ม trading ที่ต้องเป็นจำนวนบวก — ว่าง/ผิดรูป/ไม่เป็นบวก ใช้ค่าปริยายแทน */
+    private static function positiveSetting(string $key, float $default): float
+    {
+        $value = SiteSetting::get('trading', $key, $default);
+
+        return is_numeric($value) && (float) $value > 0 ? (float) $value : $default;
     }
 
     /**
@@ -263,7 +316,7 @@ class FeeCalculationService
      */
     private function getCachedTradingPair(int $tradingPairId): ?TradingPair
     {
-        $cacheKey = self::CACHE_PREFIX.".trading_pair.{$tradingPairId}";
+        $cacheKey = self::cacheKey("trading_pair.{$tradingPairId}");
 
         return Cache::remember(
             $cacheKey,
@@ -281,24 +334,36 @@ class FeeCalculationService
      */
     private function findTradingPairId(string $fromToken, string $toToken, int $chainId): ?int
     {
+        /*
+         * เทียบที่อยู่แบบไม่สนตัวพิมพ์ และรับได้ทุกรูปของ "เหรียญหลักของเชน"
+         *
+         * ⚠️ เดิมเทียบสตริงตรงตัว — หน้าเว็บส่ง BNB เป็น 0xEeee…EEeE แต่ตาราง tokens เก็บ 0x0000…0000
+         *    และส่งที่อยู่แบบ checksum ขณะที่บางแถวเก็บตัวพิมพ์เล็ก → หาคู่ไม่เจอ
+         *    อัตราทับรายคู่ (taker_fee_override) ของคู่ที่มี BNB จึง "โชว์ในหน้าเทรดแต่ไม่ถูกคิดจริง"
+         */
+        $from = self::addressForms($fromToken);
+        $to = self::addressForms($toToken);
+
         // Sort tokens to ensure consistent cache key regardless of swap direction
-        $tokens = [$fromToken, $toToken];
+        $tokens = [$from[0], $to[0]];
         sort($tokens);
-        $cacheKey = self::CACHE_PREFIX.".pair_lookup.{$chainId}.".md5(implode(':', $tokens));
+        $cacheKey = self::cacheKey("pair_lookup.{$chainId}.".md5(implode(':', $tokens)));
 
         return Cache::remember(
             $cacheKey,
             self::CACHE_TTL,
-            function () use ($fromToken, $toToken, $chainId) {
+            function () use ($from, $to, $chainId) {
+                $is = fn (array $forms) => fn ($t) => $t->whereIn(DB::raw('LOWER(contract_address)'), $forms);
+
                 $pair = TradingPair::active()
                     ->where('chain_id', $chainId)
-                    ->where(function ($query) use ($fromToken, $toToken) {
-                        $query->where(function ($q) use ($fromToken, $toToken) {
-                            $q->whereHas('baseToken', fn ($t) => $t->where('contract_address', $fromToken))
-                                ->whereHas('quoteToken', fn ($t) => $t->where('contract_address', $toToken));
-                        })->orWhere(function ($q) use ($fromToken, $toToken) {
-                            $q->whereHas('baseToken', fn ($t) => $t->where('contract_address', $toToken))
-                                ->whereHas('quoteToken', fn ($t) => $t->where('contract_address', $fromToken));
+                    ->where(function ($query) use ($from, $to, $is) {
+                        $query->where(function ($q) use ($from, $to, $is) {
+                            $q->whereHas('baseToken', $is($from))
+                                ->whereHas('quoteToken', $is($to));
+                        })->orWhere(function ($q) use ($from, $to, $is) {
+                            $q->whereHas('baseToken', $is($to))
+                                ->whereHas('quoteToken', $is($from));
                         });
                     })
                     ->first();
@@ -309,13 +374,25 @@ class FeeCalculationService
     }
 
     /**
+     * รูปของที่อยู่เหรียญที่ต้องถือว่าเป็นเหรียญเดียวกัน (ตัวพิมพ์เล็กทั้งหมด).
+     *
+     * @return array<int, string> ตัวแรกคือรูปหลัก ใช้ทำคีย์แคช
+     */
+    private static function addressForms(string $address): array
+    {
+        $address = strtolower(trim($address));
+
+        return in_array($address, self::NATIVE_ALIASES, true) ? self::NATIVE_ALIASES : [$address];
+    }
+
+    /**
      * Get the default slippage tolerance for a chain.
      *
      * Reads from SwapConfig if available, otherwise uses class constant.
      */
     private function getDefaultSlippage(int $chainId): float
     {
-        $cacheKey = self::CACHE_PREFIX.".slippage.{$chainId}";
+        $cacheKey = self::cacheKey("slippage.{$chainId}");
 
         return Cache::remember(
             $cacheKey,

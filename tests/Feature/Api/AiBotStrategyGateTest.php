@@ -105,7 +105,7 @@ class AiBotStrategyGateTest extends TestCase
             ->json('errors.strategy.0');
 
         $this->assertStringContainsString('ยังเปิดใช้งานไม่ได้', $message);
-        $this->assertStringContainsString('DEX', $message);
+        $this->assertStringContainsString('เร็วๆ นี้', $message);
     }
 
     #[Test]

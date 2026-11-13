@@ -19,12 +19,14 @@ import 'package:hex/hex.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web3dart/json_rpc.dart' show RPCError;
 import 'package:web3dart/web3dart.dart';
+import '../core/locale/app_locale.dart';
 import '../models/api_models.dart';
 import '../models/chain_config.dart';
 import '../services/api_service.dart';
 import '../services/external_wallet_service.dart';
 import '../services/bug_reporter.dart';
 import '../services/linked_wallet_signer.dart';
+import '../services/pending_swap_records.dart';
 import '../services/rpc_failover.dart';
 import '../services/tpix_chain_portfolio.dart';
 import '../services/wallet_session.dart';
@@ -151,6 +153,11 @@ class WalletProvider extends ChangeNotifier {
   List<TradeOrder> _tradeHistory = [];
   bool _isLoadingPortfolio = false;
 
+  /// ผลโหลดล่าสุดของประวัติ/คำสั่งที่เปิดอยู่ — แยก "ว่างจริง" ออกจาก "ต้องยืนยันกระเป๋า" / "โหลดไม่ได้"
+  /// null = ยังไม่เคยโหลดของกระเป๋านี้
+  ListLoadState? _historyState;
+  ListLoadState? _ordersState;
+
   /// ยอดบนเชน TPIX อ่านตรงจากเชน (คงค่าล่าสุดเมื่ออ่านพลาด) — ไม่ขึ้นกับเชนที่เลือก
   final TpixChainPortfolio _tpixPortfolio = TpixChainPortfolio();
   List<TokenBalance> _onchainBalances = [];
@@ -230,6 +237,10 @@ class WalletProvider extends ChangeNotifier {
   List<TradeOrder> get tradeHistory => _tradeHistory;
   bool get isLoadingPortfolio => _isLoadingPortfolio;
 
+  /// สถานะการโหลดประวัติครั้งล่าสุด — หน้าจอใช้เลือกข้อความ (ว่างจริง / ยืนยันกระเป๋า / ลองใหม่)
+  ListLoadState? get historyState => _historyState;
+  ListLoadState? get ordersState => _ordersState;
+
   // Profile getters
   UserProfile? get profile => _profile;
   bool get isLoadingProfile => _isLoadingProfile;
@@ -273,11 +284,24 @@ class WalletProvider extends ChangeNotifier {
       final credentials = EthPrivateKey.fromHex(privateKeyHex);
       final address = credentials.address.hex;
 
+      // ห้ามเขียนทับกุญแจของกระเป๋าในแอปใบอื่นที่ยังเก็บอยู่ในเครื่อง
+      if (await _wouldOverwriteEmbeddedKey(address)) {
+        _error = _embeddedKeyExistsMessage();
+        _isConnecting = false;
+        notifyListeners();
+        return;
+      }
+
       // Store securely
       await _storage.write(key: _keyPrivateKey, value: privateKeyHex);
       await _storage.write(key: _keyMnemonic, value: mnemonic);
 
       _address = address;
+      // กระเป๋าที่ใช้อยู่ตอนนี้คือกระเป๋าในแอป — ไม่ตั้ง kind ไว้ ลายเซ็น/ธุรกรรมจะถูกส่งไปหา
+      // กระเป๋าที่ลิงก์อยู่ก่อนหน้า (เซ็นด้วยคนละบัญชี)
+      _kind = WalletKind.embedded;
+      _externalWalletName = null;
+      _isVerified = WalletSession.isFor(address);
       _mnemonic = mnemonic;
       _pendingMnemonic = mnemonic;
       _activeChainId = 4289;
@@ -324,10 +348,23 @@ class WalletProvider extends ChangeNotifier {
       final credentials = EthPrivateKey.fromHex(privateKeyHex);
       final address = credentials.address.hex;
 
+      // ห้ามเขียนทับกุญแจของกระเป๋าในแอปใบอื่นที่ยังเก็บอยู่ในเครื่อง — ต้องตัดการเชื่อมต่อใบเดิม
+      // (ซึ่งมีหน้ายืนยัน + เตือนให้สำรองวลีกู้คืน) ก่อนเท่านั้น
+      if (await _wouldOverwriteEmbeddedKey(address)) {
+        _error = _embeddedKeyExistsMessage();
+        _isConnecting = false;
+        notifyListeners();
+        return false;
+      }
+
       await _storage.write(key: _keyPrivateKey, value: privateKeyHex);
       await _storage.write(key: _keyMnemonic, value: trimmed);
 
       _address = address;
+      // กระเป๋าที่ใช้อยู่ตอนนี้คือกระเป๋าในแอป (ดูหมายเหตุใน createWallet)
+      _kind = WalletKind.embedded;
+      _externalWalletName = null;
+      _isVerified = WalletSession.isFor(address);
       _mnemonic = null; // C1: ไม่เก็บ mnemonic ใน memory — มีใน SecureStorage แล้ว
       _pendingMnemonic = null;
       _activeChainId = 4289;
@@ -419,17 +456,30 @@ class WalletProvider extends ChangeNotifier {
   ///
   /// Address มาจาก deep link `tpixtrade://connect?address=0x..&chain=4289`
   /// คืน true ถ้า link สำเร็จ, false ถ้า address ไม่ valid หรือ chain ไม่รองรับ
+  ///
+  /// [confirmedReplace] — ต้องเป็น true เมื่อมีกระเป๋าใบอื่นเชื่อมอยู่ ([wouldReplaceWallet])
+  /// ลิงก์จากแอป/เว็บใดก็เปิด `tpixtrade://connect` ได้ จึงห้ามสลับกระเป๋าที่ผู้ใช้ใช้อยู่
+  /// โดยไม่ถามก่อน — ผู้เรียก (DeepLinkService) ถามยืนยันแล้วค่อยส่ง true มา
+  /// กุญแจของกระเป๋าในแอป (ถ้ามี) **ไม่ถูกแตะ** ไม่ว่ากรณีใด — ตัดการเชื่อมต่อกระเป๋าที่ลิงก์
+  /// ภายหลังแล้วแอปจะกลับไปใช้กระเป๋าในแอปใบเดิม
   Future<bool> linkFromDeepLink({
     required String address,
     required int chainId,
     String? walletName,
     String? nonce,
     String? signature,
+    bool confirmedReplace = false,
   }) async {
     // Defense in depth — validate address อีกครั้ง (รวม checksum EIP-55)
     if (!isValidEvmAddress(address)) {
       _error = 'Invalid wallet address';
       notifyListeners();
+      return false;
+    }
+
+    // มีกระเป๋าใบอื่นเชื่อมอยู่ และผู้ใช้ยังไม่ได้ยืนยันว่าจะเปลี่ยน — ไม่แตะอะไรเลย
+    if (wouldReplaceWallet(address) && !confirmedReplace) {
+      debugPrint('linkFromDeepLink: replace not confirmed');
       return false;
     }
 
@@ -1023,7 +1073,9 @@ class WalletProvider extends ChangeNotifier {
       final savedKindStr = prefs.getString(_keyWalletKind);
 
       if (savedAddress == null) {
-        // ไม่มี wallet เก่า — แค่ load settings
+        // ไม่มีสถานะกระเป๋าที่จำไว้ — แต่ถ้ากุญแจของกระเป๋าในแอปยังอยู่ในเครื่อง
+        // (เซสชันกระเป๋าภายนอกหมดอายุแล้วถูกล้างสถานะ) ให้กลับไปใช้ใบนั้น ไม่ปล่อยกุญแจค้าง
+        if (await _restoreEmbeddedWallet()) notifyListeners();
         await _loadSettings();
         return;
       }
@@ -1144,7 +1196,11 @@ class WalletProvider extends ChangeNotifier {
     }
 
     // AppKit พร้อมแล้วแต่ไม่มี session ของบัญชีนี้ = หมดอายุ/ถูกตัดจาก wallet จริง
-    if (ready) await forget();
+    if (ready) {
+      await forget();
+      // เครื่องนี้ยังมีกระเป๋าในแอปอยู่ — กลับไปใช้ใบนั้น (ถ้าผู้ใช้ยังไม่ได้เชื่อมใบอื่นระหว่างรอ)
+      if (_address == null && await _restoreEmbeddedWallet()) notifyListeners();
+    }
   }
 
   // ── Confirm Mnemonic Backup ──
@@ -1157,17 +1213,72 @@ class WalletProvider extends ChangeNotifier {
 
   // ── Disconnect ──
 
-  Future<void> disconnect() async {
+  /// ลิงก์/เชื่อมกระเป๋า [address] ตอนนี้จะ "แทนที่" กระเป๋าใบอื่นที่ผู้ใช้ใช้อยู่ไหม
+  /// (ที่อยู่เดียวกับที่เชื่อมอยู่ = ไม่ใช่การแทนที่)
+  bool wouldReplaceWallet(String address) {
+    final current = _address;
+    return current != null && current.toLowerCase() != address.toLowerCase();
+  }
+
+  /// ลบกุญแจของกระเป๋าในแอปได้เมื่อไร — **เฉพาะ** เมื่อกระเป๋าที่กำลังตัดการเชื่อมต่อคือกระเป๋าในแอปเอง
+  /// และผู้ใช้ยืนยันในหน้าเตือน (ที่บอกให้สำรองวลีกู้คืนก่อน) แล้วเท่านั้น
+  /// ฟังก์ชันเพียวไว้ทดสอบ — เป็นกติกาเดียวของทั้งแอป ห้ามมีที่อื่นลบกุญแจ
+  @visibleForTesting
+  static bool shouldDeleteEmbeddedKey({
+    required WalletKind kind,
+    required bool confirmed,
+  }) =>
+      kind == WalletKind.embedded && confirmed;
+
+  /// มีกุญแจของกระเป๋าในแอปใบอื่น (ที่ไม่ใช่ [address]) เก็บอยู่ในเครื่องไหม
+  Future<bool> _wouldOverwriteEmbeddedKey(String address) async {
+    try {
+      final existing = await _storage.read(key: _keyPrivateKey);
+      if (existing == null || existing.isEmpty) return false;
+      final existingAddress = EthPrivateKey.fromHex(existing).address.hex;
+      return existingAddress.toLowerCase() != address.toLowerCase();
+    } catch (e) {
+      // อ่าน/ถอดกุญแจเดิมไม่ได้ = ไม่รู้ว่ามีอะไรอยู่ — ไม่เขียนทับ
+      debugPrint('embedded key check: ${e.runtimeType}');
+      return true;
+    }
+  }
+
+  String _embeddedKeyExistsMessage() => AppLocale.code == 'th'
+      ? 'เครื่องนี้มีกระเป๋าในแอปอยู่แล้ว — ตัดการเชื่อมต่อกระเป๋าที่ใช้อยู่ แล้วตัดการเชื่อมต่อกระเป๋าในแอปใบเดิม (หลังสำรองวลีกู้คืน) ก่อนนำเข้าใบใหม่'
+      : 'This phone already holds an in-app wallet. Disconnect the current wallet, then disconnect that in-app wallet (after backing up its recovery phrase) before importing another one.';
+
+  /// ตัดการเชื่อมต่อกระเป๋าที่ใช้อยู่ — คืน true เมื่อตัดแล้ว
+  ///
+  /// - กระเป๋าภายนอก (WalletConnect) / กระเป๋าที่ลิงก์ (TPIX Wallet): ออกจากระบบกระเป๋านั้นในแอป
+  ///   **ไม่แตะกุญแจของกระเป๋าในแอปเด็ดขาด** — ถ้าเครื่องนี้มีกระเป๋าในแอปอยู่ แอปจะกลับไปใช้ใบนั้น
+  /// - กระเป๋าในแอป (embedded): การตัดการเชื่อมต่อ = ลบ private key + วลีกู้คืนออกจากเครื่อง
+  ///   ทำได้เมื่อ [deleteEmbeddedKey] เป็น true เท่านั้น — ผู้เรียกต้องแสดงหน้ายืนยันที่เตือนให้
+  ///   สำรองวลีกู้คืนก่อน ไม่ส่ง true มา = ไม่ทำอะไรเลย คืน false
+  ///
+  /// ⚠️ เดิมลบกุญแจ "เสมอ เผื่อมีเศษค้าง" ไม่ว่ากระเป๋าชนิดไหน — ผู้ใช้ที่มีกระเป๋าในแอป
+  ///    แล้วลิงก์กระเป๋าอื่นทับ พอกดตัดการเชื่อมต่อกระเป๋าที่ลิงก์ กุญแจ+วลีกู้คืนของกระเป๋า
+  ///    ในแอปหายถาวร (เว็บแค่ล็อกกระเป๋าฝัง — walletStore.js)
+  Future<bool> disconnect({bool deleteEmbeddedKey = false}) async {
+    final kind = _kind;
+    if (kind == WalletKind.embedded &&
+        !shouldDeleteEmbeddedKey(kind: kind, confirmed: deleteEmbeddedKey)) {
+      debugPrint('disconnect: embedded wallet needs explicit confirmation');
+      return false;
+    }
+
     // S6: Await secure storage deletion — ต้อง clear key ก่อน update state
     try {
       // External wallet — ยกเลิก WC session ก่อน
-      if (_kind == WalletKind.walletConnect) {
+      if (kind == WalletKind.walletConnect) {
         await ExternalWalletService().disconnect();
       }
 
-      // Embedded wallet — clear secure storage (ทำเสมอ เผื่อมีเศษค้าง)
-      await _storage.delete(key: _keyPrivateKey);
-      await _storage.delete(key: _keyMnemonic);
+      // กุญแจของกระเป๋าในแอป — ลบเฉพาะเมื่อกระเป๋าที่ตัดคือกระเป๋าในแอปเอง และยืนยันแล้ว
+      if (shouldDeleteEmbeddedKey(kind: kind, confirmed: deleteEmbeddedKey)) {
+        await _storage.delete(key: _keyPrivateKey);
+        await _storage.delete(key: _keyMnemonic);
+      }
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyWalletState);
@@ -1195,8 +1306,43 @@ class WalletProvider extends ChangeNotifier {
     _tpixPortfolio.reset();
     _openOrders = [];
     _tradeHistory = [];
+    _historyState = null;
+    _ordersState = null;
     _profile = null;
+
+    // ตัดกระเป๋าภายนอก/ที่ลิงก์ — เครื่องนี้ยังมีกระเป๋าในแอปอยู่ก็กลับไปใช้ใบนั้น
+    // (ปล่อยกุญแจค้างไว้โดยไม่มีกระเป๋า = ผู้ใช้เข้าไม่ถึงเงิน และนำเข้าใบใหม่จะเขียนทับ)
+    if (kind != WalletKind.embedded) {
+      await _restoreEmbeddedWallet();
+    }
     notifyListeners();
+    return true;
+  }
+
+  /// กลับไปใช้กระเป๋าในแอปที่กุญแจยังเก็บอยู่ในเครื่อง — คืน true เมื่อมีและกู้กลับมาแล้ว
+  /// ไม่ notifyListeners เอง (ผู้เรียกแจ้งครั้งเดียวตอนจบ)
+  Future<bool> _restoreEmbeddedWallet() async {
+    try {
+      final privateKey = await _storage.read(key: _keyPrivateKey);
+      if (privateKey == null || privateKey.isEmpty) return false;
+      final address = EthPrivateKey.fromHex(privateKey).address.hex;
+
+      final prefs = await SharedPreferences.getInstance();
+      _address = address;
+      _kind = WalletKind.embedded;
+      _externalWalletName = null;
+      _activeChainId = prefs.getInt('tpix_trade_chain_id') ?? 4289;
+      _isVerified = WalletSession.isFor(address);
+      await _saveWalletState();
+
+      // ยืนยันกับ backend เบื้องหลัง (กระเป๋าในแอปเซ็นเองได้ ไม่ต้องรบกวนผู้ใช้) + โหลดพอร์ต
+      _registerWithBackend(address);
+      unawaited(loadPortfolio());
+      return true;
+    } catch (e) {
+      debugPrint('restore embedded wallet: ${e.runtimeType}');
+      return false;
+    }
   }
 
   // ── Portfolio Data ──
@@ -1233,6 +1379,8 @@ class WalletProvider extends ChangeNotifier {
       _serverBalancesKey = null;
       _openOrders = [];
       _tradeHistory = [];
+      _historyState = null;
+      _ordersState = null;
     }
     _isLoadingPortfolio = true;
     notifyListeners();
@@ -1254,8 +1402,19 @@ class WalletProvider extends ChangeNotifier {
             .catchError((Object _) => null)
         : Future<List<TokenBalance>?>.value(null);
 
-    List<TradeOrder>? orders;
-    List<TradeOrder>? history;
+    // ไม้ที่ลงเชนแล้วแต่ยังแจ้งเซิร์ฟเวอร์ไม่สำเร็จ (เน็ตหลุด / 403 / แอปถูกปิดระหว่างรอ)
+    // ส่งใหม่ก่อนดึงประวัติ — ประวัติรอบนี้จะได้เห็นไม้นั้นเลย (ต้องยืนยันกระเป๋าแล้วเท่านั้น)
+    // ยอดบนเชน/ยอดจากเซิร์ฟเวอร์เริ่มโหลดไปแล้วด้านบน จึงไม่ถูกหน่วงด้วยขั้นนี้
+    if (verified) {
+      try {
+        await PendingSwapRecords.I.flush(address);
+      } catch (e) {
+        debugPrint('loadPortfolio flush: ${e.runtimeType}');
+      }
+    }
+
+    ListLoad<TradeOrder>? orders;
+    ListLoad<TradeOrder>? history;
     try {
       final r = await Future.wait([
         ApiService().getOpenOrders(address),
@@ -1300,8 +1459,12 @@ class WalletProvider extends ChangeNotifier {
       onchain: _onchainBalances,
       server: _serverBalances,
     );
-    if (orders != null) _openOrders = orders;
-    if (history != null) _tradeHistory = history;
+    // โหลดสำเร็จ = ใช้ของใหม่ · โหลดไม่ได้ = คงรายการเดิมไว้ แต่จำเหตุไว้ให้หน้าจอบอกผู้ใช้
+    // (เดิม 403 / เน็ตหลุด กลายเป็นรายการว่าง = "ไม่มีข้อมูล" ทั้งที่มีไม้จริง)
+    _ordersState = orders?.state ?? ListLoadState.failed;
+    if (orders != null && orders.isOk) _openOrders = orders.items;
+    _historyState = history?.state ?? ListLoadState.failed;
+    if (history != null && history.isOk) _tradeHistory = history.items;
 
     _isLoadingPortfolio = false;
     notifyListeners();
@@ -1529,6 +1692,14 @@ class WalletProvider extends ChangeNotifier {
 
     if (status == 200 && _profile == null) {
       loadProfile().catchError((_) => false);
+    }
+
+    // เปิดแอปมาแล้วเซสชันยังใช้ได้ — ส่งบันทึกไม้ที่ค้างจากรอบก่อน (แอปถูกปิดระหว่างรอลงบล็อก /
+    // ตอนนั้นเน็ตหลุด / 403) ทันที ไม่ต้องรอผู้ใช้เปิดหน้าพอร์ต
+    if (status == 200) {
+      unawaited(PendingSwapRecords.I
+          .flush(address)
+          .catchError((Object _) => 0));
     }
 
     return true;

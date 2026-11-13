@@ -9,8 +9,8 @@ use Illuminate\Support\Facades\Log;
  * TPIX TRADE — กลยุทธ์ไหนลงมือได้จริงแล้วบ้าง.
  *
  * "ปลดล็อกตามแพลน" กับ "ทำงานได้จริง" เป็นคนละเรื่องกัน ผู้ใช้ระดับ VIP ปลดล็อก
- * อาร์บิทราจได้ แต่กลยุทธ์นั้นต้องมีราคาสองแหล่งถึงจะมีส่วนต่างให้จับ — ตอนนี้มี
- * แค่ราคาจากตลาดกลาง เพราะพูล DEX บน TPIX Chain ยังไม่ deploy
+ * อาร์บิทราจได้ แต่กลยุทธ์นั้นยังไม่มีตัวลงมือจริง (ArbitrageStrategy คืน "ถือ" เสมอ)
+ * จึงติดป้าย "เร็วๆ นี้" ด้วยธง implemented ใน config/aibot.php — DEX พร้อมอย่างเดียวไม่พอ
  *
  * ปล่อยให้สร้างบอทได้จะเกิดสิ่งที่แย่กว่าปุ่มเทา: บอทที่ดูเหมือนทำงาน กินเครดิต
  * ทุกครั้งที่ตื่น แล้วไม่เคยเข้าไม้เลย ผู้ใช้จะคิดว่ากลยุทธ์นี้ห่วย ไม่ใช่ว่ายังไม่เปิด
@@ -30,7 +30,7 @@ class StrategyAvailability
     /**
      * กลยุทธ์นี้ลงมือได้จริงไหม.
      *
-     * @return array{available: bool, reason: ?string, reason_en: ?string}
+     * @return array{available: bool, reason: ?string, reason_en: ?string, coming_soon: bool}
      */
     public function check(string $code): array
     {
@@ -48,18 +48,57 @@ class StrategyAvailability
                 'available' => false,
                 'reason' => __((string) ($spec['retired_reason'] ?? 'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว')),
                 'reason_en' => (string) ($spec['retired_reason_en'] ?? 'This strategy has been retired.'),
+                'coming_soon' => false,
             ];
         }
 
+        /*
+         * "เร็วๆ นี้" — กลยุทธ์ที่ประกาศไว้ในแคตตาล็อกแต่ยังไม่มีตัวลงมือจริง
+         * (ธง implemented = false ใน config/aibot.php)
+         *
+         * ⚠️ เดิมอาร์บิทราจเปิดเองทันทีที่พูล DEX พร้อม ทั้งที่ ArbitrageStrategy ยัง
+         *    คืน "ถือ" ทุกรอบ (ยังไม่ได้ต่อราคาพูลเข้ามา) — ผู้ใช้ VIP สร้างบอทได้
+         *    บอทขึ้นสถานะทำงานแต่ไม่มีวันเข้าไม้ ความพร้อมของ DEX เป็นแค่เงื่อนไขหนึ่ง
+         *    ไม่ใช่หลักฐานว่าโค้ดลงมือได้ จึงต้องมีธงที่คนตั้งเองเมื่อทำเสร็จและทดสอบแล้ว
+         *
+         * ต่างจาก retired: บอทเดิมที่ใช้กลยุทธ์นี้อยู่ไม่ถูกพัก (ยังเดินและ "ถือ" ต่อได้)
+         * แค่สร้างตัวใหม่หรือสลับมาใช้ไม่ได้
+         */
+        if ($spec && ! ($spec['implemented'] ?? true)) {
+            return [
+                'available' => false,
+                'reason' => __((string) ($spec['coming_soon_reason'] ?? 'เร็วๆ นี้ — กลยุทธ์นี้อยู่ระหว่างพัฒนา ยังไม่เปิดให้สร้างบอท')),
+                'reason_en' => (string) ($spec['coming_soon_reason_en'] ?? 'Coming soon — this strategy is still in development and cannot be used for new bots yet.'),
+                'coming_soon' => true,
+            ];
+        }
+
+        /*
+         * กลยุทธ์ที่ "ระบบสร้างให้" (ธง managed) — เลือกจากฟอร์มบอทเองไม่ได้
+         *
+         * บอทก๊อปปี้เทรดต้องผูกกับมาสเตอร์ผ่าน POST /ai-bot/copy/follow สร้างจากฟอร์มธรรมดาจะได้บอทที่
+         * ไม่มีใครให้ตาม · บอทที่มีอยู่แล้วยังเดินและแก้ชื่อ/ความเสี่ยงได้ (BotRunner ไม่ได้ถามเมธอดนี้)
+         */
+        if ($spec && ($spec['managed'] ?? false)) {
+            return [
+                'available' => false,
+                'reason' => __((string) ($spec['managed_reason'] ?? 'กลยุทธ์นี้ถูกสร้างให้โดยระบบ เลือกเองไม่ได้')),
+                'reason_en' => (string) ($spec['managed_reason_en'] ?? 'This strategy is created by the system and cannot be picked directly.'),
+                'coming_soon' => false,
+            ];
+        }
+
+        // ทำเสร็จแล้วก็ยังต้องมีราคาสองฝั่งให้เทียบ — DEX พร้อมเป็นเงื่อนไขเพิ่ม ไม่ใช่ตัวเปิด
         if ($code === 'arbitrage' && ! $this->dexDeployed()) {
             return [
                 'available' => false,
                 'reason' => __('รอพูล DEX บน TPIX Chain เปิดใช้งานก่อน จึงจะมีราคาสองฝั่งให้เทียบส่วนต่าง'),
                 'reason_en' => 'Waiting for the TPIX Chain DEX pool — arbitrage needs a second price source.',
+                'coming_soon' => false,
             ];
         }
 
-        return ['available' => true, 'reason' => null, 'reason_en' => null];
+        return ['available' => true, 'reason' => null, 'reason_en' => null, 'coming_soon' => false];
     }
 
     public function isAvailable(string $code): bool
@@ -77,6 +116,8 @@ class StrategyAvailability
                 'available' => $status['available'],
                 'unavailable_reason' => $status['reason'],
                 'unavailable_reason_en' => $status['reason_en'],
+                // true = ยังไม่มีตัวลงมือจริง หน้าจอติดป้าย "เร็วๆ นี้" (ต่างจากถอดออกจากการขาย)
+                'coming_soon' => $status['coming_soon'],
             ];
         }, $strategies);
     }

@@ -241,11 +241,27 @@ const saveMap = () => {
 };
 
 // AI form
+/*
+ * โมเดล Groq ที่ยังเปิดใช้จริง (ตรงกับ config/ai_text.php) — Llama/Mixtral/Gemma ถูกถอดไปหมดแล้ว
+ * ค่าที่ค้างในฐานข้อมูลเป็นตัวที่ถูกถอด = โชว์ตัวปริยายแทน (ฝั่งเซิร์ฟเวอร์ก็เมินค่านั้นเช่นกัน)
+ */
+const GROQ_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'];
+
+/*
+ * สวิตช์เปิด/ปิด: ไม่เคยตั้ง = เปิด · ตั้งไว้แล้วต้องโชว์ตามที่ตั้ง
+ * เดิมเขียน `ค่า || true` ซึ่งได้ true เสมอ — ปิดแล้วบันทึก พอเปิดหน้าใหม่สวิตช์กลับมาเปิดเอง
+ * และบันทึกครั้งถัดไปก็เขียนทับเป็นเปิด
+ */
+const settingOn = (value) =>
+    value === undefined || value === null || value === ''
+        ? true
+        : value === true || value === 1 || value === '1' || value === 'true';
+
 const aiForm = useForm({
     groq_api_key: props.settings.groq_api_key || '',
-    groq_default_model: props.settings.groq_default_model || 'llama-3.3-70b-versatile',
-    ai_chatbot_enabled: props.settings.ai_chatbot_enabled || true,
-    ai_content_enabled: props.settings.ai_content_enabled || true,
+    groq_default_model: GROQ_MODELS.includes(props.settings.groq_default_model) ? props.settings.groq_default_model : GROQ_MODELS[0],
+    ai_chatbot_enabled: settingOn(props.settings.ai_chatbot_enabled),
+    ai_content_enabled: settingOn(props.settings.ai_content_enabled),
     cloudflare_image_url: props.settings.cloudflare_image_url || 'https://tpix-image-gen.xjanovax.workers.dev/',
     cloudflare_image_key: props.settings.cloudflare_image_key || '',
     together_api_key: props.settings.together_api_key || '',
@@ -1120,10 +1136,9 @@ const labelClass = 'block text-sm font-medium text-dark-300 mb-2';
                 <div>
                     <label :class="labelClass">{{ t('admin.settings.ai.defaultModel') }}</label>
                     <select v-model="aiForm.groq_default_model" :class="inputClass">
-                        <option value="llama-3.3-70b-versatile">{{ t('admin.settings.ai.models.llama70b') }}</option>
-                        <option value="llama-3.1-8b-instant">{{ t('admin.settings.ai.models.llama8b') }}</option>
-                        <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
-                        <option value="gemma2-9b-it">Gemma 2 9B</option>
+                        <option value="openai/gpt-oss-120b">{{ t('admin.settings.ai.models.gptOss120b') }}</option>
+                        <option value="openai/gpt-oss-20b">{{ t('admin.settings.ai.models.gptOss20b') }}</option>
+                        <option value="qwen/qwen3.8-27b">Qwen 3.8 27B</option>
                     </select>
                 </div>
                 <div class="flex items-center gap-6">

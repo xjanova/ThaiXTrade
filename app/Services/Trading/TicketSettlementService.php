@@ -168,6 +168,26 @@ class TicketSettlementService
         };
     }
 
+    /**
+     * ผลบนเชนของธุรกรรมไม้ใบหนึ่ง โดยไม่ผูกกับตั๋ว: consume (ลงแล้ว) | refund (ไม่ลง) | wait | gone.
+     *
+     * ใช้ตัดสินคำสั่งตั้งราคาที่ "เจ้าของยืนยันในกระเป๋าแล้ว แต่แถวบันทึกไม้ไม่เคยมาถึงเรา"
+     * (หน้าเว็บ/แอปแจ้งบันทึกไม่สำเร็จ) — ต้องถามเชนก่อนเปิดคำสั่งคืน ไม่งั้นชวนยืนยันซ้ำ = ไม้ลงสองรอบ
+     * เชนที่ไม่รู้จัก = gone (ตัดสินไม่ได้ ให้ผู้เรียกใช้ช่วงผ่อนผันของตัวเอง)
+     */
+    public function chainOutcome(string $hash, string $wallet, int $networkChainId): string
+    {
+        $hash = strtolower($hash);
+        $wallet = strtolower($wallet);
+        $tpixChain = (int) config('blockchain.tpix_chain_id', 4289);
+
+        return match ($networkChainId) {
+            BscSwapVerifier::CHAIN_ID => $this->bscOutcome($hash, $wallet),
+            $tpixChain => $this->dexOutcome($hash, $wallet),
+            default => self::GONE,
+        };
+    }
+
     private function bscOutcome(string $hash, string $wallet): string
     {
         return match ($this->bsc->outcome($hash, $wallet)) {

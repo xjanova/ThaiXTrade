@@ -442,6 +442,17 @@ Schedule::command('aibot:wallet-transfers')
     ->name('aibot:wallet-transfers');
 
 /*
+ * ระดับ (rank) ของมาสเตอร์ Copy Trade — ประเมินวันละครั้งจากไม้เงินจริงที่ปิดแล้ว
+ * วันละครั้งพอ: ระดับลงได้ก็ต่อเมื่อต่ำกว่าเกณฑ์ต่อเนื่องหลายวัน (RankService) ไม่ใช่เรื่องที่ต้องไวเป็นนาที
+ * (คำสั่งจบเองทันทีเมื่อ AIBOT_COPY_TRADE_ENABLED=false)
+ */
+Schedule::command('aibot:copy-rank')
+    ->dailyAt('03:20')
+    ->withoutOverlapping(30)
+    ->onOneServer()
+    ->name('aibot:copy-rank');
+
+/*
  * คืนค่าบริการของใบอนุญาตวางไม้ที่หมดอายุ
  *
  * ⚠️ ตั๋วค้างสถานะ issued = เงินที่หักจากคลังผู้ใช้ไปแล้วแต่ไม่มีใครได้อะไร
@@ -468,6 +479,19 @@ Schedule::command('trading:reconcile-swaps')
     ->withoutOverlapping(5)
     ->onOneServer()
     ->name('trading:reconcile-swaps');
+
+/*
+ * ปิดบัญชีคำสั่งตั้งราคา — ไม้ที่เจ้าของยืนยันแล้วลงเชนหรือยัง + คำสั่งที่เลยอายุ
+ *
+ * รันหลัง reconcile-swaps ในนาทีเดียวกันโดยตั้งใจ: ตัวนั้นทำให้แถว swap ของ BSC
+ * เปลี่ยนเป็นยืนยันแล้ว ตัวนี้อ่านแถวพวกนั้นมาปิดคำสั่ง
+ * ไม่มีตัวนี้ = ผู้ใช้ที่ปิดแท็บหลังกดยืนยันจะเห็นคำสั่ง "รอผล" ค้างตลอดไป
+ */
+Schedule::command('trading:settle-limit-orders')
+    ->everyMinute()
+    ->withoutOverlapping(5)
+    ->onOneServer()
+    ->name('trading:settle-limit-orders');
 
 /*
  * ล้างเอกสารยืนยันตัวตนที่ครบกำหนดเก็บแล้ว — ทุกวันตี 3

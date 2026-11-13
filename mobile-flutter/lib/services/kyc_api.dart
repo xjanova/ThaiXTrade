@@ -24,6 +24,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/constants/api_constants.dart';
+import '../core/locale/app_locale.dart';
 import '../models/kyc_models.dart';
 import 'api_result.dart';
 import 'wallet_session.dart';
@@ -116,6 +117,8 @@ class KycApi {
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
         options.headers.addAll(WalletSession.headers());
+        // ข้อความ KYC_REQUIRED ฯลฯ ที่เซิร์ฟเวอร์แปลให้ ต้องตรงกับภาษาของแอป
+        options.headers.addAll(AppLocale.headers());
         return handler.next(options);
       },
     ));

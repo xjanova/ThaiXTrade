@@ -132,7 +132,12 @@ class TradingFeeTierController extends Controller
             'tpix_fee_enabled' => ['required', 'boolean'],
             // กระเป๋ารับเงิน — ว่างได้ (= ยังไม่เปิดให้เติม) แต่ถ้าใส่ต้องเป็นที่อยู่จริง
             'tpix_topup_wallet' => ['nullable', 'string', new EvmAddress()],
-            'tpix_topup_chain_id' => ['required', 'integer', 'min:1'],
+            /*
+             * เชนที่รับเงินเติมเครดิต — ต้องเป็น TPIX Chain เท่านั้น
+             * ตัวตรวจธุรกรรมเติมเงินให้เครดิต 1:1 ตาม "เหรียญหลักของเชนที่ตั้งไว้" (TradingTopupService)
+             * ตั้งเป็น 56 = โอน BNB 1 เหรียญได้เครดิต TPIX 1 หน่วย และเชนที่ไม่รู้จักตกไปใช้ RPC ของ TPIX เอง
+             */
+            'tpix_topup_chain_id' => ['required', 'integer', 'in:'.(int) config('blockchain.tpix_chain_id', 4289)],
             'tpix_min_topup' => ['required', 'numeric', 'gte:0'],
             'refund_gas_fee' => ['required', 'numeric', 'gte:0'],
             'ticket_ttl_minutes' => ['required', 'integer', 'min:1', 'max:1440'],

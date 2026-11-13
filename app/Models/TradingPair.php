@@ -143,9 +143,16 @@ class TradingPair extends Model
         $takerFee = $this->taker_fee_override;
 
         if (is_null($makerFee) || is_null($takerFee)) {
+            /*
+             * ⚠️ เดิมค้นด้วย type = 'trade' ซึ่งไม่มีใน enum ของตาราง (ค่าจริงคือ 'trading')
+             *    และไม่มีทางสำรองไปแถวกลาง (chain_id ว่าง) — ผลคือได้ค่าธรรมเนียม 0 เสมอ
+             *    สมุดคำสั่งภายในยังปิดอยู่จึงยังไม่มีใครโดน แต่วันที่เปิดจะเทรดฟรีทั้งกระดานโดยไม่มีใครรู้
+             * แถวของเชนนี้มาก่อน แถวกลางเป็นทางสำรอง
+             */
             $defaultConfig = FeeConfig::active()
-                ->byType('trade')
-                ->where('chain_id', $this->chain_id)
+                ->byType('trading')
+                ->where(fn ($query) => $query->where('chain_id', $this->chain_id)->orWhereNull('chain_id'))
+                ->orderByRaw('chain_id IS NULL')
                 ->first();
 
             if ($defaultConfig) {

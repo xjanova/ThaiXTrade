@@ -11,13 +11,23 @@ use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
 use App\Models\AiBotSubscription;
 use App\Models\AiBotTrade;
+use App\Models\AiBotWalletTransfer;
 use App\Models\AiMarketView;
 use App\Services\AiBot\Advisor\AdvisorFactory;
+use App\Services\AiBot\Backtest\BacktestData;
+use App\Services\AiBot\Backtest\BacktestEngine;
+use App\Services\AiBot\Backtest\BacktestVerdict;
 use App\Services\AiBot\BotRunner;
+use App\Services\AiBot\Copy\CopyTradeService;
+use App\Services\AiBot\CreditTopupService;
+use App\Services\AiBot\Custom\RuleSet;
+use App\Services\AiBot\Live\LiveBroker;
+use App\Services\AiBot\Live\LivePairs;
 use App\Services\AiBot\MarketRiskService;
 use App\Services\AiBot\PaperBroker;
 use App\Services\AiBot\StrategyAnalytics;
 use App\Services\AiBot\StrategyAvailability;
+use App\Services\AiBot\Timeframe;
 use App\Services\AiBot\Wallet\BotWalletService;
 use App\Services\AiBot\WorkerHealth;
 use App\Services\AiBotService;
@@ -27,6 +37,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 
 /**
@@ -55,7 +66,14 @@ class AiBotController extends Controller
         AiBotService::ERR_SALES_CLOSED => 'AI TRADE ยังอยู่ระหว่างทดสอบ ยังไม่เปิดให้เช่า — ระหว่างนี้ทดลองใช้โหมดทดลองได้เต็มที่ ไม่มีค่าใช้จ่าย',
         // เดิมไม่มีข้อความ — ผู้ใช้เห็นแค่ "ทำรายการไม่สำเร็จ" แล้วไม่รู้ว่าต้องเปลี่ยนกลยุทธ์
         AiBotService::ERR_STRATEGY_RETIRED => 'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว — สร้างหรือเริ่มบอทด้วยกลยุทธ์นี้ไม่ได้ (บอทเดิมยังแก้ชื่อ ลดความเสี่ยง หรือลบได้)',
+        AiBotService::ERR_CUSTOM_BOT_LIMIT => 'บอทแบบวางกลยุทธ์เองเต็มจำนวนที่แพลนนี้ให้แล้ว — ลบตัวที่ไม่ใช้ หรืออัปเกรดแพลน',
         'INVALID_PACK' => 'ไม่พบแพ็กเกจเครดิตที่เลือก',
+        // เติมเครดิตด้วยการโอน TPIX บนเชน — บอกสาเหตุให้ตรง ผู้ใช้จ่ายเงินไปแล้วต้องรู้ว่าต้องทำอะไรต่อ
+        CreditTopupService::ERR_TX_FAILED => 'ธุรกรรมนี้ไม่สำเร็จบนเชน (ไม่มีการโอนเกิดขึ้น) จึงเติมเครดิตให้ไม่ได้',
+        CreditTopupService::ERR_WRONG_SENDER => 'ธุรกรรมนี้ไม่ได้โอนจากกระเป๋าที่เชื่อมอยู่ — เติมเครดิตได้เฉพาะธุรกรรมที่โอนจากกระเป๋าของคุณเอง',
+        CreditTopupService::ERR_WRONG_RECIPIENT => 'ธุรกรรมนี้ไม่ได้โอนเข้ากระเป๋ารับชำระค่าเครดิตของ AI TRADE',
+        CreditTopupService::ERR_WRONG_AMOUNT => 'ยอดที่โอนไม่ตรงกับราคาแพ็กที่เลือก — เลือกแพ็กที่ราคาตรงกับยอดที่โอนแล้วยืนยันใหม่ หรือติดต่อทีมงานพร้อม tx hash',
+        CreditTopupService::ERR_TX_USED => 'ธุรกรรมนี้ถูกใช้เติมเครดิตไปแล้ว ใช้ซ้ำไม่ได้',
         'REQUEST_FAILED' => 'ทำรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
     ];
 
@@ -85,6 +103,8 @@ class AiBotController extends Controller
         private readonly PaperBroker $broker,
         private readonly StrategyAvailability $availability,
         private readonly WorkerHealth $health,
+        private readonly LiveBroker $live,
+        private readonly LivePairs $livePairs,
     ) {}
 
     // =========================================================================
@@ -140,6 +160,22 @@ class AiBotController extends Controller
                  */
                 'common_params' => config('aibot.common_params', []),
 
+                /*
+                 * บล็อกเงื่อนไขของโหมด "วางกลยุทธ์เอง" — รายการอนุญาตเดียวกับที่เซิร์ฟเวอร์ใช้ตรวจ
+                 * (RuleSet::validate) หน้าเว็บ/แอพวาดตัวสร้างกฎจากรายการนี้ ไม่ฮาร์ดโค้ดชนิดบล็อกเอง
+                 * ตัดเพดานต่อแพลนออก — เป็นเรื่องของเซิร์ฟเวอร์ ผู้ใช้เห็นผ่านข้อความตอนสร้างบอท
+                 */
+                'custom_rules' => [
+                    'max_blocks' => config('aibot.custom_rules.max_blocks', []),
+                    'match' => config('aibot.custom_rules.match', []),
+                    'blocks' => config('aibot.custom_rules.blocks', []),
+                    'backtest' => [
+                        'max_bars' => (int) config('aibot.custom_rules.backtest.max_bars', 9000),
+                        'max_days' => (int) config('aibot.custom_rules.backtest.max_days', 730),
+                        'default_days' => (int) config('aibot.custom_rules.backtest.default_days', 180),
+                    ],
+                ],
+
                 /* ให้หน้าเว็บรู้ว่าจะโชว์แผงมุมมองตลาดของ AI ไหม */
                 'analyst_enabled' => (bool) config('aibot_analyst.enabled', false),
                 /*
@@ -151,7 +187,19 @@ class AiBotController extends Controller
                  */
                 'features' => [
                     'live_trading' => (bool) config('aibot.live_enabled', false),
-                    'credit_topup' => (bool) config('aibot.credits.topup_enabled', false),
+                    /*
+                     * บอทส่งคำสั่งเงินจริงเองจากกระเป๋าบอทแล้วหรือยัง — false = โหมดจริงยังเป็นแค่
+                     * "สัญญาณรอยืนยัน" หน้าจอต้องไม่บอกว่าบอทเทรดให้เอง
+                     */
+                    'live_execution' => $this->live->operational(),
+                    /*
+                     * เติมเครดิตได้จริงสำหรับคนทั่วไป = รางรับเงินพร้อม (ธงเปิด + ตั้งกระเป๋ารับเงินแล้ว)
+                     * และเปิดขายแล้ว — เครดิตใช้ได้แค่เช่าแพลน เติมตอนยังเช่าไม่ได้คือจ่ายแล้วใช้ไม่ได้
+                     * หน้าเว็บ/แอพต้องไม่โชว์ปุ่มเติมที่กดแล้วไปไม่ถึงไหน
+                     */
+                    'credit_topup' => $this->bots->topupAvailable() && $this->bots->salesOpen(),
+                    // รางรับเงินพร้อมแล้ว (ยังไม่นับเรื่องเปิดขาย) — หน้าเว็บใช้เปิดปุ่มให้กระเป๋าทีมงานทดสอบ
+                    'credit_topup_ready' => $this->bots->topupAvailable(),
                     // ยังไม่เปิดให้เช่า = หน้าเว็บต้องปิดปุ่มเช่าและบอกเหตุผล
                     // ไม่ใช่ปล่อยให้กดแล้วค่อยเด้ง error ตอนจ่ายเงิน
                     'sales_open' => $this->bots->salesOpen(),
@@ -275,6 +323,8 @@ class AiBotController extends Controller
                 'gross_value' => (float) $t->gross_value,
                 'fee' => (float) $t->fee,
                 'realized_pnl' => $t->realized_pnl !== null ? (float) $t->realized_pnl : null,
+                // ไม้เงินจริง: ธุรกรรมบนเชนของไม้นี้ (ไม้ทดลองเป็น null)
+                'tx_hash' => $t->tx_hash,
                 'reason' => BotRunner::localizeReason($t->reason),
                 'created_at' => $t->created_at?->toIso8601String(),
             ])
@@ -444,20 +494,35 @@ class AiBotController extends Controller
         ]);
     }
 
-    /** สร้างคำขอเติมเครดิต — ยอดจะเพิ่มหลังยืนยันการชำระเงินที่หลังบ้าน */
-    public function topup(Request $request): JsonResponse
+    /**
+     * เติมเครดิตด้วยการโอน TPIX บนเชน — สองจังหวะในเส้นทางเดียว.
+     *
+     *  ไม่มี tx_hash → ใบแจ้งชำระ (แพ็ก · ยอด · กระเป๋ารับเงิน · เชน) ยังไม่ลงเครดิต
+     *  มี tx_hash    → อ่านธุรกรรมจากเชนแล้วลงเครดิตครั้งเดียวต่อธุรกรรม
+     *                  เชนยังไม่ยืนยัน/ถามเชนไม่ได้ = ตอบ status "pending" ให้ถามซ้ำ ไม่ลงเครดิต
+     *
+     * กระเป๋ารับเงินและราคามาจากเซิร์ฟเวอร์เท่านั้น — client ส่งได้แค่รหัสแพ็กกับ tx hash
+     */
+    public function topup(Request $request, CreditTopupService $topups): JsonResponse
     {
         $validated = $request->validate([
             'pack' => ['required', 'string', 'max:40'],
+            'tx_hash' => ['sometimes', 'nullable', 'string', 'regex:/^0x[a-fA-F0-9]{64}$/'],
+        ], [
+            'tx_hash.regex' => __('รูปแบบ tx hash ไม่ถูกต้อง — ต้องขึ้นต้นด้วย 0x ตามด้วยอักขระ 64 ตัว'),
         ]);
 
+        $wallet = $this->wallet($request);
+
         try {
-            $intent = $this->bots->createTopupIntent($this->wallet($request), $validated['pack']);
+            $result = empty($validated['tx_hash'])
+                ? $this->bots->createTopupIntent($wallet, $validated['pack'])
+                : $topups->confirm($wallet, $validated['pack'], $validated['tx_hash']);
         } catch (RuntimeException $e) {
             return $this->serviceFailure($e);
         }
 
-        return response()->json(['success' => true, 'data' => $intent]);
+        return response()->json(['success' => true, 'data' => $result]);
     }
 
     /** เช่าแพลน (ตัดเครดิตทันที) */
@@ -465,7 +530,11 @@ class AiBotController extends Controller
     {
         $validated = $request->validate([
             'plan_code' => ['required', 'string', 'max:40'],
-            'days' => ['required', 'integer', 'min:1', 'max:365'],
+            /*
+             * เฉพาะจำนวนวันที่ขายจริง — เดิมรับ 1–365 แล้วชั้นบริการปัดค่าที่ไม่อยู่ในรายการเป็น
+             * "จำนวนวันน้อยสุด" เงียบ ๆ: ขอ 14 วัน ถูกตัดเงินและได้แพลน 1 วัน โดยไม่มีอะไรบอก
+             */
+            'days' => ['required', 'integer', Rule::in(array_map('intval', (array) config('aibot.credits.rental_days', [1, 7, 30, 90])))],
             /*
              * หนึ่ง key ต่อการกดหนึ่งครั้ง (client ใช้ key เดิมตอน retry จนกว่าจะสำเร็จ)
              * ไม่บังคับ เพราะแอพมือถือรุ่นที่ออกไปแล้วยังไม่ส่ง — ทางนั้นเซิร์ฟเวอร์กันเองแบบหยาบกว่า
@@ -556,6 +625,10 @@ class AiBotController extends Controller
 
         [$params, $riskInput] = $this->applyTemplate($validated, $request, isNew: true);
 
+        if ($invalid = $this->rejectInvalidRules($validated['strategy'], $params)) {
+            return $invalid;
+        }
+
         $bot = AiBotConfig::create([
             'wallet_address' => $wallet,
             'ai_bot_subscription_id' => $subscription->id,
@@ -590,7 +663,28 @@ class AiBotController extends Controller
             return $this->serviceFailure($e, 403);
         }
 
+        if ($locked = $this->copyTradeLock($bot, $validated)) {
+            return $locked;
+        }
+
+        // ถือเหรียญเงินจริงของคู่เดิมอยู่ = ห้ามย้ายคู่ — ไม้เดิมจะค้างอยู่บนคู่ที่บอทไม่ได้ดูแล้ว
+        if (strtoupper($validated['pair']) !== strtoupper((string) $bot->pair) && $this->live->hasExposure($bot)) {
+            return $this->failure('LIVE_POSITION_OPEN', __('บอทตัวนี้ยังถือเหรียญหรือมีคำสั่งเงินจริงค้างอยู่ — ปิดไม้ก่อนเปลี่ยนคู่เหรียญ'));
+        }
+
         [$params, $riskInput] = $this->applyTemplate($validated, $request);
+
+        /*
+         * แก้บอทวางกลยุทธ์เองโดยไม่ได้ส่งกฎมา (แอพที่ยังไม่มีตัวสร้างกฎแก้แค่ชื่อ/ความเสี่ยง) = คงกฎเดิม
+         * ไม่งั้นกฎของผู้ใช้จะถูกแทนด้วยกฎว่างเงียบๆ แล้วบอทไม่มีวันเข้าไม้อีก
+         */
+        if ($validated['strategy'] === 'custom' && $bot->strategy === 'custom' && ! array_key_exists('rules', $params)) {
+            $params['rules'] = ($bot->params ?? [])['rules'] ?? null;
+        }
+
+        if ($invalid = $this->rejectInvalidRules($validated['strategy'], $params)) {
+            return $invalid;
+        }
 
         $bot->fill([
             'name' => $validated['name'],
@@ -655,6 +749,211 @@ class AiBotController extends Controller
         ];
     }
 
+    /**
+     * บอทที่ผูกกับ Copy Trade แก้ได้แค่ชื่อกับกรอบความเสี่ยง — คืนคำตอบ 422 ถ้าคำขอจะเปลี่ยนสิ่งที่ถูกล็อก.
+     *
+     *  - บอทผู้ตามที่ยังตามอยู่: คู่ · กรอบเวลา · กลยุทธ์ ต้องตรงกับมาสเตอร์ (เปลี่ยนแล้วจะก๊อปปี้ไม้ของคู่อื่น)
+     *  - บอทผลงานของมาสเตอร์ที่เปิดโปรไฟล์อยู่: ย้ายคู่ไม่ได้ (ผู้ตามถือคู่เดิมอยู่) · กลยุทธ์เปลี่ยนได้ เป็นเรื่องของมาสเตอร์
+     */
+    private function copyTradeLock(AiBotConfig $bot, array $validated): ?JsonResponse
+    {
+        $copy = app(CopyTradeService::class);
+        $pairChanged = strtoupper($validated['pair']) !== strtoupper((string) $bot->pair);
+
+        if ($copy->followOfBot($bot)?->isActive()
+            && ($pairChanged || $validated['strategy'] !== $bot->strategy || $validated['timeframe'] !== $bot->timeframe)) {
+            return $this->failure('COPY_BOT_LOCKED', __('บอทตัวนี้กำลังก๊อปปี้มาสเตอร์ — แก้ได้เฉพาะชื่อและกรอบความเสี่ยง เลิกตามก่อนถ้าจะเปลี่ยนคู่ กรอบเวลา หรือกลยุทธ์'));
+        }
+
+        if ($pairChanged && $copy->isOpenMasterBot($bot)) {
+            return $this->failure('COPY_MASTER_BOT', __('บอทตัวนี้เป็นผลงานของโปรไฟล์มาสเตอร์ของคุณและมีผู้ตามผูกอยู่กับคู่นี้ — ปิดโปรไฟล์มาสเตอร์ก่อนเปลี่ยนคู่'));
+        }
+
+        return null;
+    }
+
+    /**
+     * กฎของโหมด "วางกลยุทธ์เอง" ต้องผ่านรายการอนุญาตก่อนลงฐานข้อมูล — คืนคำตอบ 422 ถ้าไม่ผ่าน.
+     *
+     * ตรวจที่ API ไม่ใช่แค่ตัวสร้างกฎบนเว็บ: แอพมือถือกับคนที่ยิง API ตรงไม่ได้ผ่านฟอร์มของเรา
+     * ปฏิเสธพร้อมบอกจุดที่ผิด ไม่บีบค่าเงียบๆ — กฎที่ถูกแก้ระหว่างทางคือกฎที่ผู้ใช้ไม่ได้ตั้ง
+     */
+    private function rejectInvalidRules(string $strategy, array $params): ?JsonResponse
+    {
+        if ($strategy !== 'custom') {
+            return null;
+        }
+
+        $errors = RuleSet::validate($params['rules'] ?? null);
+
+        if ($errors === []) {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'error' => [
+                'code' => 'INVALID_RULES',
+                'message' => $errors[0],
+                'details' => array_slice($errors, 0, 20),
+            ],
+        ], 422);
+    }
+
+    /**
+     * ทดสอบกฎของโหมด "วางกลยุทธ์เอง" กับแท่งเทียนย้อนหลังจริง ก่อนสร้างหรือเริ่มบอท.
+     *
+     * เดินผ่าน BacktestEngine ตัวเดียวกับคำสั่ง aibot:backtest — กลยุทธ์ตัวจริง ด่านความเสี่ยงจากราคา
+     * กรอบของผู้ใช้ ตัวกรองตลาดใหญ่ และต้นทุนเข้า-ออก เหมือนบอทที่เดินสด (ไม่มีด่านข่าว/AI เพราะไม่มีประวัติให้เล่นซ้ำ)
+     *
+     * งานคำนวณบนคำขอเว็บ จึงมีเพดาน: จำนวนแท่งต่อครั้ง (config aibot.custom_rules.backtest) · งบเรียกแยก
+     * (throttle ai-bot-backtest) · ผลของคำขอที่เหมือนกันถูกแคชไว้ช่วงสั้นๆ
+     */
+    public function backtest(Request $request, BacktestEngine $engine, BacktestData $data): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+
+        // เปิดเฉพาะโหมดวางกลยุทธ์เอง — กลยุทธ์สำเร็จรูปมีผลวัดของทีมงานอยู่ในเทมเพลตแล้ว
+        $spec = $this->bots->strategy('custom');
+        $timeframes = $spec['timeframes'] ?? [];
+        $limits = (array) config('aibot.custom_rules.backtest', []);
+
+        $validated = $request->validate([
+            'strategy' => ['required', 'string', 'in:custom'],
+            'pair' => ['required', 'string', 'regex:/^[A-Za-z0-9]{2,15}\/[A-Za-z0-9]{2,15}$/'],
+            'timeframe' => ['required', 'string', 'in:'.implode(',', $timeframes)],
+            'days' => ['sometimes', 'integer', 'min:7', 'max:'.(int) ($limits['max_days'] ?? 730)],
+            'params' => ['required', 'array'],
+            'risk' => ['sometimes', 'array'],
+        ], [
+            'timeframe.in' => __('กลยุทธ์นี้ใช้กรอบเวลาได้เฉพาะ :timeframes', ['timeframes' => implode(' · ', $timeframes)]),
+        ]);
+
+        if (! $this->availability->isAvailable('custom')) {
+            return $this->failure('STRATEGY_UNAVAILABLE', $this->strategyRejectedMessage('custom'), 403);
+        }
+
+        // สิทธิ์ตามแพลนเดียวกับตอนสร้างบอท — ทดสอบได้เฉพาะคนที่แพลนปลดล็อกโหมดนี้
+        $subscription = $this->bots->activeSubscription($wallet) ?? $this->bots->ensureFreeSubscription($wallet);
+        $plan = $subscription?->plan;
+
+        if (! $plan || ! in_array('custom', $plan->unlockedStrategies(), true)) {
+            return $this->failure(AiBotService::ERR_STRATEGY_LOCKED, null, 403);
+        }
+
+        $params = (array) $validated['params'];
+
+        if ($invalid = $this->rejectInvalidRules('custom', $params)) {
+            return $invalid;
+        }
+
+        $pair = strtoupper($validated['pair']);
+        $timeframe = $validated['timeframe'];
+
+        if (! $this->pairHasCandles($pair, $timeframe)) {
+            return $this->failure(
+                'PAIR_NO_CANDLES',
+                __('คู่ :pair ยังไม่มีข้อมูลแท่งเทียนให้บอทใช้ตัดสินใจ — เลือกคู่อื่นก่อน', ['pair' => $pair])
+            );
+        }
+
+        // วันที่ทดสอบได้ถูกจำกัดด้วยจำนวนแท่ง — แท่งสั้นทดสอบได้สั้นกว่าแท่งยาว
+        $maxBars = max(200, (int) ($limits['max_bars'] ?? 9000));
+        $maxDays = max(7, min((int) ($limits['max_days'] ?? 730), intdiv($maxBars * Timeframe::minutes($timeframe), 1440)));
+        $days = min((int) ($validated['days'] ?? ($limits['default_days'] ?? 180)), $maxDays);
+
+        // กรอบความเสี่ยงผ่านเพดานทุนของแพลนเหมือนบอทจริง · ตัดค่าที่ขอเดิมออกไม่ให้ engine ขยายกลับ
+        $risk = $this->bots->sanitizeRisk((array) ($validated['risk'] ?? []), $plan);
+        unset($risk['max_position_usd_requested']);
+        $clean = $this->bots->sanitizeParams('custom', $params);
+
+        // ผลผูกกับแท่งปิดล่าสุด — แท่งใหม่ปิดเมื่อไหร่ คำขอเดิมได้ผลใหม่เอง
+        $stepMs = Timeframe::milliseconds($timeframe);
+        $lastClosed = intdiv(now()->getTimestamp() * 1000, $stepMs) * $stepMs - $stepMs;
+        $cacheKey = 'aibot:custom-backtest:'.sha1(json_encode([$pair, $timeframe, $days, $clean, $risk, $lastClosed]));
+
+        if (is_array($cached = Cache::get($cacheKey))) {
+            return response()->json(['success' => true, 'data' => $this->presentBacktest($cached)]);
+        }
+
+        try {
+            // คลังแท่งเทียนเป็นไฟล์ต่อคู่+กรอบเวลา — สองคำขอเขียนพร้อมกันไม่ได้
+            $loaded = Cache::lock('aibot:kline-archive:'.strtolower($pair).':'.$timeframe, 60)
+                ->block(20, fn () => $data->load($pair, $timeframe, $days));
+        } catch (\Throwable $e) {
+            Log::warning('aibot: โหลดแท่งเทียนสำหรับทดสอบย้อนหลังไม่สำเร็จ', ['pair' => $pair, 'timeframe' => $timeframe, 'error' => $e->getMessage()]);
+
+            return $this->failure('BACKTEST_DATA_UNAVAILABLE', __('ดึงข้อมูลแท่งเทียนย้อนหลังไม่สำเร็จ ลองใหม่อีกครั้งในอีกสักครู่'), 503);
+        }
+
+        if (count($loaded['candles']) - $loaded['start_index'] < 30) {
+            return $this->failure('BACKTEST_NOT_ENOUGH_DATA', __('แท่งเทียนย้อนหลังของคู่นี้ยังไม่พอสำหรับทดสอบ — ลองกรอบเวลาอื่นหรือจำนวนวันน้อยลง'));
+        }
+
+        $result = $engine->run('custom', $loaded['candles'], $timeframe, $params, $risk, [
+            'risk_gate' => true,
+            'start_index' => $loaded['start_index'],
+            'macro_daily' => $loaded['macro_daily'],
+        ]);
+
+        $payload = [
+            'pair' => $pair,
+            'timeframe' => $timeframe,
+            'requested_days' => $days,
+            'max_days' => $maxDays,
+            'from' => (int) ($loaded['candles'][$loaded['start_index']]['time'] ?? $loaded['from_ms']),
+            'to' => (int) ($loaded['candles'][count($loaded['candles']) - 1]['time'] ?? $loaded['to_ms']),
+            'summary' => $result['summary'],
+            // ตัวกรองตลาดใหญ่ถูกใช้จริงไหม — ไม่มีแท่งรายวัน = ผลนี้ไม่ได้กรอง (ต่างจากบอทจริง) ต้องบอก
+            'macro_filter_applied' => ($result['params']['macro_filter'] ?? true) && $loaded['macro_daily'] !== [],
+            'macro_data_missing' => $loaded['macro_daily'] === [],
+            'trades' => array_map(fn (array $trade) => [
+                'time' => (int) $trade['time'],
+                'side' => $trade['side'],
+                'price' => round((float) $trade['market_price'], 8),
+                'value' => round((float) $trade['gross_value'], 2),
+                'pnl' => $trade['realized_pnl'] === null ? null : round((float) $trade['realized_pnl'], 2),
+                'held_bars' => $trade['held_bars'] ?? null,
+                'reason' => (string) $trade['reason'],
+            ], array_slice($result['trades'], -20)),
+        ];
+
+        Cache::put($cacheKey, $payload, now()->addMinutes(max(1, (int) ($limits['cache_minutes'] ?? 10))));
+
+        return response()->json(['success' => true, 'data' => $this->presentBacktest($payload)]);
+    }
+
+    /**
+     * ผล backtest ที่ส่งให้หน้าจอ — ตัวเลขดิบ + คำตัดสินเป็นรหัส (หน้าจอเป็นคนเขียนถ้อยคำตามภาษา).
+     *
+     * เหตุผลของแต่ละไม้ถูกเก็บในแคชเป็นภาษาไทย (ภาษาของเครื่องยนต์) แล้วแปลตอนตอบ — ผู้ใช้สองภาษา
+     * ที่ทดสอบกฎชุดเดียวกันจึงใช้ผลที่แคชไว้ร่วมกันได้
+     */
+    private function presentBacktest(array $payload): array
+    {
+        $summary = $payload['summary'];
+
+        $payload['summary'] = array_intersect_key($summary, array_flip([
+            'bars', 'days', 'trades', 'closed', 'wins', 'losses', 'win_rate', 'realized_pnl', 'unrealized_pnl',
+            'costs', 'gross_pnl', 'profit_factor', 'expectancy', 'edge_bps', 'cost_bps', 'max_drawdown',
+            'max_drawdown_pct', 'exposure_pct', 'capital_return_pct', 'max_deployed', 'buy_hold_pct',
+            'trades_per_day', 'avg_hold_bars', 'decisions',
+        ]));
+
+        $payload['verdict'] = [
+            'level' => BacktestVerdict::level($summary),
+            'min_closed' => BacktestVerdict::MIN_CLOSED,
+            'beats_hold' => BacktestVerdict::beatsHold($summary),
+        ];
+
+        $payload['trades'] = array_map(
+            fn (array $trade) => ['reason' => BotRunner::localizeReason($trade['reason'])] + $trade,
+            $payload['trades'],
+        );
+
+        return $payload;
+    }
+
     /** เริ่ม/พัก/หยุดบอท — start ต้องมีการเช่าที่ยังไม่หมดอายุเสมอ */
     public function setState(Request $request, int $id): JsonResponse
     {
@@ -708,6 +1007,26 @@ class AiBotController extends Controller
 
         if (! $bot) {
             return $this->failure('BOT_NOT_FOUND', __('ไม่พบบอทตัวนี้'), 404);
+        }
+
+        /*
+         * บอทที่ยังมีเงินจริงค้างอยู่ลบไม่ได้ — ลบแล้วบัญชีไม้หายตามไป (cascade) แต่เหรียญยังอยู่
+         * ในกระเป๋าบอทโดยไม่มีบอทตัวไหนขายคืนให้ และผู้ใช้ถอนได้แค่ USDT/BNB
+         */
+        if ($this->live->hasExposure($bot)) {
+            return $this->failure('LIVE_POSITION_OPEN', __('บอทตัวนี้ยังถือเหรียญหรือมีคำสั่งเงินจริงค้างอยู่ — ปิดไม้ให้เรียบร้อยก่อนลบ'));
+        }
+
+        $copy = app(CopyTradeService::class);
+
+        // บอทที่เป็นผลงานของมาสเตอร์ลบไม่ได้ขณะยังเปิดโปรไฟล์ — ผู้ตามจะเหลือแต่บอทที่ไม่มีใครให้ตาม
+        if ($copy->isOpenMasterBot($bot)) {
+            return $this->failure('COPY_MASTER_BOT', __('บอทตัวนี้เป็นผลงานของโปรไฟล์มาสเตอร์ของคุณ — ปิดโปรไฟล์มาสเตอร์ก่อนลบ'));
+        }
+
+        // ลบบอทผู้ตาม = เลิกตาม (ลงบัญชีค่าบริการของไม้ที่ปิดไปแล้วให้จบก่อนแถวบอทหาย)
+        if ($follow = $copy->followOfBot($bot)) {
+            $copy->stopFollow($follow);
         }
 
         $bot->delete();
@@ -1214,6 +1533,23 @@ class AiBotController extends Controller
 
         $validated = $request->validate(['mode' => ['required', 'string', 'in:demo,live']]);
 
+        // ออกจากโหมดจริงทั้งที่ยังถือเหรียญ = ไม้นั้นไม่มีใครดูแลต่อ (บอทจะคิดจากพอร์ตทดลองแทน)
+        if ($validated['mode'] !== $bot->mode && $this->live->hasExposure($bot)) {
+            return $this->failure('LIVE_POSITION_OPEN', __('บอทตัวนี้ยังถือเหรียญหรือมีคำสั่งเงินจริงค้างอยู่ — ปิดไม้ก่อนสลับโหมด'));
+        }
+
+        /*
+         * Copy Trade นับและก๊อปปี้เฉพาะเงินจริง — บอทผู้ตามที่ยังตามอยู่กับบอทผลงานของมาสเตอร์สลับไปโหมดทดลองไม่ได้
+         * (ผู้ตามในโหมดทดลองเห็นไม้ของมาสเตอร์ฟรี · มาสเตอร์ในโหมดทดลองทำให้ผู้ตามเงินจริงเทขายตาม "ไม้กระดาษ")
+         */
+        if ($validated['mode'] !== 'live' && $bot->mode === 'live') {
+            $copy = app(CopyTradeService::class);
+
+            if ($copy->isOpenMasterBot($bot) || $copy->followOfBot($bot)?->isActive()) {
+                return $this->failure('COPY_LIVE_ONLY', __('บอทตัวนี้ผูกกับ Copy Trade ซึ่งใช้ได้เฉพาะเงินจริง — เลิกตามหรือปิดโปรไฟล์มาสเตอร์ก่อนสลับโหมด'));
+            }
+        }
+
         if ($validated['mode'] === 'live') {
             // ยังไม่เปิดโหมดจริงทั้งระบบ — ให้ทุกคนอยู่โหมดทดลองไปก่อน
             if (! config('aibot.live_enabled', false)) {
@@ -1245,12 +1581,129 @@ class AiBotController extends Controller
                     return $this->failure('BOT_WALLET_EMPTY', __('กระเป๋าบอทยังไม่มี USDT — โอนทุนของบอทเข้ากระเป๋าบอทก่อนเปิดโหมดจริง'));
                 }
             }
+
+            // บอทส่งคำสั่งเองแล้ว = คู่ต้องอยู่ในรายการที่เทรดเงินจริงได้ ไม่งั้นเปิดโหมดจริงได้แต่ไม่มีวันลงมือ
+            if ($this->live->operational() && ! $this->live->supports($bot->pair)) {
+                return $this->failure('LIVE_PAIR_UNSUPPORTED', __('คู่เหรียญของบอทตัวนี้ยังเทรดเงินจริงไม่ได้ — เปลี่ยนเป็นคู่ในรายการของโหมดเงินจริงก่อน'));
+            }
         }
 
         // ของที่ถืออยู่ในโหมดเดิมต้องไม่ตามข้ามโหมดไป — คนละบัญชีคนละความหมาย
         $bot->update(['mode' => $validated['mode']]);
 
         return response()->json(['success' => true, 'data' => $this->presentBot($bot->fresh())]);
+    }
+
+    /**
+     * เจ้าของสั่งปิดไม้ของบอทเอง (ขายทั้งหมดที่บอทตัวนี้ถือ).
+     *
+     * ไม่ต้องมีการเช่าที่ยังไม่หมดอายุ และไม่สนว่าบอทกำลังเดินหรือถูกพัก — เงินเป็นของผู้ใช้
+     * แพลนหมดอายุแล้วบอทหยุดคิด แต่เจ้าของต้องเอาเงินออกจากไม้ได้เสมอ
+     *
+     * โหมดเงินจริง = เข้าคิวคำสั่งขาย (ผลจริงมาจากเชน ดูได้ที่ /ai-bot/live) · โหมดทดลอง = ปิดทันที
+     */
+    public function closePosition(Request $request, int $id, MarketDataService $market): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+        $bot = $this->findBot($wallet, $id);
+
+        if (! $bot) {
+            return $this->failure('BOT_NOT_FOUND', __('ไม่พบบอทตัวนี้'), 404);
+        }
+
+        $price = (float) ($market->getTokenPrice($bot->pair)['price'] ?? 0);
+
+        if ($price <= 0) {
+            return $this->failure('PRICE_UNAVAILABLE', __('ดึงราคาตลาดของคู่นี้ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง'), 503);
+        }
+
+        $context = ['reason' => 'เจ้าของสั่งปิดไม้เอง', 'risk_level' => 'calm'];
+
+        if ($bot->mode === 'live') {
+            if (! $this->live->operational()) {
+                return $this->failure('LIVE_EXECUTION_OFF', __('ระบบยังไม่เปิดให้บอทส่งคำสั่งเงินจริง'));
+            }
+
+            $result = $this->live->sell($bot, $price, $context, manual: true);
+        } else {
+            $result = $this->broker->sell($bot, $price, $context);
+        }
+
+        if (! ($result['ok'] ?? false)) {
+            return $this->failure('CLOSE_FAILED', __($result['reason'] ?? 'ปิดไม้ไม่สำเร็จ'));
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'bot' => $this->presentBot($bot->fresh()),
+                // โหมดจริง: คำสั่งเข้าคิวแล้ว ยังไม่ได้ขาย — หน้าจอต้องบอกว่า "กำลังส่งคำสั่ง" ไม่ใช่ "ขายแล้ว"
+                'queued' => (bool) ($result['queued'] ?? false),
+                'order' => isset($result['order']) ? $this->live->present($result['order']) : null,
+            ],
+        ]);
+    }
+
+    /**
+     * พอร์ตเงินจริงของกระเป๋านี้: ไม้ที่บอทถืออยู่ + คำสั่งที่ส่งขึ้นเชน (ทั้งที่ค้างและที่จบแล้ว).
+     *
+     * มูลค่าตีด้วยราคาตลาดล่าสุด — ราคาที่ขายได้จริงบน DEX ต่ำกว่านี้เล็กน้อย (ค่าธรรมเนียมพูล + ค่าแก๊ส)
+     */
+    public function live(Request $request, MarketDataService $market): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+        $bots = AiBotConfig::forWallet($wallet)->get()->keyBy('id');
+
+        $positions = AiBotPosition::whereIn('ai_bot_config_id', $bots->keys())
+            ->where('mode', 'live')
+            ->where('quantity', '>', 0)
+            ->get();
+
+        $prices = $positions->pluck('pair')->unique()
+            ->mapWithKeys(fn (string $pair) => [$pair => $market->getTokenPrice($pair)['price'] ?? null]);
+
+        $orders = AiBotWalletTransfer::swaps()
+            ->where('owner_address', $wallet)
+            ->latest('id')
+            ->limit(30)
+            ->get();
+
+        $realized = (float) AiBotTrade::where('wallet_address', $wallet)->where('mode', 'live')->sum('realized_pnl');
+        $fees = (float) AiBotTrade::where('wallet_address', $wallet)->where('mode', 'live')->sum('fee');
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'execution' => $this->live->operational(),
+                'entries_paused' => (bool) config('aibot.live.entries_paused', false),
+                'pairs' => $this->livePairs->supported(),
+                'limits' => [
+                    'min_order_usd' => (float) config('aibot.live.min_order_usd', 10),
+                    'max_order_usd' => (float) config('aibot.live.max_order_usd', 500),
+                    'slippage_bps' => (int) config('aibot.live.slippage_bps', 50),
+                    'entry_max_deviation_bps' => (int) config('aibot.live.entry_max_deviation_bps', 120),
+                ],
+                'positions' => $positions->map(function (AiBotPosition $p) use ($bots, $prices) {
+                    $price = $prices[$p->pair] ?? null;
+
+                    return [
+                        'bot_id' => $p->ai_bot_config_id,
+                        'bot_name' => $bots[$p->ai_bot_config_id]->name ?? null,
+                        'pair' => $p->pair,
+                        'quantity' => (float) $p->quantity,
+                        'entry_price' => (float) $p->entry_price,
+                        'cost_basis' => (float) $p->cost_basis,
+                        'price' => $price !== null ? (float) $price : null,
+                        'value' => $price !== null ? round((float) $p->quantity * (float) $price, 8) : null,
+                        'unrealized_pnl' => $price !== null ? $p->unrealizedPnl((float) $price) : null,
+                        'opened_at' => $p->opened_at?->toIso8601String(),
+                    ];
+                })->values()->all(),
+                'orders' => $orders->map(fn (AiBotWalletTransfer $o) => $this->live->present($o))->all(),
+                'realized_pnl' => round($realized, 8),
+                'fees_paid' => round($fees, 8),
+            ],
+        ]);
     }
 
     /**
@@ -1528,6 +1981,9 @@ class AiBotController extends Controller
             // เขียนโดย BotRunner (cron ไม่มีภาษาผู้ใช้) เป็นภาษาไทยเสมอ — แปลตอนแสดงผล
             'last_reason' => BotRunner::localizeReason($bot->last_reason),
             'position' => $this->openPosition($bot),
+            // โหมดเงินจริง: คำสั่งที่ส่งขึ้นเชนแล้วยังไม่รู้ผล (null = ไม่มี) · คู่นี้เทรดเงินจริงได้ไหม
+            'pending_order' => $bot->mode === 'live' && ($pending = $this->live->pendingOrder($bot)) ? $this->live->present($pending) : null,
+            'live_supported' => $this->live->supports($bot->pair),
             'created_at' => $bot->created_at->toIso8601String(),
         ];
     }

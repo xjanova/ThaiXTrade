@@ -67,9 +67,10 @@ Future<bool> showSwitchToLiveDialog(
     title: th ? 'สลับเป็นโหมดจริง?' : 'Switch to live mode?',
     subject: botName,
     bullets: [
+      // โหมดจริงใช้กระเป๋าบอทที่ระบบดูแลกุญแจ — ห้ามบอกว่า "ระบบไม่ถือกุญแจ"
       th
-          ? 'โหมดจริงจะเสนอสัญญาณให้คุณกดยืนยันในกระเป๋าเอง ระบบไม่ถือกุญแจของคุณ จึงส่งคำสั่งแทนไม่ได้'
-          : 'Live mode proposes signals for you to confirm in your own wallet. We never hold your keys, so we cannot place orders for you.',
+          ? 'โหมดจริงใช้เงินจริงจากกระเป๋าบอทที่คุณโอนทุนเข้าไป — ระบบดูแลกุญแจของกระเป๋าบอทและส่งคำสั่งแทนคุณ โอนเข้าเท่าที่พร้อมรับความเสี่ยงเท่านั้น'
+          : 'Live mode trades real money from the bot wallet you fund. The platform keeps the key of that bot wallet and places orders for you — only move in what you can afford to risk.',
       if (hasDemoPosition)
         th
             ? 'ไม้ที่ถืออยู่ในโหมดทดลองจะไม่ตามไปด้วย — ยังค้างอยู่และกลับมาเห็นได้เมื่อสลับกลับ'

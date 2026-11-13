@@ -30,6 +30,8 @@ final class PositionSizer
         $key = match ($strategy) {
             'grid' => 'order_size_usd',
             'dca' => 'budget_usd',
+            // วางกลยุทธ์เอง: ผู้ใช้กำหนดขนาดไม้เองเป็นจำนวนเงิน (ซื้อเพิ่มแต่ละครั้งก็ขนาดนี้)
+            'custom' => 'order_size_usd',
             default => null,
         };
 

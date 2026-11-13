@@ -5,6 +5,8 @@ namespace App\Services\AiBot;
 use App\Services\AiBot\Strategies\AiSignalStrategy;
 use App\Services\AiBot\Strategies\ArbitrageStrategy;
 use App\Services\AiBot\Strategies\BreakoutStrategy;
+use App\Services\AiBot\Strategies\CopyStrategy;
+use App\Services\AiBot\Strategies\CustomStrategy;
 use App\Services\AiBot\Strategies\DcaStrategy;
 use App\Services\AiBot\Strategies\GridStrategy;
 use App\Services\AiBot\Strategies\MeanReversionStrategy;
@@ -38,6 +40,8 @@ class StrategyRegistry
                 new ScalpingStrategy(),
                 new ArbitrageStrategy(),
                 new AiSignalStrategy(),
+                new CustomStrategy(),
+                new CopyStrategy(),
             ])->keyBy(fn (Strategy $s) => $s->code())->all();
         }
 
