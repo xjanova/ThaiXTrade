@@ -8,6 +8,7 @@ use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Testing\TestResponse;
 use Mockery\MockInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
@@ -205,6 +206,113 @@ class AiHttpRoutesTest extends TestCase
         $this->assertSame(429, $this->chat(), 'ตัวควบคุม: โควตาแชตต้องหมดแล้ว');
 
         $this->getJson(self::PUBLIC_ENDPOINT)->assertOk();
+    }
+
+    // ── 3. งบรายวันของแชต (config/ai_text.php → chatbot) ────────────────
+
+    /** ตัวจำลองที่นับจำนวนครั้งที่ "เรียกโมเดลจริง" — เกินงบแล้วต้องไม่มีการเรียกเพิ่มแม้แต่ครั้งเดียว */
+    private function aiAnswersExactly(int $times): void
+    {
+        $this->mock(AiTextService::class, function (MockInterface $mock) use ($times) {
+            $mock->shouldReceive('chat')->times($times)->andReturn([
+                'success' => true,
+                'content' => 'สวัสดีค่ะ',
+                'model' => 'test-model',
+                'provider' => 'openai',
+                'processing_time_ms' => 1,
+            ]);
+        });
+    }
+
+    private function chatFrom(string $ip, array $body = ['message' => 'TPIX คืออะไร']): TestResponse
+    {
+        return $this->withServerVariables(['REMOTE_ADDR' => $ip])->postJson('/api/v1/chatbot', $body);
+    }
+
+    /** IP เดียวส่งได้ 30 ข้อความ/นาที = 43,200 ข้อความ/วัน ถ้าไม่มีเพดานรายวัน */
+    #[Test]
+    public function one_ip_cannot_exceed_its_daily_budget(): void
+    {
+        config(['ai_text.chatbot.daily_cap_per_ip' => 3, 'ai_text.chatbot.daily_cap' => 100]);
+        $this->aiAnswersExactly(4);
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->chatFrom('203.0.113.10')->assertOk()->assertJsonPath('data.success', true);
+        }
+
+        // รูปเดียวกับตอนผู้ให้บริการล่ม — หน้าแชทแสดง message ได้เลย ไม่ใช่ 429 ที่กลายเป็น "เกิดข้อผิดพลาด"
+        $this->chatFrom('203.0.113.10')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.success', false)
+            ->assertJsonPath('data.limited', true)
+            ->assertJsonPath('data.navigation', null)
+            ->assertJsonPath('data.message', 'วันนี้ผู้ช่วยตอบครบโควตาแล้ว ลองใหม่พรุ่งนี้นะคะ');
+
+        $this->chatFrom('203.0.113.10', ['message' => 'hello', 'language' => 'en'])
+            ->assertJsonPath('data.limited', true)
+            ->assertJsonPath('data.message', 'The assistant has reached today\'s limit. Please try again tomorrow.');
+
+        // คนอื่นยังใช้ได้ — และ IP ที่เกินโควตาไม่ได้กินงบรวมเพิ่ม
+        $this->chatFrom('198.51.100.77')->assertOk()->assertJsonPath('data.success', true);
+    }
+
+    /** คนที่หมุน IP ได้ต้องชนเพดานรวมของทั้งเว็บ */
+    #[Test]
+    public function rotating_ips_cannot_exceed_the_site_wide_daily_budget(): void
+    {
+        config(['ai_text.chatbot.daily_cap_per_ip' => 100, 'ai_text.chatbot.daily_cap' => 3]);
+        $this->aiAnswersExactly(3);
+
+        foreach (['203.0.113.1', '203.0.113.2', '203.0.113.3'] as $ip) {
+            $this->chatFrom($ip)->assertOk()->assertJsonPath('data.success', true);
+        }
+
+        $this->chatFrom('203.0.113.4')->assertOk()->assertJsonPath('data.limited', true);
+        $this->chatFrom('203.0.113.5')->assertOk()->assertJsonPath('data.limited', true);
+    }
+
+    /** งบนับเป็นวันตามเวลาไทย — ข้ามเที่ยงคืนแล้วใช้ได้ใหม่ */
+    #[Test]
+    public function the_daily_budget_resets_at_midnight_bangkok_time(): void
+    {
+        config(['ai_text.chatbot.daily_cap_per_ip' => 1, 'ai_text.chatbot.daily_cap' => 100]);
+        $this->aiAnswersExactly(2);
+
+        // 23:50 เวลาไทย (16:50 UTC) — ยังเป็นวันเดียวกันของไทย แม้ UTC ยังไม่เปลี่ยนวันตอนข้ามเที่ยงคืนไทย
+        $this->travelTo(now('Asia/Bangkok')->setTime(23, 50));
+
+        $this->chatFrom('203.0.113.10')->assertJsonPath('data.success', true);
+        $this->chatFrom('203.0.113.10')->assertJsonPath('data.limited', true);
+
+        $this->travel(15)->minutes();
+
+        $this->chatFrom('203.0.113.10')->assertJsonPath('data.success', true);
+    }
+
+    /** คำขอที่ผิดรูปแบบไม่เรียกโมเดล จึงต้องไม่กินงบของวัน */
+    #[Test]
+    public function a_rejected_request_does_not_use_the_daily_budget(): void
+    {
+        config(['ai_text.chatbot.daily_cap_per_ip' => 1, 'ai_text.chatbot.daily_cap' => 100]);
+        $this->aiAnswersExactly(1);
+
+        $this->chatFrom('203.0.113.10', ['message' => ''])->assertStatus(422);
+        $this->chatFrom('203.0.113.10', ['message' => 'hi', 'persona' => 'admin'])->assertStatus(422);
+
+        $this->chatFrom('203.0.113.10')->assertOk()->assertJsonPath('data.success', true);
+    }
+
+    /** 0 = ปิดเพดาน (ค่าที่ตั้งผ่าน .env ได้) — ต้องไม่กลายเป็น "ครบโควตาตั้งแต่ข้อความแรก" */
+    #[Test]
+    public function a_cap_of_zero_means_no_daily_limit(): void
+    {
+        config(['ai_text.chatbot.daily_cap_per_ip' => 0, 'ai_text.chatbot.daily_cap' => 0]);
+        $this->aiAnswersExactly(5);
+
+        for ($i = 0; $i < 5; $i++) {
+            $this->chatFrom('203.0.113.10')->assertOk()->assertJsonPath('data.success', true);
+        }
     }
 
     /** ตัวนับไม่มีชื่อกลับมาที่เส้นนี้เมื่อไร บั๊กเดิมก็กลับมา */

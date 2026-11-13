@@ -106,9 +106,13 @@ Route::get('v1/token-icon.png', function () {
  * - GET  /api/v1/node/status/{wallet} — เช็คสถานะ allowlist ของ wallet
  *
  * Throttle: 10 req/min per IP (heartbeat) — เผื่อ retry แต่ไม่ flood
+ *
+ * ⚠️ กฎของทั้งไฟล์ (ออดิท 2026-11-13): throttle:N,M ทุกตัวต้องมีชื่อถังเป็นอาร์กิวเมนต์ที่สาม
+ *    แบบไม่มีชื่อใช้ตัวนับเดียวกับ throttle:60,1 ของทั้ง API (คีย์ โดเมน|IP) — แอปมาสเตอร์โหนดที่ถามสถิติ
+ *    ไป 10 ครั้ง heartbeat ก็ได้ 429 ทั้งที่ยังไม่เคยส่ง · ThrottleBucketIsolationTest จับเส้นที่ลืมใส่ชื่อ
  * เก็บไว้นอก v1 group เพราะ throttle/middleware เฉพาะ
  */
-Route::prefix('v1/node')->middleware(['throttle:'.config('masternode.heartbeat.rate_limit_per_minute', 10).',1'])->group(function () {
+Route::prefix('v1/node')->middleware(['throttle:'.config('masternode.heartbeat.rate_limit_per_minute', 10).',1,node-heartbeat'])->group(function () {
     Route::post('heartbeat', [NodeHeartbeatController::class, 'heartbeat'])->name('node.heartbeat');
     Route::get('status/{wallet}', [NodeHeartbeatController::class, 'status'])->name('node.status');
 });
@@ -121,7 +125,7 @@ Route::prefix('v1/node')->middleware(['throttle:'.config('masternode.heartbeat.r
  * Auth: Bearer token = TPIX_INFRA_ALERT_TOKEN (.env) เทียบ hash_equals ใน controller
  * Throttle: 30 req/min per IP — heartbeat ปกติ 1/นาที/เครื่อง เผื่อไว้หลายเครื่อง+retry
  */
-Route::prefix('infra')->middleware(['throttle:30,1'])->group(function () {
+Route::prefix('infra')->middleware(['throttle:30,1,infra'])->group(function () {
     Route::post('heartbeat', [InfraAlertController::class, 'heartbeat'])->name('infra.heartbeat');
     Route::post('alert', [InfraAlertController::class, 'alert'])->name('infra.alert');
 
@@ -366,7 +370,7 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
 
         // ผูกกุญแจที่ปิดบล็อก (ที่อยู่ IBFT + BLS) กับกระเป๋าที่ stake ชั้น Validator
         // แอปมาสเตอร์โหนดเซ็น 2 ใบ (กระเป๋า + กุญแจ validator) — ไม่ต้องล็อกอิน ลายเซ็นคือตัวตน
-        Route::post('/key-binding', [ValidatorKeyBindingController::class, 'store'])->middleware('throttle:10,1');
+        Route::post('/key-binding', [ValidatorKeyBindingController::class, 'store'])->middleware('throttle:10,1,validator-key-binding');
         Route::get('/key-binding/{wallet}', [ValidatorKeyBindingController::class, 'show'])
             ->where('wallet', '0x[0-9a-fA-F]{40}')
             ->middleware('throttle:60,1');
@@ -390,9 +394,10 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         // IoT — Ingestion + test + config: ตัวเครื่องยืนยันตัวด้วย API key ของตัวเองทุกเส้น
         // (Authorization: Bearer fpk_...) กุญแจออกที่ register-device / rotate-key ในกลุ่มด้านล่าง
         Route::post('/iot/ingest', [FoodPassportApiController::class, 'iotIngest'])
-            ->middleware('throttle:120,1');
+            ->withoutMiddleware('throttle:60,1')
+            ->middleware('throttle:120,1,food-iot-ingest');
         Route::post('/iot/batch-ingest', [FoodPassportApiController::class, 'iotBatchIngest'])
-            ->middleware('throttle:30,1');
+            ->middleware('throttle:30,1,food-iot-batch');
         Route::get('/iot/test/{deviceId}', [FoodPassportApiController::class, 'testDevice']);
         Route::get('/iot/config/{deviceId}', [FoodPassportApiController::class, 'deviceConfig']);
     });
@@ -411,7 +416,7 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
         Route::get('/support-status', [AppUpdateController::class, 'supportStatus']);
         // CI webhook — auto-set active release after build (protected by deploy secret)
         Route::post('/notify-release', [AppUpdateController::class, 'notifyRelease'])
-            ->middleware('throttle:10,1');
+            ->middleware('throttle:10,1,app-notify-release');
     });
 
     // AI Trade (Cloud Bot) — แคตตาล็อกแพลน/กลยุทธ์/แพ็กเครดิต
@@ -449,18 +454,18 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     // Stripe retries webhooks → ต้องไม่โดน throttle:60,1 ของ group นี้
     Route::post('/stripe/webhook', [StripeWebhookController::class, 'handle'])
         ->withoutMiddleware([VerifyCsrfToken::class, 'throttle:60,1'])
-        ->middleware('throttle:300,1');
+        ->middleware('throttle:300,1,stripe-webhook');
 
     // บอท Discord — คำสั่ง /ถาม · /ขายเหรียญ (ตรวจลายเซ็น Ed25519 ของ Discord ทุกคำขอ)
     // คำขอทั้งหมดมาจาก IP ของ Discord ชุดเดียว → ถ้าโดน throttle:60,1 ต่อ IP สมาชิกทั้งเซิร์ฟเวอร์จะถูกนับรวมกัน
     // เพดานต่อคน/ต่อวันอยู่ในตัวควบคุมแทน
     Route::post('/discord/interactions', [DiscordInteractionController::class, 'handle'])
         ->withoutMiddleware([VerifyCsrfToken::class, 'throttle:60,1'])
-        ->middleware('throttle:600,1');
+        ->middleware('throttle:600,1,discord-interactions');
 
     // รายงานบั๊กจากหน้าเว็บ → ส่งต่อระบบกลาง xman studio (สาธารณะ จำกัด 20/นาที/IP)
     Route::post('/bug-reports', [BugReportRelayController::class, 'store'])
-        ->middleware('throttle:20,1');
+        ->middleware('throttle:20,1,bug-reports');
 
     // Wallet Bootstrap — connect/sign/verify must be PUBLIC (before wallet is verified)
     // นับสองชั้น: ต่อกระเป๋า (กันกดรัว) + ต่อ IP (กันเดาลายเซ็นด้วยการหมุนเลขกระเป๋า)
@@ -516,8 +521,9 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::get('/routes', [TradingController::class, 'getSwapRoutes']);
     });
 
-    // Token Sale Purchase + Claim — ซื้อ/เคลมเหรียญ (rate limit: 10 ครั้ง/นาที)
-    Route::middleware('throttle:10,1')->group(function () {
+    // Token Sale Purchase + Claim — ซื้อ/เคลมเหรียญ (rate limit: 10 ครั้ง/นาที บนถังของตัวเอง)
+    // ⚠️ ต้องมีชื่อถัง — เดิม throttle:10,1 แบบไม่มีชื่อนับรวมกับ API สาธารณะ หน้าซื้อโหลดข้อมูลไป 10 ครั้ง ปุ่มซื้อ/เคลมก็ได้ 429
+    Route::middleware('throttle:10,1,token-sale-purchase')->group(function () {
         /*
          * ตรวจล่วงหน้าก่อนเงินออกจากกระเป๋า — ต้องอยู่ในกลุ่มเดียวกับ purchase
          * เพื่อให้ผ่านด่านเดียวกันทั้ง VerifyWalletOwnership และ KYC
@@ -546,7 +552,7 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
 
     /*
      * หน้าซื้อถามทุก 6 วินาทีระหว่างรอเงินเข้า จึงถอด throttle:60,1 ของทั้ง API ออกแล้วใช้ตัวนับมีชื่อแทน
-     * ตัวนับไม่มีชื่อใช้คีย์เดียวกับ throttle:10,1 ของกลุ่มซื้อ นับรวมกันแล้วผู้ซื้อที่รอเงินเข้าจะกด claim ไม่ได้
+     * (เส้นนี้ถูกเรียกถี่กว่าเพดาน 60/นาทีของ API สาธารณะ และต้องไม่กินโควตาของปุ่มซื้อ/เคลม)
      */
     Route::get('/token-sale/crypto-order/{orderId}', [TokenSaleApiController::class, 'cryptoOrderStatus'])
         ->where('orderId', '[0-9a-fA-F-]{36}')

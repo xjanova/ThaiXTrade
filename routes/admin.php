@@ -59,9 +59,12 @@ use Inertia\Inertia;
 
 // Admin Auth (public - no auth required)
 Route::prefix('admin')->name('admin.')->group(function () {
+    // ⚠️ throttle ทุกตัวในไฟล์นี้ต้องมีชื่อถัง (อาร์กิวเมนต์ที่สาม) — แบบไม่มีชื่อใช้ตัวนับเดียวกับ API สาธารณะ
+    //    เปิดหน้าเทรดไว้อีกแท็บ ปุ่มหลังบ้านที่จำกัด 6-10 ครั้ง/นาทีก็ได้ 429 · ตัวที่นับเป็นชั่วโมง (5,60) ยังทำให้
+    //    ตัวนับรวมค้าง 1 ชั่วโมงด้วย — ดู ThrottleBucketIsolationTest
     // Super Admin Setup Wizard — only when no admin exists
     Route::get('setup', [SetupWizardController::class, 'show'])->name('setup.show');
-    Route::post('setup', [SetupWizardController::class, 'store'])->name('setup.store')->middleware('throttle:5,60');
+    Route::post('setup', [SetupWizardController::class, 'store'])->name('setup.store')->middleware('throttle:5,60,admin-setup');
 
     Route::get('login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('login', [AuthController::class, 'login'])->name('login.submit')->middleware('turnstile');
@@ -103,7 +106,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::put('settings/advisor', [SettingController::class, 'updateTab'])->name('settings.advisor');
             // จำกัดการยิงทดสอบ — แต่ละครั้งกินโควตาจริงของผู้ให้บริการ
             Route::post('settings/advisor/test', [SettingController::class, 'testAdvisor'])
-                ->middleware('throttle:10,1')
+                ->middleware('throttle:10,1,admin-advisor-test')
                 ->name('settings.advisor.test');
         });
         Route::put('settings/content', [SettingController::class, 'updateTab'])->name('settings.content');
@@ -172,7 +175,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->middleware('admin.role:super_admin')->name('settings');
             // ลิงก์เชิญลงทะเบียนให้เหรียญที่ขึ้นเชนแล้ว (เช่น IDTC) — super_admin
             Route::post('claim-link', [AdminCreatorRegistrationController::class, 'claimLink'])
-                ->middleware(['admin.role:super_admin', 'throttle:20,1'])->name('claim-link');
+                ->middleware(['admin.role:super_admin', 'throttle:20,1,admin-creator-claim-link'])->name('claim-link');
             Route::get('{uuid}', [AdminCreatorRegistrationController::class, 'show'])->whereUuid('uuid')->name('show');
             Route::get('{uuid}/pdf', [AdminCreatorRegistrationController::class, 'pdf'])->whereUuid('uuid')->name('pdf');
             Route::get('{uuid}/documents/{document}', [AdminCreatorRegistrationController::class, 'document'])
@@ -329,10 +332,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::patch('/{id}/verify', [TokenFactoryController::class, 'toggleVerified'])->name('verify')->whereNumber('id');
                 Route::patch('/{id}/list', [TokenFactoryController::class, 'toggleListed'])->name('list')->whereNumber('id');
                 // ตั้ง/เปลี่ยนโลโก้ของเหรียญที่ deploy แล้ว (โลโก้นี้ขึ้น /tokenlist.json เมื่อเหรียญถูกลิสต์)
-                Route::post('/{id}/logo', [TokenFactoryController::class, 'updateLogo'])->name('logo')->whereNumber('id')->middleware('throttle:30,1');
+                Route::post('/{id}/logo', [TokenFactoryController::class, 'updateLogo'])->name('logo')->whereNumber('id')->middleware('throttle:30,1,admin-token-logo');
                 // คืนค่าธรรมเนียมของคำขอที่ถูกปฏิเสธ — โอนเองแล้ววาง tx / สั่งจ่ายจากกระเป๋าร้อน
-                Route::post('/{id}/refund/manual', [TokenFactoryController::class, 'refundManual'])->name('refund.manual')->whereNumber('id')->middleware('throttle:30,1');
-                Route::post('/{id}/refund/auto', [TokenFactoryController::class, 'refundAuto'])->name('refund.auto')->whereNumber('id')->middleware('throttle:10,1');
+                Route::post('/{id}/refund/manual', [TokenFactoryController::class, 'refundManual'])->name('refund.manual')->whereNumber('id')->middleware('throttle:30,1,admin-token-refund-manual');
+                Route::post('/{id}/refund/auto', [TokenFactoryController::class, 'refundAuto'])->name('refund.auto')->whereNumber('id')->middleware('throttle:10,1,admin-token-refund-auto');
             });
 
             // นโยบาย (เปิด/ปิดประเภท/ตัวเลือก ค่าธรรมเนียม เพดาน) — super_admin เท่านั้น
@@ -455,7 +458,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 Route::get('/kyc/applicants', [ValidatorKycAdminController::class, 'applicants'])->name('kyc.applicants');
                 Route::post('/kyc/{address}/confirm', [ValidatorKycAdminController::class, 'confirm'])
                     ->where('address', '0x[0-9a-fA-F]{40}')
-                    ->middleware('throttle:30,1')
+                    ->middleware('throttle:30,1,admin-validator-kyc-confirm')
                     ->name('kyc.confirm');
             });
         });
@@ -494,9 +497,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->group(function () {
                 Route::get('/', [StabilizerController::class, 'index'])->name('index');
                 Route::put('/params', [StabilizerController::class, 'updateParams'])->name('params');
-                Route::post('/switch', [StabilizerController::class, 'toggle'])->middleware('throttle:10,1')->name('switch');
-                Route::post('/deposits', [StabilizerController::class, 'storeDeposit'])->middleware('throttle:10,1')->name('deposits.store');
-                Route::get('/preview', [StabilizerController::class, 'preview'])->middleware('throttle:20,1')->name('preview');
+                Route::post('/switch', [StabilizerController::class, 'toggle'])->middleware('throttle:10,1,admin-stabilizer-switch')->name('switch');
+                Route::post('/deposits', [StabilizerController::class, 'storeDeposit'])->middleware('throttle:10,1,admin-stabilizer-deposit')->name('deposits.store');
+                Route::get('/preview', [StabilizerController::class, 'preview'])->middleware('throttle:20,1,admin-stabilizer-preview')->name('preview');
             });
 
         /*
@@ -507,7 +510,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->middleware('admin.role:super_admin')
             ->group(function () {
                 Route::get('/', [BridgeAdminController::class, 'index'])->name('index');
-                Route::get('/measure', [BridgeAdminController::class, 'measure'])->middleware('throttle:6,1')->name('measure');
+                Route::get('/measure', [BridgeAdminController::class, 'measure'])->middleware('throttle:6,1,admin-bridge-measure')->name('measure');
                 Route::post('/toggle', [BridgeAdminController::class, 'toggle'])->name('toggle');
                 Route::put('/settings', [BridgeAdminController::class, 'updateSettings'])->name('settings');
                 Route::post('/deposits/{id}/approve', [BridgeAdminController::class, 'approveDeposit'])->whereNumber('id')->name('deposits.approve');
@@ -521,12 +524,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
                  */
                 Route::prefix('wtpix')->name('wtpix.')->group(function () {
                     Route::get('/', [WtpixBridgeAdminController::class, 'index'])->name('index');
-                    Route::get('/measure', [WtpixBridgeAdminController::class, 'measure'])->middleware('throttle:6,1')->name('measure');
-                    Route::post('/toggle', [WtpixBridgeAdminController::class, 'toggle'])->middleware('throttle:20,1')->name('toggle');
-                    Route::put('/settings', [WtpixBridgeAdminController::class, 'updateSettings'])->middleware('throttle:20,1')->name('settings');
-                    Route::put('/test-wallets', [WtpixBridgeAdminController::class, 'updateTestWallets'])->middleware('throttle:20,1')->name('test-wallets');
-                    Route::post('/transfers/{id}/approve', [WtpixBridgeAdminController::class, 'approve'])->whereNumber('id')->middleware('throttle:30,1')->name('transfers.approve');
-                    Route::post('/transfers/{id}/reject', [WtpixBridgeAdminController::class, 'reject'])->whereNumber('id')->middleware('throttle:30,1')->name('transfers.reject');
+                    Route::get('/measure', [WtpixBridgeAdminController::class, 'measure'])->middleware('throttle:6,1,admin-wtpix-measure')->name('measure');
+                    Route::post('/toggle', [WtpixBridgeAdminController::class, 'toggle'])->middleware('throttle:20,1,admin-wtpix-toggle')->name('toggle');
+                    Route::put('/settings', [WtpixBridgeAdminController::class, 'updateSettings'])->middleware('throttle:20,1,admin-wtpix-settings')->name('settings');
+                    Route::put('/test-wallets', [WtpixBridgeAdminController::class, 'updateTestWallets'])->middleware('throttle:20,1,admin-wtpix-test-wallets')->name('test-wallets');
+                    Route::post('/transfers/{id}/approve', [WtpixBridgeAdminController::class, 'approve'])->whereNumber('id')->middleware('throttle:30,1,admin-wtpix-approve')->name('transfers.approve');
+                    Route::post('/transfers/{id}/reject', [WtpixBridgeAdminController::class, 'reject'])->whereNumber('id')->middleware('throttle:30,1,admin-wtpix-reject')->name('transfers.reject');
                 });
             });
 
@@ -538,9 +541,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->middleware('admin.role:super_admin')
             ->group(function () {
                 Route::get('/', [LaunchpadAdminController::class, 'index'])->name('index');
-                Route::post('/register', [LaunchpadAdminController::class, 'register'])->middleware('throttle:20,1')->name('register');
-                Route::post('/sales/{id}/status', [LaunchpadAdminController::class, 'setStatus'])->whereNumber('id')->middleware('throttle:30,1')->name('sales.status');
-                Route::post('/reports/{id}', [LaunchpadAdminController::class, 'updateReport'])->whereNumber('id')->middleware('throttle:60,1')->name('reports.update');
+                Route::post('/register', [LaunchpadAdminController::class, 'register'])->middleware('throttle:20,1,admin-launchpad-register')->name('register');
+                Route::post('/sales/{id}/status', [LaunchpadAdminController::class, 'setStatus'])->whereNumber('id')->middleware('throttle:30,1,admin-launchpad-status')->name('sales.status');
+                Route::post('/reports/{id}', [LaunchpadAdminController::class, 'updateReport'])->whereNumber('id')->middleware('throttle:60,1,admin-launchpad-report')->name('reports.update');
             });
 
         // Audit Logs (super_admin only)
@@ -552,19 +555,19 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::prefix('discord')->name('discord.')->middleware('admin.role:super_admin')->group(function () {
             Route::get('/', [DiscordController::class, 'index'])->name('index');
             Route::put('/', [DiscordController::class, 'update'])->name('update');
-            Route::post('/connect', [DiscordController::class, 'connect'])->middleware('throttle:10,1')->name('connect');
-            Route::post('/replan', [DiscordController::class, 'replan'])->middleware('throttle:10,1')->name('replan');
-            Route::post('/commands', [DiscordController::class, 'registerCommands'])->middleware('throttle:10,1')->name('commands');
-            Route::post('/sync', [DiscordController::class, 'sync'])->middleware('throttle:6,1')->name('sync');
+            Route::post('/connect', [DiscordController::class, 'connect'])->middleware('throttle:10,1,admin-discord-connect')->name('connect');
+            Route::post('/replan', [DiscordController::class, 'replan'])->middleware('throttle:10,1,admin-discord-replan')->name('replan');
+            Route::post('/commands', [DiscordController::class, 'registerCommands'])->middleware('throttle:10,1,admin-discord-commands')->name('commands');
+            Route::post('/sync', [DiscordController::class, 'sync'])->middleware('throttle:6,1,admin-discord-sync')->name('sync');
             // ทดสอบผ่านหน้าเว็บ — ไม่ส่งอะไรเข้า Discord (ถามทดสอบกินโควตา OpenAI จริง จึงจำกัดความถี่)
-            Route::post('/test-ask', [DiscordController::class, 'testAsk'])->middleware('throttle:20,1')->name('test-ask');
-            Route::get('/preview', [DiscordController::class, 'preview'])->middleware('throttle:30,1')->name('preview');
-            Route::get('/permissions', [DiscordController::class, 'permissions'])->middleware('throttle:20,1')->name('permissions');
+            Route::post('/test-ask', [DiscordController::class, 'testAsk'])->middleware('throttle:20,1,admin-discord-test-ask')->name('test-ask');
+            Route::get('/preview', [DiscordController::class, 'preview'])->middleware('throttle:30,1,admin-discord-preview')->name('preview');
+            Route::get('/permissions', [DiscordController::class, 'permissions'])->middleware('throttle:20,1,admin-discord-permissions')->name('permissions');
             // ดูแลห้อง — AutoMod + ไล่ระดับโทษ ปิดเสียง/เตะ/แบน
             Route::put('/moderation', [DiscordController::class, 'updateModeration'])->name('moderation.update');
-            Route::post('/moderation/automod', [DiscordController::class, 'installAutoMod'])->middleware('throttle:6,1')->name('moderation.automod');
-            Route::post('/moderation/member', [DiscordController::class, 'moderateMember'])->middleware('throttle:20,1')->name('moderation.member');
-            Route::get('/moderation/permissions', [DiscordController::class, 'moderationPermissions'])->middleware('throttle:20,1')->name('moderation.permissions');
+            Route::post('/moderation/automod', [DiscordController::class, 'installAutoMod'])->middleware('throttle:6,1,admin-discord-automod')->name('moderation.automod');
+            Route::post('/moderation/member', [DiscordController::class, 'moderateMember'])->middleware('throttle:20,1,admin-discord-member')->name('moderation.member');
+            Route::get('/moderation/permissions', [DiscordController::class, 'moderationPermissions'])->middleware('throttle:20,1,admin-discord-mod-permissions')->name('moderation.permissions');
         });
 
         // App Releases — ดูรายการ releases จาก GitHub
@@ -573,7 +576,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('app-releases/set-active', [AppReleaseController::class, 'setActive'])->name('app-releases.set-active');
         // ลบ release เก่าบน GitHub (ถาวร) — เฉพาะ super_admin
         Route::post('app-releases/prune', [AppReleaseController::class, 'prune'])
-            ->middleware(['admin.role:super_admin', 'throttle:6,1'])
+            ->middleware(['admin.role:super_admin', 'throttle:6,1,admin-release-prune'])
             ->name('app-releases.prune');
     });
 });

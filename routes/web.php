@@ -46,14 +46,16 @@ use Inertia\Inertia;
 Route::middleware('guest')->group(function () {
     Route::get('login', [LoginController::class, 'showLogin'])->name('login');
     // 5 attempts/min — anti brute-force (Turnstile + throttle layered defense)
+    // ⚠️ throttle ทุกตัวในไฟล์นี้ต้องมีชื่อถัง (อาร์กิวเมนต์ที่สาม) — แบบไม่มีชื่อใช้ตัวนับเดียวกับ API สาธารณะ
+    //    (คีย์ โดเมน|IP): เปิดหน้าเทรดมาก่อนแล้วกดล็อกอิน ได้ 429 ตั้งแต่ครั้งแรก — ดู ThrottleBucketIsolationTest
     Route::post('login', [LoginController::class, 'login'])
         ->name('login.submit')
-        ->middleware(['turnstile', 'throttle:5,1']);
+        ->middleware(['turnstile', 'throttle:5,1,login']);
     Route::get('register', [RegisterController::class, 'showRegister'])->name('register');
     // 3 signups/min per IP — anti spam-account creation
     Route::post('register', [RegisterController::class, 'register'])
         ->name('register.submit')
-        ->middleware(['turnstile', 'throttle:3,1']);
+        ->middleware(['turnstile', 'throttle:3,1,register']);
 });
 Route::post('logout', [LoginController::class, 'logout'])->name('logout')->middleware('auth');
 
@@ -97,14 +99,14 @@ Route::middleware('auth')->group(function () {
      */
     Route::prefix('kyc')->name('kyc.')->group(function () {
         // GET /kyc (หน้าสถานะ) อยู่นอก 'auth' ด้านล่าง — ยืนยันตัวตนทำในแอป หน้านี้ต้องอธิบายให้ทุกคน
-        Route::post('/', [KycController::class, 'store'])->name('store')->middleware('throttle:10,60');
+        Route::post('/', [KycController::class, 'store'])->name('store')->middleware('throttle:10,60,kyc-submit');
         Route::post('/{uuid}/cancel', [KycController::class, 'cancel'])->name('cancel');
 
         // PDPA — สิทธิของเจ้าของข้อมูล
-        Route::get('/export', [KycController::class, 'export'])->name('export')->middleware('throttle:5,60');
+        Route::get('/export', [KycController::class, 'export'])->name('export')->middleware('throttle:5,60,kyc-export');
         Route::post('/deletion-request', [KycController::class, 'requestDeletion'])
             ->name('deletion-request')
-            ->middleware('throttle:5,60');
+            ->middleware('throttle:5,60,kyc-deletion-request');
 
         // เจ้าของเปิดดูเอกสารตัวเองเพื่อตรวจทานว่าส่งรูปถูกใบ
         Route::get('/documents/{document}', [KycDocumentController::class, 'owner'])->name('document');
@@ -345,7 +347,7 @@ Route::get('/validators/apply', [ValidatorController::class, 'apply'])->name('va
 // ตัวแอปจึงไม่ต้องมีความลับใด ๆ ติดไปกับไฟล์ที่แจก
 Route::get('/updates/masternode/{file}', [AppUpdateController::class, 'masternodeUpdateFile'])
     ->where('file', '[A-Za-z0-9._-]+')
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:60,1,masternode-updates')
     ->name('updates.masternode');
 
 /*
@@ -365,7 +367,7 @@ Route::get('/tokenlist.json', [TokenListController::class, 'show'])
         HandleInertiaRequests::class,
         AddLinkHeadersForPreloadedAssets::class,
     ])
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:60,1,tokenlist')
     ->name('tokenlist');
 
 // Download — ดาวน์โหลดแอป TPIX TRADE (ดึง release ล่าสุดจาก API ของเราเอง)
