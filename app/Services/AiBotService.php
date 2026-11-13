@@ -7,6 +7,7 @@ use App\Models\AiBotCredit;
 use App\Models\AiBotPlan;
 use App\Models\AiBotSubscription;
 use App\Models\SiteSetting;
+use App\Services\AiBot\Custom\RuleSet;
 use App\Support\Wei;
 use Database\Seeders\AiBotPlanSeeder;
 use Illuminate\Database\QueryException;
@@ -48,6 +49,9 @@ class AiBotService
 
     /** กลยุทธ์ถูกถอดออกจากการขายแล้ว (ธง retired ใน config/aibot.php) */
     public const ERR_STRATEGY_RETIRED = 'STRATEGY_RETIRED';
+
+    /** บอทแบบวางกลยุทธ์เองเต็มจำนวนที่แพลนนี้ให้ (config aibot.custom_rules.max_bots_per_tier) */
+    public const ERR_CUSTOM_BOT_LIMIT = 'CUSTOM_BOT_LIMIT_REACHED';
 
     /** reference คงที่ของโบนัสต้อนรับ — unique ต่อ wallet จึงรับได้ครั้งเดียวเสมอ */
     private const WELCOME_REFERENCE = 'welcome';
@@ -805,6 +809,28 @@ class AiBotService
             throw new RuntimeException(self::ERR_BOT_LIMIT);
         }
 
+        /*
+         * เพดานแยกของบอทแบบ "วางกลยุทธ์เอง" ต่อแพลน (null = ไม่จำกัดเพิ่ม นับรวมในโควตาข้างบนอย่างเดียว)
+         *
+         * ค่าอยู่ที่ config aibot.custom_rules.max_bots_per_tier — รอเจ้าของตัดสินว่าจะจำกัดไหม
+         * บังคับที่นี่เพราะ store/update/setState/tick ของ API ผ่านเมธอดนี้ทั้งหมด (แอพมือถือไม่เห็นปุ่มของเว็บ)
+         */
+        $customLimit = $strategyCode === 'custom'
+            ? config('aibot.custom_rules.max_bots_per_tier.'.($plan->tier ?? 'free'))
+            : null;
+
+        if ($customLimit !== null) {
+            $customUsed = AiBotConfig::forWallet($wallet)
+                ->countingTowardQuota()
+                ->where('strategy', 'custom')
+                ->when($existing, fn ($q) => $q->where('id', '!=', $existing->id))
+                ->count();
+
+            if ($customUsed >= (int) $customLimit) {
+                throw new RuntimeException(self::ERR_CUSTOM_BOT_LIMIT);
+            }
+        }
+
         return $subscription;
     }
 
@@ -863,6 +889,8 @@ class AiBotService
                 'number' => $this->clampNumber($value, $spec),
                 'bool' => filter_var($value, FILTER_VALIDATE_BOOL),
                 'select' => $this->pickOption($value, $spec),
+                // กฎเข้า/ออกของโหมดวางกลยุทธ์เอง — ข้อมูลโครงสร้าง ล้างด้วยรายการอนุญาตของมันเอง
+                'rules' => RuleSet::normalize($value),
                 default => null,
             };
         }

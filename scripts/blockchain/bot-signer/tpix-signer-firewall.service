@@ -1,0 +1,15 @@
+# /etc/systemd/system/tpix-signer-firewall.service
+# ใส่กฎ DOCKER-USER ของตัวเซ็นกระเป๋าบอทกลับหลังรีบูต (กฎ iptables ไม่อยู่รอดการรีบูตเอง)
+[Unit]
+Description=TPIX bot signer firewall (only the web host may reach the signer port)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/tpix-signer-firewall apply
+ExecStop=/usr/local/sbin/tpix-signer-firewall remove
+
+[Install]
+WantedBy=multi-user.target

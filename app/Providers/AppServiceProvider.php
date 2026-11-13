@@ -48,6 +48,8 @@ class AppServiceProvider extends ServiceProvider
         'ai-bot-advice' => 10,
         'ai-bot-wallet-sync' => 10,
         'ai-bot-withdraw' => 5,
+        // ทดสอบกฎย้อนหลังจากตัวสร้างกฎ — เล่นแท่งเทียนหลายพันแท่งต่อครั้ง (ผลซ้ำถูกแคช)
+        'ai-bot-backtest' => 6,
     ];
 
     /**
