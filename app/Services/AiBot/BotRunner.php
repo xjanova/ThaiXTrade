@@ -5,8 +5,10 @@ namespace App\Services\AiBot;
 use App\Models\AiBotConfig;
 use App\Models\AiBotDecision;
 use App\Models\AiBotPosition;
+use App\Models\AiBotWalletTransfer;
 use App\Services\AiBot\Analyst\AiViewGate;
 use App\Services\AiBot\Analyst\AutoPairResolver;
+use App\Services\AiBot\Live\LiveBroker;
 use App\Services\AiBotService;
 use App\Services\MarketDataService;
 use Illuminate\Support\Facades\Log;
@@ -25,8 +27,10 @@ use Illuminate\Support\Facades\Log;
  * ที่ให้ด่านความเสี่ยงมาก่อนกลยุทธ์เพราะกลยุทธ์ส่วนใหญ่ "ซื้อตอนราคาถูก" —
  * ในวันที่ตลาดพังจริงมันจะเห็นเป็นของถูกแล้วรับมีดตกตลอดทาง
  *
- * โหมด live ยังไม่ลงมือส่งธุรกรรมเอง — ระบบไม่ถือกุญแจของผู้ใช้ (non-custodial)
- * จึงบันทึกสัญญาณไว้ให้ผู้ใช้กดยืนยันเองในหน้าเว็บ
+ * โหมด live มีสองแบบ ตามธงของระบบ (ดู LiveBroker::operational):
+ *   - ยังไม่เปิดให้บอทส่งคำสั่งเอง → บันทึกเป็น "สัญญาณรอยืนยัน" ให้ผู้ใช้ไปลงมือเอง
+ *   - เปิดแล้ว → เข้าคิวคำสั่งสวอปจากกระเป๋าบอท (LiveBroker) ตัวเซ็นฝั่ง CLI ส่งขึ้นเชน
+ *     บัญชีไม้ถูกเขียนเมื่อธุรกรรมยืนยันบนเชนแล้วเท่านั้น รอบคิดที่มีคำสั่งค้างจึง "รอ" ไม่ตัดสินใจซ้ำ
  *
  * Developed by Xman Studio.
  */
@@ -101,6 +105,7 @@ class BotRunner
         private readonly MarketRiskService $risk,
         private readonly StrategyRegistry $registry,
         private readonly PaperBroker $broker,
+        private readonly LiveBroker $live,
         private readonly AiBotService $bots,
         private readonly AiViewGate $aiGate,
         private readonly AutoPairResolver $autoPair,
@@ -165,6 +170,25 @@ class BotRunner
             $bot->pauseBecause(AiBotConfig::PAUSE_PLAN_LOCKED, $reason);
 
             return $this->record($bot, 'stopped', $reason);
+        }
+
+        /*
+         * 1.15) โหมดเงินจริง: คำสั่งของรอบก่อนยังไม่รู้ผลบนเชน = ยังไม่คิดรอบใหม่
+         *
+         * บัญชีไม้ถูกเขียนเมื่อธุรกรรมยืนยันแล้วเท่านั้น ระหว่างนั้นภาพ "ถือของอยู่ไหม" ยังเป็นภาพก่อนสั่ง —
+         * ปล่อยให้คิดต่อ บอทจะเห็นว่า "ยังไม่มีของ" แล้วสั่งซื้อซ้ำ (หรือเห็นว่ายังถืออยู่แล้วสั่งขายซ้ำ)
+         *
+         * ⚠️ ต้องมาก่อนขั้นเลือกเหรียญ (1.2): คำสั่งซื้อที่ยังค้างคือ "ยังไม่ถือของ" ในสายตาของตัวเลือกเหรียญ
+         *    มันจึงย้ายบอทไปคู่ใหม่ได้ แล้วไม้ที่กำลังจะลงบล็อกกลายเป็นของคู่เดิมที่บอทไม่ได้ดูแล้ว
+         */
+        if ($bot->mode === 'live' && $this->live->operational()) {
+            if ($this->live->pendingOrder($bot)) {
+                return $this->record($bot, 'hold', 'รอผลคำสั่งเงินจริงบนเชน — ยังไม่ตัดสินใจรอบใหม่');
+            }
+
+            if (! $this->live->supports($bot->pair) && ! $this->live->position($bot)) {
+                return $this->record($bot, 'hold', 'คู่เหรียญนี้ยังเทรดเงินจริงไม่ได้ — ใช้ได้เฉพาะคู่ในรายการของโหมดเงินจริง');
+            }
         }
 
         /*
@@ -280,10 +304,10 @@ class BotRunner
 
         if ($risk['force_exit'] && $position) {
             $reason = 'ตลาดเข้าภาวะตื่นตระหนก — เทออกทั้งหมด: '.implode(' · ', array_slice($risk['reasons'], 0, 2));
-            $this->execute($bot, 'sell', $price, 0, $reason, $risk);
+            $exit = $this->execute($bot, 'sell', $price, 0, $reason, $risk);
 
             // ราคาต้องติดไปด้วย — ไม่งั้น analyst-report/harvest ให้คะแนนไม้ที่ด่านนี้สั่งไม่ได้
-            return $this->record($bot, 'sell', $reason, $risk['level'], [
+            return $this->recordExit($bot, $exit, $reason, $risk['level'], [
                 'price' => $price,
                 'has_position' => true,
                 'meta' => ['risk' => $risk['reasons'] ?? []],
@@ -332,9 +356,9 @@ class BotRunner
                 $ai['reasons'][] = 'กลยุทธ์นี้ถือผ่านขาลงโดยออกแบบ — ไม่ปิดไม้ตาม AI แต่ไม่เติมไม้ใหม่';
             } else {
                 $reason = 'AI สั่งปิดไม้: '.(implode(' · ', array_slice($ai['reasons'], 0, 2)) ?: 'ความเสี่ยงสูงขึ้น');
-                $this->execute($bot, 'sell', $price, 0, $reason, $risk);
+                $exit = $this->execute($bot, 'sell', $price, 0, $reason, $risk);
 
-                return $this->record($bot, 'sell', $reason, $risk['level'], [
+                return $this->recordExit($bot, $exit, $reason, $risk['level'], [
                     'price' => $price,
                     'has_position' => true,
                     'meta' => ['ai' => $ai],
@@ -363,9 +387,9 @@ class BotRunner
             $guard = $this->checkUserRiskLimits($bot, $position, $price);
 
             if ($guard !== null) {
-                $this->execute($bot, 'sell', $price, 0, $guard, $risk);
+                $exit = $this->execute($bot, 'sell', $price, 0, $guard, $risk);
 
-                return $this->record($bot, 'sell', $guard, $risk['level'], [
+                return $this->recordExit($bot, $exit, $guard, $risk['level'], [
                     'price' => $price,
                     'has_position' => true,
                 ]);
@@ -534,10 +558,55 @@ class BotRunner
     }
 
     /**
-     * ปิด/เปิดไม้ — โหมด live ยังไม่ส่งธุรกรรมเอง (ไม่ถือกุญแจผู้ใช้).
+     * บันทึกผลของการ "สั่งปิดไม้" ที่ด่านความเสี่ยง/กรอบของผู้ใช้เป็นคนสั่ง.
+     *
+     * โหมดเงินจริง คำสั่งปิดอาจเข้าคิวไม่ได้ (ค่าแก๊สหมด · คำสั่งก่อนหน้าเพิ่งล้ม) — บันทึกว่า "ขายแล้ว"
+     * ทั้งที่ยังถือของอยู่คือการบอกเจ้าของเงินผิด จึงบันทึกเป็นยังปิดไม่ได้พร้อมเหตุ และปล่อยให้บอท
+     * เดินต่อเพื่อสั่งปิดใหม่ในรอบถัดไป (ด่านขาดทุนต่อวันพักบอทไว้ก่อนสั่งขาย — พักทั้งที่ยังถือของ
+     * = ไม่มีใครสั่งปิดให้อีกเลย)
+     */
+    private function recordExit(AiBotConfig $bot, array $result, string $reason, string $riskLevel, array $context): array
+    {
+        /*
+         * คำสั่งปิดเข้าคิวแล้ว แต่รอบนี้พักบอทไปด้วย (ด่านขาดทุนต่อวัน) — ถ้าคำสั่งนั้นไม่ลงบล็อก
+         * (ราคาเบี่ยง / revert / หมดอายุ) จะเหลือไม้ที่ถืออยู่กับบอทที่ไม่เดินแล้ว ไม่มีใครสั่งปิดให้อีก
+         * ติดธงไว้ที่คำสั่ง: ตัวส่งธุรกรรมปลุกบอทกลับมาเมื่อคำสั่งนี้ล้ม (ดู AiBotWalletTransfers::markFailed)
+         */
+        if (($result['ok'] ?? false) && $bot->mode === 'live' && $bot->status === 'paused' && ($result['order'] ?? null) instanceof AiBotWalletTransfer) {
+            $result['order']->mergeMeta(['resume_bot_on_failure' => true])->save();
+        }
+
+        if (! ($result['ok'] ?? false) && $bot->mode === 'live' && $this->live->operational()) {
+            if ($bot->status === 'paused') {
+                $bot->update(['status' => 'running']);
+            }
+
+            return $this->record(
+                $bot,
+                'hold',
+                'ยังปิดไม้ไม่ได้: '.($result['reason'] ?? 'ลงมือไม่สำเร็จ').' · '.$reason,
+                $riskLevel,
+                $context,
+            );
+        }
+
+        return $this->record($bot, 'sell', $reason, $riskLevel, $context);
+    }
+
+    /**
+     * ปิด/เปิดไม้ — ทดลอง = โบรกเกอร์จำลอง · เงินจริง = เข้าคิวคำสั่งจากกระเป๋าบอท (ถ้าระบบเปิดแล้ว)
+     * ไม่งั้นบันทึกเป็นสัญญาณรอผู้ใช้ยืนยัน.
      */
     private function execute(AiBotConfig $bot, string $action, float $price, float $budget, string $reason, array $risk, array $meta = []): array
     {
+        if ($bot->mode === 'live' && $this->live->operational()) {
+            $context = ['reason' => $reason, 'meta' => $meta, 'risk_level' => $risk['level']];
+
+            return $action === Signal::BUY
+                ? $this->live->buy($bot, $price, $budget, $context)
+                : $this->live->sell($bot, $price, $context);
+        }
+
         if ($bot->mode !== 'demo') {
             // บันทึกเป็นสัญญาณรอผู้ใช้ยืนยัน — ไม่แกล้งทำเป็นว่าเทรดไปแล้ว
             $bot->update(['last_signal_at' => now()]);

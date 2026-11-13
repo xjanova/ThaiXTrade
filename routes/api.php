@@ -651,6 +651,8 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::put('/bots/{id}', [AiBotController::class, 'update'])->where('id', '[0-9]+');
         Route::post('/bots/{id}/state', [AiBotController::class, 'setState'])->where('id', '[0-9]+');
         Route::post('/bots/{id}/mode', [AiBotController::class, 'setMode'])->where('id', '[0-9]+');
+        // เจ้าของสั่งปิดไม้เอง — ไม่ผูกกับการเช่าหรือ KYC (เอาเงินออกจากไม้ได้เสมอ)
+        Route::post('/bots/{id}/close', [AiBotController::class, 'closePosition'])->where('id', '[0-9]+');
         // แพลนฟรีเดินบอทจากหน้าเว็บ — งบแยก (ai-bot-poll) เพราะหน้าเว็บเรียกเป็นระยะ
         Route::post('/bots/{id}/tick', [AiBotController::class, 'tickFromBrowser'])
             ->where('id', '[0-9]+')
@@ -685,6 +687,11 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
          * งบแยก (ai-bot-poll) เพราะหน้าเทรดยิงซ้ำทุกครั้งที่สลับคู่
          */
         Route::get('/trades', [AiBotController::class, 'trades'])
+            ->withoutMiddleware('throttle:ai-bot')
+            ->middleware('throttle:ai-bot-poll');
+
+        // พอร์ตเงินจริง: ไม้ที่บอทถืออยู่ + คำสั่งที่ส่งขึ้นเชน — หน้าเว็บถามซ้ำระหว่างรอผลคำสั่ง จึงใช้งบ poll
+        Route::get('/live', [AiBotController::class, 'live'])
             ->withoutMiddleware('throttle:ai-bot')
             ->middleware('throttle:ai-bot-poll');
 

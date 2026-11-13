@@ -29,6 +29,83 @@ return [
     */
     'live_enabled' => env('AIBOT_LIVE_ENABLED', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | บอทส่งคำสั่งเงินจริงเอง (ผ่านกระเป๋าบอท)
+    |--------------------------------------------------------------------------
+    | ต้องเปิดครบสามธงถึงจะมีธุรกรรมออกจริง:
+    |   AIBOT_LIVE_ENABLED=true          เปิดโหมดจริงให้ผู้ใช้เลือก
+    |   AIBOT_BOT_WALLET_ENABLED=true    เปิดกระเป๋าบอท (ที่เก็บทุนของบอท)
+    |   AIBOT_LIVE_EXECUTION=true        ให้บอทส่งคำสั่งสวอปจากกระเป๋าบอทเอง
+    | ขาดธงที่สาม = โหมดจริงยังเป็น "สัญญาณรอยืนยัน" แบบเดิม ไม่มีธุรกรรมออก
+    |
+    | คำสั่งทุกไม้: USDT ⇄ เหรียญของคู่ บน PancakeSwap (V2/V3 เลือกเส้นทางที่ได้มากสุด)
+    | เหรียญที่ได้กลับเข้ากระเป๋าบอทใบเดิมเสมอ — ไม่มีปลายทางอื่นให้ระบุ
+    */
+    'live' => [
+        'execution' => (bool) env('AIBOT_LIVE_EXECUTION', false),
+
+        // เบรกฉุกเฉิน: หยุด "เปิดไม้ใหม่" ทั้งระบบ แต่ยังปิดไม้ที่ถืออยู่ได้ตามปกติ
+        'entries_paused' => (bool) env('AIBOT_LIVE_ENTRIES_PAUSED', false),
+
+        'quote_asset' => 'USDT',
+
+        // ราคาเลื่อนระหว่างเซ็นกับลงบล็อกได้ไม่เกินนี้ (minOut บนเชน) — เกิน = revert เสียแค่ค่าแก๊ส
+        'slippage_bps' => (int) env('AIBOT_LIVE_SLIPPAGE_BPS', 50),
+
+        /*
+         * ราคาที่ได้จริงจาก DEX (รวมค่าธรรมเนียมพูล + price impact) แย่กว่าราคาตลาดที่บอทตัดสินใจ
+         * ได้ไม่เกินเท่านี้ — เกิน = ไม่เซ็น ไม่เสียแก๊ส (พูลบาง / ราคาวิ่งไปแล้ว / พูลถูกบิดราคา)
+         *
+         * ขาออกผ่อนกว่าขาเข้า: ไม่ได้เข้าไม้ = ไม่เสียอะไร แต่ออกจากไม้ไม่ได้ = ถือขาดทุนต่อ
+         * ปิดไม้ด้วยมือผ่อนที่สุด — เจ้าของเงินสั่งเองและเห็นราคาอยู่
+         */
+        'entry_max_deviation_bps' => (int) env('AIBOT_LIVE_ENTRY_DEVIATION_BPS', 120),
+        'exit_max_deviation_bps' => (int) env('AIBOT_LIVE_EXIT_DEVIATION_BPS', 300),
+        'manual_exit_max_deviation_bps' => (int) env('AIBOT_LIVE_MANUAL_EXIT_DEVIATION_BPS', 500),
+
+        // ราคาตลาดตอนจะเซ็น ห่างจากราคาที่บอทใช้ตัดสินใจได้ไม่เกินนี้ — เกิน = สัญญาณเก่าแล้ว ไม่เซ็น
+        'max_reference_drift_bps' => (int) env('AIBOT_LIVE_REFERENCE_DRIFT_BPS', 300),
+
+        // ขนาดไม้ (USDT) — ต่ำกว่าขั้นต่ำค่าแก๊สกินกำไรหมด · เพดานนี้ชนะเพดานของแพลนเสมอ
+        'min_order_usd' => (float) env('AIBOT_LIVE_MIN_ORDER_USD', 10),
+        'max_order_usd' => (float) env('AIBOT_LIVE_MAX_ORDER_USD', 500),
+
+        // คำสั่งที่ยังไม่ได้เซ็นภายในเวลานี้ถูกปิดทิ้ง (สัญญาณเก่า) · อายุของธุรกรรมบนเชนหลังเซ็น
+        'order_ttl_minutes' => (int) env('AIBOT_LIVE_ORDER_TTL_MINUTES', 10),
+        'deadline_seconds' => (int) env('AIBOT_LIVE_DEADLINE_SECONDS', 300),
+
+        // approve ล้มได้กี่ครั้งต่อหนึ่งคำสั่ง ก่อนปิดคำสั่งนั้น (กันวนเผาแก๊ส)
+        'max_approve_attempts' => 2,
+
+        // คำสั่งล่าสุดของบอทล้ม = พักกี่นาทีก่อนสั่งใหม่ (คำสั่งที่ revert เสียค่าแก๊สทุกครั้ง) · 0 = ไม่พัก
+        'retry_backoff_minutes' => (int) env('AIBOT_LIVE_RETRY_BACKOFF_MINUTES', 5),
+
+        /*
+         * สัญญาของ PancakeSwap บน BSC — ตัวเดียวกับที่หน้าเทรดใช้ (resources/js/utils/web3.js, pancakeV3.js)
+         * และที่ BscSwapVerifier ยอมรับ · อ่านจากที่นี่ที่เดียว ไม่อ่านจากแถวคำสั่งในฐานข้อมูล
+         */
+        'contracts' => [
+            'wbnb' => '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
+            'v2_router' => '0x10ED43C718714eb63d5aA57B78B54704E256024E',
+            'v3_router' => '0x13f4EA83D0bd40E75C8222255bc855a974568Dd4',
+            'v3_quoter' => '0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997',
+            'multicall3' => '0xcA11bde05977b3631167028862bE2a173976CA11',
+        ],
+
+        /*
+         * เหรียญฝั่งซ้ายของคู่ที่บอทเทรดเงินจริงได้ (ที่อยู่สัญญาอ่านจาก config/bsc_trade_tokens.php)
+         *
+         * ตั้งใจให้แคบ: เหรียญใหญ่ที่สภาพคล่องบน PancakeSwap ลึกพอสำหรับไม้ของบอท
+         * เพิ่มได้ด้วย AIBOT_LIVE_BASES=BTC,ETH,... — เหรียญที่ไม่มีในทะเบียน BSC ถูกข้าม
+         * BNB เทรดเป็น WBNB (โทเคน) เพื่อไม่ปนกับ BNB ที่กันไว้จ่ายค่าแก๊ส
+         */
+        'bases' => array_values(array_filter(array_map(
+            fn (string $s) => strtoupper(trim($s)),
+            explode(',', (string) env('AIBOT_LIVE_BASES', 'BTC,ETH,BNB,SOL,XRP,DOGE,ADA,LINK,CAKE'))
+        ))),
+    ],
+
     /* ระยะห่างขั้นต่ำระหว่างรอบคิดของบอทที่เบราว์เซอร์เป็นคนสั่ง (วินาที) */
     'browser_tick_min_seconds' => 30,
 
