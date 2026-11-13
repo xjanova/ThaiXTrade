@@ -14,6 +14,8 @@ import PageArt from '@/Components/PageArt.vue';
 import CoinIcon from '@/Components/CoinIcon.vue';
 import AiDemoPanel from '@/Components/Trading/AiDemoPanel.vue';
 import AiBotWalletPanel from '@/Components/Trading/AiBotWalletPanel.vue';
+import AiLivePortfolio from '@/Components/Trading/AiLivePortfolio.vue';
+import AiPlanPrice from '@/Components/AiTrade/AiPlanPrice.vue';
 import AiRiskPanel from '@/Components/Trading/AiRiskPanel.vue';
 import AiMarketViewPanel from '@/Components/Trading/AiMarketViewPanel.vue';
 import AiTradeTopupModal from '@/Components/AiTrade/AiTradeTopupModal.vue';
@@ -545,6 +547,36 @@ async function setState(item, action) {
     if (!result.ok) flash('error', result.error.message);
 }
 
+/** แพลนนี้ตัดเครดิตไหม — ดูจากสิ่งที่เซิร์ฟเวอร์ตัดจริง (credits_per_day) ไม่ใช่ราคา TPIX ที่ไม่ได้ใช้ตัด */
+function isPaidPlan(plan) {
+    return Number(plan?.credits_per_day) > 0;
+}
+
+/** ตัวเลขเงินในข้อความยืนยัน — ไม่มีทศนิยมถ้าเป็นจำนวนเต็ม */
+function usd(value) {
+    return Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+/**
+ * ข้อความยืนยันก่อนสลับบอทเป็นโหมดจริง (เฉพาะเมื่อบอทส่งคำสั่งเองจริง).
+ *
+ * บอกสามเรื่องที่ผู้ใช้ต้องรู้ก่อนกด: ใช้เงินจริง · ส่งคำสั่งบนเชนเองโดยไม่ถามทีละไม้ · ขาดทุนได้
+ * ขนาดคำสั่งต่อไม้ใส่เมื่อรู้ค่าจากเซิร์ฟเวอร์แล้วเท่านั้น — ไม่เดาตัวเลข
+ */
+function liveSwitchConfirmText(item) {
+    const lines = [t('aiTrade.live.switchConfirm', { name: item.name, pair: item.pair })];
+    const orderLimits = bot.live.value?.limits;
+
+    if (orderLimits && Number(orderLimits.max_order_usd) > 0) {
+        lines.push(t('aiTrade.live.switchConfirmLimits', {
+            min: usd(orderLimits.min_order_usd),
+            max: usd(orderLimits.max_order_usd),
+        }));
+    }
+
+    return lines.join('\n');
+}
+
 /** สลับบอทระหว่างโหมดทดลองกับโหมดจริง */
 async function toggleMode(item) {
     playClickSound();
@@ -557,6 +589,20 @@ async function toggleMode(item) {
         return;
     }
 
+    /*
+     * โหมดจริงที่บอทส่งคำสั่งเอง = เงินจริงออกจากกระเป๋าบอทโดยไม่ถามทีละไม้ — ต้องถามก่อนสลับ
+     * (ตอนที่โหมดจริงยังเป็นแค่สัญญาณรอยืนยัน ไม่มีเงินขยับ จึงสลับได้ทันทีเหมือนเดิม)
+     */
+    if (next === 'live' && bot.liveExecution.value) {
+        // คู่ที่ยังเทรดเงินจริงไม่ได้ — เซิร์ฟเวอร์ปฏิเสธอยู่แล้ว บอกก่อนดีกว่าถามยืนยันแล้วเด้ง
+        if (item.live_supported === false) {
+            flash('error', t('aiTrade.live.pairUnsupportedSwitch', { pair: item.pair }));
+            return;
+        }
+
+        if (!window.confirm(liveSwitchConfirmText(item))) return;
+    }
+
     const result = await bot.setBotMode(item.id, next);
 
     if (!result.ok) {
@@ -567,6 +613,8 @@ async function toggleMode(item) {
     flash('success', t('aiTrade.modeSwitched'));
     // ไม้ของโหมดใหม่คนละชุดกับโหมดเดิม — ต้องโหลดพอร์ตทดลองใหม่
     bot.loadDemo();
+    // ออกจากโหมดจริงอาจมีคำสั่งปิดไม้เข้าคิว — พอร์ตเงินจริงต้องเห็นทันที
+    if (bot.liveExecution.value) bot.loadLive({ force: true });
 }
 
 async function resetDemo() {
@@ -824,6 +872,8 @@ bot.keepBrowserBotsRunning();
                     <span class="text-primary-400 shrink-0">ℹ️</span>
                     <!-- อ่านธงจากเซิร์ฟเวอร์ — วันที่เปิดโหมดจริงจะได้ไม่ต้องไล่แก้ทุกหน้า -->
                     <span v-if="!bot.liveEnabled.value">{{ t('aiTrade.demoOnlyNotice') }}</span>
+                    <!-- บอทส่งคำสั่งเองแล้ว — ห้ามบอกว่า "ระบบส่งคำสั่งแทนไม่ได้" อีก -->
+                    <span v-else-if="bot.liveExecution.value" data-testid="live-open-notice">{{ t('aiTrade.live.openNotice') }}</span>
                     <span v-else>{{ t('aiTrade.liveOpenNotice') }}</span>
                 </p>
 
@@ -864,21 +914,11 @@ bot.keepBrowserBotsRunning();
                             {{ bot.planDescription(plan) }}
                         </p>
 
-                        <p v-if="plan.price_tpix_per_day > 0" class="text-2xl font-black font-mono text-white leading-none">
-                            {{ Number(plan.price_tpix_per_day).toLocaleString() }}
-                            <span class="text-[11px] font-normal text-dark-400">{{ t('aiTrade.tpixPerDay') }}</span>
-                        </p>
-                        <p v-else class="text-2xl font-black font-mono text-trading-green leading-none">
-                            {{ t('aiTrade.freeForever') }}
-                        </p>
-
-                        <p v-if="plan.price_tpix_per_day > 0" class="text-[11px] text-dark-500 mt-1 mb-3 font-mono">
-                            {{ t('aiTrade.totalCostTpix', {
-                                days: selectedDays,
-                                tpix: (Number(plan.price_tpix_per_day) * selectedDays).toLocaleString(),
-                            }) }}
-                        </p>
-                        <p v-else class="text-[11px] text-dark-500 mt-1 mb-3">{{ t('aiTrade.noPaymentNeeded') }}</p>
+                        <!--
+                            ราคาที่โชว์ = สิ่งที่ถูกตัดจริง (เครดิต/วัน × จำนวนวัน)
+                            เดิมโชว์ price_tpix_per_day ซึ่งไม่ใช่ยอดที่เซิร์ฟเวอร์ตัด — TPIX เป็นแค่ค่าประมาณจากเรตแพ็ก
+                        -->
+                        <AiPlanPrice :plan="plan" :days="selectedDays" :tpix-per-credit="bot.tpixPerCredit.value" />
 
                         <ul class="space-y-1.5 mb-4 flex-1">
                             <li v-for="feature in bot.planFeatures(plan)" :key="feature" class="flex gap-1.5 text-[11px] text-dark-300 leading-relaxed">
@@ -894,8 +934,8 @@ bot.keepBrowserBotsRunning();
                             @click="rent(plan.code)"
                         >
                             {{ bot.subscription.value?.plan_code === plan.code
-                                ? (plan.price_tpix_per_day > 0 ? t('aiTrade.renewFor', { days: selectedDays }) : t('aiTrade.currentPlan'))
-                                : (plan.price_tpix_per_day > 0 ? t('aiTrade.rentFor', { days: selectedDays }) : t('aiTrade.startFree')) }}
+                                ? (isPaidPlan(plan) ? t('aiTrade.renewFor', { days: selectedDays }) : t('aiTrade.currentPlan'))
+                                : (isPaidPlan(plan) ? t('aiTrade.rentFor', { days: selectedDays }) : t('aiTrade.startFree')) }}
                         </button>
                     </div>
                 </div>
@@ -1002,6 +1042,12 @@ bot.keepBrowserBotsRunning();
 
                 <!-- กระเป๋าบอท — กระเป๋าแยกสำหรับโหมดจริง (โอนเข้า / ดูยอด / ถอนกลับหาตัวเอง) -->
                 <AiBotWalletPanel />
+
+                <!--
+                    พอร์ตเงินจริง — โผล่เมื่อบอทส่งคำสั่งเองจริงแล้วเท่านั้น
+                    ตอนที่โหมดจริงยังเป็นแค่สัญญาณ ไม่มีของจริงให้ดู แผงว่างจะทำให้เข้าใจว่าบอทเทรดเงินจริงอยู่
+                -->
+                <AiLivePortfolio v-if="bot.liveExecution.value" />
             </template>
 
             <!-- ด่านความเสี่ยงยังดูได้แม้ยังไม่เชื่อมกระเป๋า (เป็นข้อมูลตลาด) -->
@@ -1054,6 +1100,13 @@ bot.keepBrowserBotsRunning();
                                         class="shrink-0 px-1.5 py-px rounded text-[9px] font-medium bg-trading-red/15 text-trading-red"
                                         :title="offlineReasonText(item)"
                                     >{{ t('aiTrade.offline') }}</span>
+                                    <!-- มีคำสั่งที่ยังรอเชนยืนยัน — ยังไม่ใช่ไม้ จึงบอกว่า "กำลังส่ง" ไม่ใช่ซื้อ/ขายแล้ว -->
+                                    <span
+                                        v-if="bot.pendingOrderFor(item.id)"
+                                        class="shrink-0 px-1.5 py-px rounded text-[9px] font-medium bg-sky-400/10 text-sky-300"
+                                        :title="t('aiTrade.live.orderInProgressHint')"
+                                        data-testid="bot-order-pending"
+                                    >{{ t('aiTrade.live.orderInProgress') }}</span>
                                 </p>
                                 <p class="text-[11px] text-dark-400 font-mono truncate">
                                     {{ item.pair }} · {{ bot.strategyLabel(item) }} · {{ item.timeframe }} ·
@@ -1066,11 +1119,20 @@ bot.keepBrowserBotsRunning();
                                 <p v-else-if="bot.isStale(item)" class="text-[11px] text-amber-300 mt-0.5">
                                     {{ t('aiTrade.botStale', { n: bot.minutesSinceRun(item) }) }}
                                 </p>
+                                <!-- อยู่โหมดจริงแต่คู่นี้เทรดเงินจริงไม่ได้ — ไม่บอก ผู้ใช้จะรอคำสั่งที่ไม่มีวันถูกส่ง -->
+                                <p
+                                    v-if="bot.liveExecution.value && item.mode === 'live' && item.live_supported === false"
+                                    class="text-[11px] text-amber-300 mt-0.5"
+                                    data-testid="bot-live-unsupported"
+                                >
+                                    {{ t('aiTrade.live.pairUnsupported', { pair: item.pair }) }}
+                                </p>
 
                                 <!-- บอทกำลังคิดอะไรอยู่ — ผู้ใช้ต้องเห็นเหตุผล ไม่ใช่แค่ไฟกะพริบ -->
                                 <p v-if="item.last_reason" class="text-[11px] text-dark-500 truncate mt-0.5">
+                                    <!-- "รอคุณยืนยัน" เป็นคำของโหมดสัญญาณ — เมื่อบอทส่งคำสั่งเองแล้ว ไม่มีอะไรให้ผู้ใช้ยืนยัน -->
                                     <span
-                                        v-if="item.last_reason.startsWith('[รอยืนยัน]')"
+                                        v-if="!bot.liveExecution.value && item.last_reason.startsWith('[รอยืนยัน]')"
                                         class="text-primary-300 font-medium"
                                     >{{ t('aiTrade.awaitingConfirm') }} · </span>{{ item.last_reason.replace('[รอยืนยัน] ', '') }}
                                 </p>
@@ -1094,6 +1156,7 @@ bot.keepBrowserBotsRunning();
                                     ? t('aiTrade.switchToDemo')
                                     : (bot.liveEnabled.value ? t('aiTrade.switchToLive') : t('aiTrade.liveComingSoon'))"
                                 :disabled="bot.isWorking.value || (item.mode !== 'live' && !bot.liveEnabled.value)"
+                                data-testid="bot-mode-toggle"
                                 @click="toggleMode(item)"
                             >
                                 {{ item.mode === 'live' ? t('aiTrade.modeLiveShort') : t('aiTrade.modeDemoShort') }}
