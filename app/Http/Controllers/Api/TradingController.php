@@ -12,11 +12,13 @@ use App\Models\Transaction;
 use App\Services\ChainResolver;
 use App\Services\FeeCalculationService;
 use App\Services\OrderMatchingService;
+use App\Services\Trading\LimitOrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use RuntimeException;
 
 class TradingController extends Controller
 {
@@ -24,6 +26,7 @@ class TradingController extends Controller
         private FeeCalculationService $feeCalculationService,
         private OrderMatchingService $orderMatchingService,
         private ChainResolver $chains,
+        private LimitOrderService $limitOrders,
     ) {}
 
     /**
@@ -359,6 +362,31 @@ class TradingController extends Controller
             ], 422);
         }
 
+        /*
+         * คำสั่งตั้งราคา (limit order ของคู่บนเชน) — ตารางคำสั่งที่เปิดอยู่รวมไว้ในรายการเดียวกัน
+         * ปุ่มยกเลิกเดิมของหน้าเว็บ/แอปจึงต้องยกเลิกได้จากปลายทางนี้ด้วย
+         */
+        try {
+            $limit = $this->limitOrders->cancel((string) $walletAddress, $orderId);
+
+            return response()->json([
+                'success' => true,
+                'data' => ['order_id' => $limit->uuid, 'status' => $limit->status],
+            ]);
+        } catch (RuntimeException $e) {
+            // ส่งธุรกรรมไปแล้ว/ปิดไปแล้ว = ยกเลิกไม่ได้ ตอบแบบเดียวกับ "ไม่ได้เปิดอยู่" ของคำสั่งชนิดอื่น
+            if ($e->getMessage() === LimitOrderService::ERR_NOT_OPEN) {
+                return response()->json([
+                    'success' => false,
+                    'error' => ['code' => 'ORDER_NOT_FOUND', 'message' => 'Order not found or already completed.'],
+                ], 404);
+            }
+            // ไม่ใช่คำสั่งตั้งราคา — ไล่ต่อไปยังคำสั่งชนิดเดิม
+            if ($e->getMessage() !== LimitOrderService::ERR_NOT_FOUND) {
+                throw $e;
+            }
+        }
+
         // Try internal order first (รวม 'triggered' สำหรับ stop-limit ที่ยังไม่ถูก activate)
         $order = Order::where('uuid', $orderId)
             ->where('wallet_address', strtolower($walletAddress))
@@ -458,9 +486,14 @@ class TradingController extends Controller
                 'created_at' => $tx->created_at->toIso8601String(),
             ]);
 
+        // คำสั่งตั้งราคาของคู่บนเชน (รอราคา + ยืนยันในกระเป๋าแล้วรอผล)
+        $limitOrders = $this->limitOrders->activeFor($walletAddress)
+            ->map(fn ($order) => $this->limitOrders->present($order));
+
         // toBase() ก่อนรวม — กับดักเดียวกับ getHistory (Eloquent::merge เรียก getKey() กับ array → 500)
         $allOrders = $internalOrders->toBase()
             ->concat($legacyOrders->toBase())
+            ->concat($limitOrders->toBase())
             ->sortByDesc('created_at')
             ->values();
 

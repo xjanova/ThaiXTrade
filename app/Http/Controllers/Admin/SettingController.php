@@ -476,6 +476,19 @@ class SettingController extends Controller
     {
         $rules = array_fill_keys(MoneySettings::WALLET_KEYS[$tab] ?? [], ['nullable', new EvmAddress()]);
 
+        /*
+         * อัตราค่าธรรมเนียมเทรด — ต้องเป็นตัวเลขในช่วงที่มีความหมายเท่านั้น
+         *
+         * ⚠️ เดิมไม่ตรวจเลย: ลบช่อง "เพดานอัตรา" ทิ้งแล้วกดบันทึก = เก็บค่าว่าง → อ่านกลับเป็น 0
+         *    → ค่าธรรมเนียมทุกไม้ถูกกดเหลือ 0 เงียบๆ · ใส่ค่าติดลบ = หน้าเว็บปฏิเสธทุกใบเสนอราคา (เทรดไม่ได้ทั้งเว็บ)
+         * `sometimes` — ฟอร์มที่ไม่ได้ส่งช่องนี้มา (เช่น สคริปต์ที่แก้แค่กระเป๋า) ไม่ถูกบังคับ
+         * อัตราปริยาย 0 ได้ (ตั้งใจเทรดฟรี) · เพดานต้องมากกว่า 0
+         */
+        if ($tab === 'trading') {
+            $rules['default_fee_rate'] = ['sometimes', 'required', 'numeric', 'min:0', 'max:50'];
+            $rules['max_fee_rate'] = ['sometimes', 'required', 'numeric', 'gt:0', 'max:50'];
+        }
+
         if ($tab === 'payment') {
             $liveKeyOnly = function (string $attribute, mixed $value, Closure $fail): void {
                 if (app()->isProduction() && is_string($value) && StripePaymentService::isTestKey($value)) {

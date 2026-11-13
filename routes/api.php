@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\FoodPassportApiController;
 use App\Http\Controllers\Api\InfraAlertController;
 use App\Http\Controllers\Api\KycApiController;
 use App\Http\Controllers\Api\LaunchpadApiController;
+use App\Http\Controllers\Api\LimitOrderController;
 use App\Http\Controllers\Api\MarketController;
 use App\Http\Controllers\Api\MasternodeLiveNodesController;
 use App\Http\Controllers\Api\NodeHeartbeatController;
@@ -479,6 +480,18 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::get('/order/{orderId}', [TradingController::class, 'getOrder']);
         Route::get('/history', [TradingController::class, 'getHistory']);
         Route::get('/fee-info', [TradingController::class, 'getFeeInfo']);
+
+        /*
+         * คำสั่งตั้งราคา (limit order) ของคู่ที่เทรดบนเชนจริง
+         *
+         * เซิร์ฟเวอร์เก็บคำสั่งและตัดสินผลจากเชน — ไม่ถือเหรียญ ไม่ส่งธุรกรรมแทนผู้ใช้
+         * ราคาถึง → หน้าเทรด/แอปให้เจ้าของยืนยัน แล้วส่งไม้ที่ล็อก minOut ตามราคาที่ตั้ง
+         * สร้างคำสั่งอยู่หลังด่าน KYC เดียวกับการลงไม้ (kyc:trading) · อ่าน/ยกเลิกไม่ติดด่าน
+         */
+        Route::get('/limit-orders', [LimitOrderController::class, 'index']);
+        Route::post('/limit-orders', [LimitOrderController::class, 'store'])->middleware('kyc:trading');
+        Route::post('/limit-orders/{uuid}/submitted', [LimitOrderController::class, 'submitted'])->whereUuid('uuid');
+        Route::delete('/limit-orders/{uuid}', [LimitOrderController::class, 'destroy'])->whereUuid('uuid');
     });
 
     // Wallet Operations (requires verified wallet)

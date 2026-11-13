@@ -113,6 +113,102 @@ export function useTradingFee() {
     }
 
     /**
+     * ใบเสนอราคา "สด" ของไม้ที่กำลังจะส่ง — ใช้ตัดสินทางจ่ายค่าบริการตอนกดส่งจริง
+     *
+     * ต่างจาก quote(): ล้มเหลว = null (ไม่คืนของเก่า) และไม่แตะ currentQuote ของฟอร์ม
+     * ⚠️ เดิมตอนกดส่งอ่าน currentQuote ซึ่ง quote() "ปล่อยค่าเดิมไว้เมื่อเรียกไม่สำเร็จ"
+     *    = ใบเสนอราคาของไม้อื่น/คู่อื่น/เชนอื่นถูกใช้ตัดสินไม้นี้ได้ และถ้าตารางขั้นโหลดไม่ขึ้น
+     *    ระบบถูกมองว่า "ปิด" แล้วไม้บน TPIX Chain ออกไปโดยไม่เก็บค่าบริการ (fail-open)
+     *
+     * @returns {Promise<object|null>} null = ถามไม่สำเร็จ — ผู้เรียกต้องไม่ส่งไม้
+     */
+    async function freshQuote({ wallet, orderValueUsd, chainId, pair }) {
+        if (!(orderValueUsd > 0)) return null;
+
+        try {
+            const { data } = await axios.post('/api/v1/trading-fee/quote', {
+                wallet_address: wallet || undefined,
+                order_value_usd: orderValueUsd,
+                chain_id: chainId,
+                pair: pair || undefined,
+            });
+
+            return data?.success === true && data.data ? data.data : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * ไม้นี้ต้องจ่ายค่าวางไม้ด้วยเครดิต TPIX เท่านั้นไหม — เซิร์ฟเวอร์ปิดทาง "จ่ายเป็นเหรียญ"
+     * (บน TPIX Chain ทุกไม้ต้องมีใบอนุญาตที่หักจากเครดิต · เจ้าของสั่ง 2026-11-13)
+     */
+    function isCreditOnly(feeQuote) {
+        return feeQuote?.enabled === true && feeQuote.waived !== true && feeQuote.onchain?.available === false;
+    }
+
+    function feeError(code, message, feeQuote = null) {
+        const err = new Error(message);
+        err.isFriendly = true;
+        err.feeCode = code;
+        err.feeQuote = feeQuote;
+
+        return err;
+    }
+
+    /**
+     * ส่งไม้ภายใต้กติกาค่าวางไม้ของเชนนั้น — สำหรับหน้าที่ไม่มีฟอร์มเลือกทางจ่าย (หน้า Swap บน TPIX Chain)
+     *
+     * ไม้ที่ต้องมีใบอนุญาต: ขอใบ (หักเครดิต) → ส่ง → ผูกกับธุรกรรมทันทีที่ออกจากกระเป๋า → ปิดใบเมื่อไม้ลง
+     * ไม้ไม่ได้ออกจากกระเป๋า (ผู้ใช้กดยกเลิก / ราคาไม่ผ่าน) → คืนค่าบริการ
+     * ธุรกรรมออกไปแล้วแต่ยังไม่รู้ผล → ไม่คืนเอง ให้เซิร์ฟเวอร์ตัดสินจากเชน (ใบถูกผูก hash ไว้แล้ว)
+     *
+     * @param {object}   order  { wallet, pair, side, orderValueUsd, chainId }
+     * @param {Function} send   ({ onSent }) => Promise — ต้องเรียก onSent(hash) เมื่อธุรกรรมออกจากกระเป๋า
+     * @throws Error ที่มี feeCode: 'FEE_QUOTE_FAILED' | 'CREDIT_REQUIRED' | 'TICKET_FAILED' (isFriendly = true)
+     */
+    async function sendWithTicket({ wallet, pair, side, orderValueUsd, chainId }, send) {
+        const feeQuote = await freshQuote({ wallet, orderValueUsd, chainId, pair });
+        if (!feeQuote) throw feeError('FEE_QUOTE_FAILED', t('trade.status.feeQuoteFailed'));
+
+        if (!isCreditOnly(feeQuote)) return send({ onSent: null });
+
+        if (feeQuote.can_place === false) {
+            throw feeError('CREDIT_REQUIRED', feeQuote.reason || t('trade.status.creditRequired'), feeQuote);
+        }
+
+        const ticket = await issueTicket({ wallet, pair, side, orderValueUsd, chainId, method: 'tpix_credit' });
+        if (!ticket) throw feeError('TICKET_FAILED', error.value || t('trade.status.ticketFailed'), feeQuote);
+
+        let bindPromise = null;
+        let sentHash = null;
+        const onSent = (hash) => {
+            sentHash = hash;
+            bindPromise = bindTicket(wallet, ticket.uuid, hash);
+        };
+
+        try {
+            const result = await send({ onSent });
+            await bindPromise;
+            await consumeTicket(wallet, ticket.uuid, result?.hash || sentHash || null);
+
+            return result;
+        } catch (err) {
+            const bound = await bindPromise;
+            const hash = err?.txHash || sentHash;
+
+            if (err?.txSent || hash) {
+                // ธุรกรรมออกไปแล้ว — ผูกไว้ให้เซิร์ฟเวอร์ตัดสินจากเชน (ลง = ปิดใบ · ไม่ลง = คืน)
+                if (!bound && hash) await bindTicket(wallet, ticket.uuid, hash);
+            } else {
+                await refundTicket(wallet, ticket.uuid, 'ไม้ไม่ได้ลง');
+            }
+
+            throw err;
+        }
+    }
+
+    /**
      * ขอใบอนุญาตวางไม้ — เงินออกจากคลังตรงนี้
      *
      * ต้องได้ใบอนุญาตก่อนเสมอ ไม่มีใบ = ห้ามปล่อยให้เซ็นธุรกรรมของไม้
@@ -293,7 +389,7 @@ export function useTradingFee() {
         // derived
         recommended, canPayWithCredit, creditShortfall, feeWaived,
         // actions
-        loadTiers, loadBalance, quote, waiverFor,
+        loadTiers, loadBalance, quote, freshQuote, isCreditOnly, sendWithTicket, waiverFor,
         issueTicket, bindTicket, consumeTicket, refundTicket, confirmTopup,
     };
 }

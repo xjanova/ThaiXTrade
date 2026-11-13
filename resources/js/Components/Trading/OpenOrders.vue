@@ -20,7 +20,15 @@ import { showToast } from '@/Composables/useToasts';
 const props = defineProps({
     /** คู่ที่เปิดอยู่ในหน้าเทรด (เช่น 'BTC/USDT') — null = ไม่มีบริบทคู่ ซ่อนช่อง "ซ่อนคู่อื่น" */
     currentPair: { type: String, default: null },
+    /** หน้าเทรดเพิ่มค่านี้เมื่อรายการคำสั่งเปลี่ยน (ตั้งคำสั่งใหม่ / ไม้ของคำสั่งลงแล้ว) → โหลดใหม่ */
+    refreshKey: { type: Number, default: 0 },
+    /** id ของคำสั่งตั้งราคาที่ราคาถึงแล้ว — โชว์ปุ่มยืนยันในแถว */
+    readyIds: { type: Array, default: () => [] },
+    /** หน้าเทรดกำลังส่งไม้อยู่ — ปิดปุ่มยืนยันกันกดซ้อน */
+    busy: { type: Boolean, default: false },
 });
+
+const emit = defineEmits(['execute', 'changed']);
 
 const walletStore = useWalletStore();
 const { t, locale } = useTranslation();
@@ -118,7 +126,22 @@ function normalizeOrder(raw, index) {
         filledLabel: `${filledPct.toFixed(filledPct > 0 && filledPct < 1 ? 2 : 0)}%`,
         total: formatTotal(total),
         createdAt: raw?.created_at ?? null,
+        // คำสั่งตั้งราคาของคู่บนเชน: รอราคา (open) / ยืนยันในกระเป๋าแล้วรอผลบนเชน (submitted)
+        isLimit: raw?.source === 'limit',
+        status: String(raw?.status ?? ''),
     };
+}
+
+/** ป้ายสถานะของคำสั่งตั้งราคา — ถึงราคาแล้ว / รอราคา / รอผลบนเชน */
+function limitStatusKey(order) {
+    if (order.status === 'submitted') return 'submitted';
+
+    return props.readyIds.includes(order.id) ? 'ready' : 'waiting';
+}
+
+/** ส่งธุรกรรมไปแล้ว = ยกเลิกไม่ได้ ผลบนเชนเป็นตัวตัดสิน */
+function canCancel(order) {
+    return !!order.id && !(order.isLimit && order.status === 'submitted');
 }
 
 const rows = computed(() => orders.value.map(o => ({ ...o, time: formatTime(o.createdAt) })));
@@ -226,6 +249,8 @@ async function requestCancel(order) {
             data: { wallet_address: walletStore.address },
         });
         removeOrder(order.id);
+        // หน้าเทรดเฝ้าราคาของคำสั่งตั้งราคาอยู่ — ยกเลิกแล้วต้องเลิกเฝ้าทันที
+        if (order.isLimit) emit('changed');
         return 'ok';
     } catch (err) {
         const status = err?.response?.status;
@@ -269,7 +294,7 @@ async function cancelOrder(order) {
 async function cancelAll() {
     if (isCancellingAll.value || cancellingIds.value.length) return;
 
-    const targets = visibleRows.value.filter(o => o.id);
+    const targets = visibleRows.value.filter(canCancel);
     if (!targets.length) return;
 
     if (!window.confirm(t('history.orders.confirmCancelAll', { count: targets.length }))) return;
@@ -309,6 +334,9 @@ async function cancelAll() {
 }
 
 onMounted(fetchOrders);
+
+// หน้าเทรดแจ้งว่ารายการเปลี่ยน (ตั้งคำสั่งใหม่ / ไม้ของคำสั่งตั้งราคาลงแล้ว)
+watch(() => props.refreshKey, () => fetchOrders());
 
 // สลับกระเป๋า/ตัดการเชื่อมต่อ — ล้างของใบเดิมทันที ห้ามค้างให้เห็นระหว่างรอโหลดของใบใหม่
 watch(() => walletStore.address, (address, previous) => {
@@ -421,7 +449,21 @@ watch(() => walletStore.address, (address, previous) => {
                         <tr v-for="order in visibleRows" :key="order.key" data-test="orders-row">
                             <td class="font-mono text-dark-400 whitespace-nowrap">{{ order.time }}</td>
                             <td class="font-medium text-white whitespace-nowrap">{{ order.pair }}</td>
-                            <td class="text-dark-300">{{ order.type }}</td>
+                            <td class="text-dark-300">
+                                {{ order.type }}
+                                <span
+                                    v-if="order.isLimit"
+                                    data-test="orders-limit-status"
+                                    :class="[
+                                        'ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap',
+                                        limitStatusKey(order) === 'ready' ? 'bg-primary-500/20 text-primary-300'
+                                        : limitStatusKey(order) === 'submitted' ? 'bg-amber-500/20 text-amber-300'
+                                        : 'bg-white/5 text-dark-300'
+                                    ]"
+                                >
+                                    {{ t(`history.orders.limitStatus.${limitStatusKey(order)}`) }}
+                                </span>
+                            </td>
                             <td>
                                 <span
                                     v-if="order.side"
@@ -448,9 +490,20 @@ watch(() => walletStore.address, (address, previous) => {
                                 </div>
                             </td>
                             <td class="font-mono text-white whitespace-nowrap">{{ order.total }}</td>
-                            <td>
+                            <td class="whitespace-nowrap">
+                                <!-- ราคาถึงแล้ว — ยืนยันเพื่อส่งไม้ (หน้าเทรดเป็นคนส่ง) -->
                                 <button
-                                    v-if="order.id"
+                                    v-if="order.isLimit && limitStatusKey(order) === 'ready'"
+                                    type="button"
+                                    data-test="orders-execute"
+                                    :disabled="busy"
+                                    class="mr-3 text-primary-300 hover:text-primary-200 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                    @click="emit('execute', order.id)"
+                                >
+                                    {{ t('history.orders.execute') }}
+                                </button>
+                                <button
+                                    v-if="canCancel(order)"
                                     type="button"
                                     data-test="orders-cancel"
                                     :disabled="isCancelling(order.id)"

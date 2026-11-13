@@ -111,15 +111,94 @@ describe('TradeForm Component', () => {
 
     // ── โหมด onchain: market order จริงบน BSC ─────────────────────────────
 
-    it('onchain mode defaults to market and disables limit', () => {
+    it('onchain mode defaults to market but limit can be selected', () => {
         const wrapper = mount(TradeForm, {
             props: { ...defaultProps, mode: 'onchain' },
         });
 
-        const limitButton = wrapper.findAll('button').find(btn => btn.text().includes('Limit'));
-        expect(limitButton.attributes('disabled')).toBeDefined();
-        // ช่อง Price ต้องอยู่โหมด Market (disabled + placeholder Market Price)
+        const limitButton = wrapper.find('[data-test="order-type-limit"]');
+        // เดิมแท็บนี้ถูกปิดพร้อมป้าย "Soon" — ตอนนี้ต้องกดได้
+        expect(limitButton.attributes('disabled')).toBeUndefined();
+        expect(limitButton.text()).not.toContain('Soon');
+        // เริ่มที่ Market: ช่อง Price ถูกปิด (placeholder Market Price) และยังไม่มีส่วนของคำสั่งตั้งราคา
         expect(wrapper.find('input[placeholder="Market Price"]').exists()).toBe(true);
+        expect(wrapper.find('[data-test="limit-note"]').exists()).toBe(false);
+    });
+
+    // ── โหมด onchain: คำสั่งตั้งราคา (limit) ──────────────────────────────
+
+    async function limitForm(extraProps = {}) {
+        const wrapper = mount(TradeForm, {
+            props: {
+                ...defaultProps,
+                mode: 'onchain',
+                isWalletConnected: true,
+                balances: [{ symbol: 'USDT', balance: '5000' }, { symbol: 'BTC', balance: '1' }],
+                ...extraProps,
+            },
+        });
+        await wrapper.find('[data-test="order-type-limit"]').trigger('click');
+
+        return wrapper;
+    }
+
+    async function fill(wrapper, { price, amount, total }) {
+        const [priceInput, amountInput, totalInput] = wrapper.findAll('input[type="text"]');
+        if (price !== undefined) {
+            await priceInput.setValue(price);
+        }
+        if (amount !== undefined) {
+            await amountInput.setValue(amount);
+            await amountInput.trigger('input');
+        }
+        if (total !== undefined) {
+            await totalInput.setValue(total);
+            await totalInput.trigger('input');
+        }
+    }
+
+    it('limit order on an onchain pair unlocks the price field and explains how it executes', async () => {
+        const wrapper = await limitForm();
+
+        expect(wrapper.find('input[placeholder="Market Price"]').exists()).toBe(false);
+        expect(wrapper.findAll('input[type="text"]')[0].attributes('disabled')).toBeUndefined();
+        expect(wrapper.find('[data-test="limit-note"]').text()).toContain('Keep the trade page or the app open');
+        expect(wrapper.find('[data-test="limit-expiry"]').text()).toContain('7d');
+        expect(wrapper.find('[data-test="submit-order"]').text()).toContain('Place buy order for BTC');
+    });
+
+    it('limit buy shows the minimum received at the limit price and submits the limit payload', async () => {
+        const wrapper = await limitForm();
+        await fill(wrapper, { price: '50000', total: '100' });
+
+        // 100 USDT ÷ 50,000 = 0.002 BTC — ตัวเลขเดียวกับที่ส่งเป็น minOut บนเชนตอนราคาถึง
+        expect(wrapper.find('[data-test="limit-note"]').text()).toContain('0.002 BTC');
+
+        await wrapper.findAll('[data-test="limit-expiry"] button').find(b => b.text() === '30d').trigger('click');
+        await wrapper.find('[data-test="submit-order"]').trigger('click');
+
+        const [order] = wrapper.emitted('submit-order')[0];
+        expect(order).toMatchObject({ side: 'buy', type: 'limit', price: '50000', total: '100', expiresInDays: 30 });
+    });
+
+    it('limit sell uses amount × limit price, not the live ticker', async () => {
+        const wrapper = await limitForm();
+        await wrapper.findAll('button').find(btn => btn.text() === 'Sell').trigger('click');
+        await fill(wrapper, { price: '70000', amount: '0.5' });
+
+        // ราคาตลาด 67,234.50 — คำสั่งตั้งราคาต้องคิดจากราคาที่ตั้ง (70,000 × 0.5 = 35,000)
+        expect(wrapper.find('[data-test="limit-note"]').text()).toContain('35,000.00 USDT');
+        expect(wrapper.find('[data-test="submit-order"]').text()).toContain('Place sell order for BTC');
+    });
+
+    it('limit order is still blocked when the balance cannot cover it', async () => {
+        const wrapper = await limitForm({ balances: [{ symbol: 'USDT', balance: '50' }] });
+        await fill(wrapper, { price: '50000', total: '100' });
+
+        const submit = wrapper.find('[data-test="submit-order"]');
+        expect(submit.attributes('disabled')).toBeDefined();
+        await submit.trigger('click');
+        expect(wrapper.emitted('submit-order')).toBeUndefined();
     });
 
     it('onchain mode hides TP/SL options', () => {

@@ -34,7 +34,8 @@ import RowSplitter from '@/Components/Trading/RowSplitter.vue';
 import RowResizer from '@/Components/Trading/RowResizer.vue';
 import PageArt from '@/Components/PageArt.vue';
 import { useBinanceData } from '@/Composables/useBinanceData';
-import { useSwap, BSC_PRICE_IMPACT_BLOCK_PCT } from '@/Composables/useSwap';
+import { useSwap, BSC_PRICE_IMPACT_BLOCK_PCT, toUnits, toDecimalString } from '@/Composables/useSwap';
+import { useLimitOrders, isLimitPriceReached, limitPairKey } from '@/Composables/useLimitOrders';
 import { useTpixDex, toDexAddress } from '@/Composables/useTpixDex';
 import { loadDexConfig, isDexConfigured } from '@/Config/dexContracts';
 import { useTradingFee } from '@/Composables/useTradingFee';
@@ -891,6 +892,7 @@ async function verifyForFunds() {
 const swap = useSwap();
 const dex = useTpixDex();
 const tradingFee = useTradingFee();
+const limitOrders = useLimitOrders();
 
 // ── เทรดจริงบน BSC (market order → PancakeSwap) ─────────────────────────────
 
@@ -1135,6 +1137,11 @@ const handleSubmitOrder = async (order) => {
     }
 
     if (tradeFormMode.value === 'onchain') {
+        // คำสั่งตั้งราคา — เก็บไว้ที่เซิร์ฟเวอร์ ยังไม่มีเหรียญออกจากกระเป๋า (ส่งไม้ตอนราคาถึงแล้วยืนยัน)
+        if (order.type === 'limit') {
+            await placeLimitOrder(order);
+            return;
+        }
         if (isDexPair.value) {
             await executeDexMarketOrder(order);
         } else {
@@ -1145,6 +1152,195 @@ const handleSubmitOrder = async (order) => {
 
     await submitInternalOrder(order);
 };
+
+/*
+ * ═══════════════════════════════════════════════════════════════════════════
+ * คำสั่งตั้งราคา (limit order) ของคู่บนเชน
+ * ═══════════════════════════════════════════════════════════════════════════
+ * AMM ไม่มีสมุดคำสั่ง — คำสั่งตั้งราคาคือ "คำสั่งรอราคา" (ดู useLimitOrders.js)
+ *   ตั้ง     → เก็บที่เซิร์ฟเวอร์ โผล่ในตาราง "คำสั่งที่เปิดอยู่"
+ *   ราคาถึง → แถบแจ้งเหนือฟอร์ม + ปุ่มยืนยัน (ต้องมีคนกด: เราไม่ถือเหรียญและไม่เซ็นแทน)
+ *   ยืนยัน  → ไม้ราคาตลาดตัวเดิม แต่ minOut = "ได้รับอย่างน้อย" ของคำสั่ง
+ *             ราคาจริงจาก router แย่กว่าที่ตั้ง = ไม่ส่ง · ส่งแล้วราคาขยับ = revert บนเชน
+ */
+
+/** เพิ่มค่าทุกครั้งที่รายการคำสั่งเปลี่ยน — ตาราง "คำสั่งที่เปิดอยู่" โหลดใหม่ตาม */
+const ordersRefreshKey = ref(0);
+
+function reloadLimitOrders() {
+    ordersRefreshKey.value++;
+    return limitOrders.load(walletStore.address);
+}
+
+/** คำสั่งของคู่ที่เปิดอยู่ ที่ราคาตลาดถึงราคาที่ตั้งแล้ว (เผื่อค่าธรรมเนียมแล้ว) และยังไม่ได้ส่งธุรกรรม */
+const readyLimitOrders = computed(() => {
+    const marketPrice = Number(ticker.value?.price || ticker.value?.lastPrice || 0);
+    if (!(marketPrice > 0) || tradeFormMode.value !== 'onchain') return [];
+
+    const pairKey = limitPairKey(props.pair);
+
+    return limitOrders.orders.value.filter(o => o.status === 'open'
+        && limitPairKey(o.pair) === pairKey
+        && Number(o.network_chain_id) === tradeChainId.value
+        && !limitOrders.hasPendingSubmit(o.id)
+        && isLimitPriceReached(o, marketPrice));
+});
+
+const readyLimitIds = computed(() => readyLimitOrders.value.map(o => o.id));
+
+// ราคาเพิ่งถึง → ส่งเสียงครั้งเดียวต่อคำสั่ง (ไม่ดังซ้ำทุก tick ของราคา)
+const announcedLimitIds = new Set();
+watch(readyLimitIds, (ids) => {
+    const fresh = ids.filter(id => !announcedLimitIds.has(id));
+    if (!fresh.length) return;
+    fresh.forEach(id => announcedLimitIds.add(id));
+    playTradeSound();
+    showToast({ text: t('trade.status.limitReached', { count: ids.length }), type: 'info' });
+});
+
+async function placeLimitOrder(order) {
+    const priceText = toDecimalString(order.price);
+    // ซื้อ: ยอดที่จ่าย (มูลค่ารวม) · ขาย: จำนวนเหรียญที่ขาย — แบบเดียวกับไม้ราคาตลาด
+    const amountText = toDecimalString(orderInputText(order));
+
+    if (!priceText || !(Number(priceText) > 0)) {
+        showOrderError(t('trade.status.limitNeedPrice'));
+        return;
+    }
+    if (!amountText || !(Number(amountText) > 0)) {
+        showOrderError(t('trade.enterAmount'));
+        return;
+    }
+    if (tradeUnavailableReason.value) {
+        showOrderError(tradeUnavailableReason.value);
+        return;
+    }
+
+    clearTimeout(toastTimer);
+    isSubmitting.value = true;
+    orderStatus.value = 'executing';
+    orderMessage.value = t('trade.status.preparing');
+    orderTxUrl.value = null;
+
+    const owner = walletStore.address;
+    const payload = {
+        pair: props.pair,
+        side: order.side,
+        price: priceText,
+        amount: amountText,
+        slippage: order.slippage ?? null,
+        fee_method: order.feeMethod || null,
+        expires_in_days: order.expiresInDays || null,
+    };
+
+    try {
+        let result = await limitOrders.place(owner, payload);
+
+        // ลายเซ็นกระเป๋าหมดอายุ (4 ชม.) — เซ็นยืนยันใหม่แล้วลองอีกครั้งเดียว
+        if (!result.ok && result.reason === 'verify') {
+            const hasSigner = await walletStore.verifyOwnership().catch(() => false);
+            if (hasSigner && isSameWallet(owner)) result = await limitOrders.place(owner, payload);
+        }
+
+        if (!result.ok) {
+            if (result.reason === 'kyc') {
+                router.visit('/kyc');
+                return;
+            }
+            orderStatus.value = 'error';
+            orderMessage.value = result.reason === 'server' && result.message
+                ? result.message
+                : result.reason === 'verify' ? t('trade.status.limitNeedVerify') : t('trade.status.limitFailed');
+            playErrorSound();
+            return;
+        }
+
+        orderStatus.value = 'success';
+        orderMessage.value = t('trade.status.limitPlaced', {
+            side: t(`history.side.${order.side}`),
+            symbol: baseSymbol.value,
+            price: result.order.price,
+        });
+        activeTab.value = 'openOrders';
+        ordersRefreshKey.value++;
+        playTradeSound();
+    } finally {
+        isSubmitting.value = false;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { orderStatus.value = null; orderMessage.value = ''; }, 5000);
+    }
+}
+
+/**
+ * ราคาถึงแล้ว เจ้าของกดยืนยัน — ส่งเป็นไม้ราคาตลาดที่ล็อก "ได้รับอย่างน้อย" ของคำสั่ง
+ * รับได้ทั้งแถวจากรายการที่เฝ้าอยู่ และ id จากปุ่มในตารางคำสั่ง
+ */
+async function executeLimitOrder(target) {
+    if (isSubmitting.value) return;
+
+    const id = typeof target === 'object' ? target?.id : target;
+    const row = limitOrders.orders.value.find(o => o.id === id);
+    // คำสั่งถูกยกเลิก/ปิดไปจากอีกแท็บ หรือส่งธุรกรรมไปแล้ว — ไม่ส่งซ้ำ
+    if (!row || row.status !== 'open' || limitOrders.hasPendingSubmit(row.id)) {
+        await reloadLimitOrders();
+        return;
+    }
+    if (limitPairKey(row.pair) !== limitPairKey(props.pair)) {
+        router.visit(`/trade/${limitPairKey(row.pair)}`);
+        return;
+    }
+    if (kycBlocked.value) {
+        router.visit('/kyc');
+        return;
+    }
+
+    const order = {
+        type: 'market',
+        side: row.side,
+        amount: row.amount,
+        total: row.total,
+        slippage: row.slippage ?? null,
+        feeMethod: row.fee_method || tradingFee.recommended.value || 'onchain',
+        orderValueUsd: Number(row.total) > 0 ? Number(row.total) : 0,
+        limit: { id: row.id, minReceive: row.min_receive },
+    };
+
+    if (isDexPair.value) await executeDexMarketOrder(order);
+    else await executeBscMarketOrder(order);
+
+    await reloadLimitOrders();
+}
+
+/**
+ * ด่านราคาของคำสั่งตั้งราคา — ราคาจริงจาก router ต้องให้ไม่น้อยกว่า "ได้รับอย่างน้อย" ของคำสั่ง
+ * คืน minOut (หน่วยเล็กสุด) ที่ต้องบังคับบนเชน · ไม้ราคาตลาดปกติคืน null
+ */
+function limitFloorFor(order, quote, toTok) {
+    if (!order.limit) return null;
+
+    const floor = toUnits(order.limit.minReceive, toTok.decimals);
+    // อ่านตัวเลขของคำสั่งไม่ได้ = ไม่มีการคุ้มครองราคา ห้ามส่ง
+    if (typeof floor !== 'bigint' || floor <= 0n || typeof quote.rawAmountOut !== 'bigint') {
+        throw friendly(t('trade.status.limitFailed'));
+    }
+    if (quote.rawAmountOut < floor) {
+        throw friendly(t('trade.status.limitNotReached', {
+            receive: fmtQty(quote.netOutput),
+            min: order.limit.minReceive,
+            symbol: toTok.symbol,
+        }));
+    }
+
+    return floor;
+}
+
+/** minOut ที่เข้มกว่าระหว่าง "ที่เห็นในพรีวิว" กับ "ของคำสั่งตั้งราคา" */
+function strictestFloor(a, b) {
+    if (typeof a !== 'bigint') return typeof b === 'bigint' ? b : null;
+    if (typeof b !== 'bigint') return a;
+
+    return a > b ? a : b;
+}
 
 /**
  * แสดง toast error สั้นๆ ของฟอร์มเทรด
@@ -1169,22 +1365,35 @@ function showOrderError(message) {
  *    ใช้ทั้งไม้ BSC และไม้บนพูล TPIX (เดิมฝั่ง TPIX อ่าน currentQuote ตรงๆ = ไม่มีใบเสนอราคาก็วางไม้ฟรี · ออดิท L2)
  */
 async function resolveFeePlan(order, owner, orderValueUsd, chainId = BSC_CHAIN_ID) {
-    let feeQuote = tradingFee.currentQuote.value;
+    if (!(orderValueUsd > 0)) return { mode: 'none' };
 
-    if (!feeQuote) {
-        await tradingFee.loadTiers();
-        if (tradingFee.feeEnabled.value === true && orderValueUsd > 0) {
-            feeQuote = await tradingFee.quote({
-                wallet: owner,
-                orderValueUsd,
-                chainId,
-                pair: currentPair.value,
-            });
-            if (!feeQuote) throw friendly(t('trade.status.feeQuoteFailed'));
+    /*
+     * ใบเสนอราคา "สด" ของไม้นี้ทุกครั้ง — ถามไม่ได้ = ไม่ส่งไม้ (FAIL-CLOSED ทั้งสองเชน)
+     * ⚠️ เดิมอ่าน currentQuote ของฟอร์มก่อน: ตัวนั้นค้างค่าเก่าเมื่อเรียกไม่สำเร็จ (ของไม้/คู่/เชนอื่นได้)
+     *    และถ้าตารางขั้นโหลดไม่ขึ้น ระบบถูกมองว่า "ปิด" → ไม้บน TPIX Chain ออกไปโดยไม่เก็บค่าบริการ
+     */
+    const feeQuote = await tradingFee.freshQuote({
+        wallet: owner,
+        orderValueUsd,
+        chainId,
+        pair: currentPair.value,
+    });
+    if (!feeQuote) throw friendly(t('trade.status.feeQuoteFailed'));
+
+    if (feeQuote.enabled !== true) return { mode: 'none' };
+
+    /*
+     * TPIX Chain: เซิร์ฟเวอร์ปิดทาง "จ่ายเป็นเหรียญ" — ทุกไม้ต้องมีใบอนุญาตที่หักจากเครดิต TPIX
+     * (เจ้าของสั่ง 2026-11-13) เครดิตไม่พอ = หยุดตรงนี้ บอกให้เติม ไม่ปล่อยให้ไปล้มตอนขอใบ
+     */
+    if (tradingFee.isCreditOnly(feeQuote)) {
+        if (feeQuote.can_place === false) {
+            throw friendly(feeQuote.reason || t('trade.status.creditRequired'));
         }
+
+        return { mode: 'ticket' };
     }
 
-    if (feeQuote?.enabled !== true || !(orderValueUsd > 0)) return { mode: 'none' };
     return platformFeeWaivedFor(order.feeMethod, feeQuote) ? { mode: 'ticket' } : { mode: 'onchain' };
 }
 
@@ -1350,6 +1559,9 @@ async function executeBscMarketOrder(order) {
             }));
         }
 
+        // คำสั่งตั้งราคา: ราคาจริงจาก router ต้องไม่แย่กว่าราคาที่ตั้ง — ตรวจก่อน approve ไม่ให้เสียค่าแก๊สเปล่า
+        const limitFloor = limitFloorFor(order, quote, { decimals: toTok.decimals, symbol: toSym });
+
         /*
          * 6) กระเป๋าค่าธรรมเนียมต้องพร้อม "ก่อน" ขอให้ผู้ใช้ approve
          *    เดิมเช็กตอนจะสวอป — ผู้ใช้จ่ายค่าแก๊ส approve ไปแล้วค่อยเจอ "ระบบปิดปรับปรุง"
@@ -1428,7 +1640,8 @@ async function executeBscMarketOrder(order) {
             price: quotedPrice,
             feeTicket: ticket?.uuid || null,
             expectedOwner: owner,
-            minOutFloor: seen?.minOutWei ?? null,
+            // คำสั่งตั้งราคา: minOut บนเชน = "ได้รับอย่างน้อย" ของคำสั่ง (เข้มกว่าระหว่างสองตัว)
+            minOutFloor: strictestFloor(seen?.minOutWei ?? null, limitFloor),
             deadlineCap,
             // ป๊อปอัพที่สองในกระเป๋าคือค่าธรรมเนียม — ต้องบอก ไม่งั้นผู้ใช้กดปฏิเสธเพราะนึกว่าแปลก
             onStage: (stage, info) => {
@@ -1451,6 +1664,9 @@ async function executeBscMarketOrder(order) {
             if (!result?.recorded) await consumeTicketWithRetry(owner, ticket.uuid, result?.hash || null);
             ticket = null;
         }
+
+        // คำสั่งตั้งราคา: ผูกคำสั่งกับธุรกรรม — เซิร์ฟเวอร์ปิดคำสั่งเมื่อเห็นไม้ลงเชน
+        if (order.limit) await limitOrders.markSubmitted(owner, order.limit.id, result?.hash || null);
 
         // ยอดจริงจากใบเสร็จ (ไม่ใช่ตัวเลขจาก quote)
         const received = Number(result?.amountOut) > 0 ? result.amountOut : quote.netOutput;
@@ -1480,6 +1696,10 @@ async function executeBscMarketOrder(order) {
             const bound = await bindPromise;
             if (!bound) await bindTicketWithRetry(owner, ticket.uuid, err.txHash || null);
             ticket = null;
+        }
+        // ธุรกรรมของคำสั่งตั้งราคาออกไปแล้ว — ต้องผูกไว้ ไม่งั้นหน้าจอชวนยืนยันซ้ำ = ไม้ลงสองรอบ
+        if (err?.txSent && order.limit) {
+            await limitOrders.markSubmitted(owner, order.limit.id, err.txHash || null);
         }
         playErrorSound();
     } finally {
@@ -1618,6 +1838,9 @@ async function executeDexMarketOrder(order) {
             }));
         }
 
+        // คำสั่งตั้งราคา: ราคาจริงจากพูลต้องไม่แย่กว่าราคาที่ตั้ง — ตรวจก่อน approve
+        const limitFloor = limitFloorFor(order, quote, toTok);
+
         // 6) Approve router ถ้า allowance ไม่พอ (เฉพาะโทเคน ไม่ใช่ TPIX)
         if (!fromTok.native) {
             const needs = await dex.needsApproval(fromTok.address, inputAmount, fromTok.decimals);
@@ -1659,11 +1882,15 @@ async function executeDexMarketOrder(order) {
         // 8) ส่ง swap จริง — บันทึกประวัติฝั่งเซิร์ฟเวอร์ให้แล้ว · minOut ไม่ต่ำกว่าที่ผู้ใช้เห็นในพรีวิว
         orderMessage.value = order.side === 'buy' ? t('trade.status.confirmBuy') : t('trade.status.confirmSell');
         const result = await dex.executeTradeSwap(fromTok, toTok, inputAmount, quote, slippage, {
-            minOutFloor: seen?.minOutWei ?? null,
+            // คำสั่งตั้งราคา: minOut บนเชน = "ได้รับอย่างน้อย" ของคำสั่ง (เข้มกว่าระหว่างสองตัว)
+            minOutFloor: strictestFloor(seen?.minOutWei ?? null, limitFloor),
             onSent: (hash) => {
                 if (ticket) bindPromise = bindTicketWithRetry(owner, ticket.uuid, hash);
             },
         });
+
+        // คำสั่งตั้งราคา: ผูกคำสั่งกับธุรกรรม — เซิร์ฟเวอร์ปิดคำสั่งเมื่อเห็นไม้ลงเชน
+        if (order.limit) await limitOrders.markSubmitted(owner, order.limit.id, result?.hash || null);
 
         if (ticket) {
             await bindPromise;
@@ -1698,6 +1925,8 @@ async function executeDexMarketOrder(order) {
                 if (!bound) await bindTicketWithRetry(owner, ticket.uuid, err.txHash || null);
                 ticket = null;
             }
+            // ธุรกรรมของคำสั่งตั้งราคาออกไปแล้ว — ต้องผูกไว้ ไม่งั้นหน้าจอชวนยืนยันซ้ำ = ไม้ลงสองรอบ
+            if (order.limit) await limitOrders.markSubmitted(owner, order.limit.id, err.txHash || null);
             fetchDexFormBalances();
             fetchDexData();
         } else {
@@ -1889,6 +2118,7 @@ onMounted(async () => {
         fetchBscFormBalances();
         fetchDexFormBalances();
         loadChartMarkerSources();
+        limitOrders.load(walletStore.address);
     }
 
     startMarkerRefresh();
@@ -1917,7 +2147,11 @@ let markerRefreshInterval = null;
 function startMarkerRefresh() {
     stopMarkerRefresh();
     markerRefreshInterval = setInterval(() => {
-        if (walletStore.isConnected) loadChartMarkerSources();
+        if (!walletStore.isConnected) return;
+        loadChartMarkerSources();
+        // คำสั่งตั้งราคาถูกปิด/หมดอายุที่ฝั่งเซิร์ฟเวอร์ (หรือยกเลิกจากอีกอุปกรณ์) — รายการที่เฝ้าอยู่ต้องตามทัน
+        // ไม่โหลดระหว่างกำลังส่งไม้: ผลของรอบนั้นจะทับสถานะ "ส่งธุรกรรมแล้ว" ที่เพิ่งตั้งในเครื่อง
+        if (!isSubmitting.value) limitOrders.load(walletStore.address);
     }, 60_000);
 }
 
@@ -1932,6 +2166,10 @@ watch(() => walletStore.address, () => {
     fetchDexFormBalances();
     // ป้ายบนกราฟผูกกับกระเป๋า — สลับกระเป๋าแล้วต้องไม่ค้างไม้ของคนก่อน
     loadChartMarkerSources();
+    // คำสั่งตั้งราคาก็ผูกกับกระเป๋า — ล้างของใบเดิมทันที ห้ามชวนใบใหม่ยืนยันคำสั่งของคนก่อน
+    limitOrders.reset();
+    announcedLimitIds.clear();
+    limitOrders.load(walletStore.address);
 });
 
 // แถบแจ้งเตือนโผล่/หาย หรือสลับโหมด → ตำแหน่งบนสุดของกระดานขยับ ต้องวัดใหม่
@@ -2155,6 +2393,30 @@ onUnmounted(() => {
                             :style="styleFor('form', row)"
                             body-class="overflow-y-auto custom-scrollbar"
                         >
+                            <!-- คำสั่งตั้งราคาที่ราคาถึงแล้ว — ต้องมีคนกดยืนยัน (เราไม่เซ็นแทนผู้ใช้) -->
+                            <div
+                                v-for="ready in readyLimitOrders"
+                                :key="ready.id"
+                                data-test="limit-ready"
+                                class="mx-3 mt-3 px-3 py-2 rounded-lg border border-primary-500/40 bg-primary-500/10 flex items-center justify-between gap-3"
+                            >
+                                <p class="text-xs text-primary-100 leading-relaxed">
+                                    {{ t('trade.status.limitReadyLine', {
+                                        side: t(`history.side.${ready.side}`),
+                                        symbol: baseSymbol,
+                                        price: ready.price,
+                                    }) }}
+                                </p>
+                                <button
+                                    type="button"
+                                    class="btn-primary text-xs px-3 py-1.5 whitespace-nowrap disabled:opacity-50"
+                                    :disabled="isSubmitting"
+                                    @click="executeLimitOrder(ready)"
+                                >
+                                    {{ t('trade.status.limitConfirm') }}
+                                </button>
+                            </div>
+
                             <TradeForm
                                 :symbol="currentPair"
                                 :ticker-price="ticker?.price || 0"
@@ -2199,7 +2461,15 @@ onUnmounted(() => {
                             </template>
 
                             <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4">
-                                <OpenOrders v-if="activeTab === 'openOrders'" :current-pair="currentPair" />
+                                <OpenOrders
+                                    v-if="activeTab === 'openOrders'"
+                                    :current-pair="currentPair"
+                                    :refresh-key="ordersRefreshKey"
+                                    :ready-ids="readyLimitIds"
+                                    :busy="isSubmitting"
+                                    @execute="executeLimitOrder"
+                                    @changed="limitOrders.load(walletStore.address)"
+                                />
                                 <TradeHistory v-else-if="activeTab === 'history'" />
                                 <div v-else class="text-center text-dark-400 text-sm">
                                     <!-- กระเป๋ายังไม่เซ็นยืนยัน — บอกตรงๆ แทนที่จะโชว์ว่าไม่มีเหรียญ -->

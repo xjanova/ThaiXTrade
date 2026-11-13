@@ -344,10 +344,11 @@ const formatNum = (n) => {
             </div>
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
                 <div class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{{ t('admin.dashboard.summary.swapFees') }}</div>
-                <div class="text-xl font-bold text-violet-400">{{ formatNum(revenue.swap_fees) }}</div>
+                <!-- ค่าธรรมเนียมสวอปเป็นมูลค่าดอลลาร์ (เก็บเป็นเหรียญขาเข้าของแต่ละไม้ บวกกันตรงๆ ไม่ได้) แยกตามเชนที่ไม้ลง -->
+                <div class="text-xl font-bold text-violet-400">${{ formatNum(revenue.swap_fees) }}</div>
                 <div class="flex items-center gap-2 mt-1">
-                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400">TPIX {{ formatNum(revenue.revenue_by_token?.tpix?.swap || 0) }}</span>
-                    <span v-if="revenue.revenue_by_token?.wtpix?.swap > 0" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400">wTPIX {{ formatNum(revenue.revenue_by_token.wtpix.swap) }}</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400">TPIX Chain ${{ formatNum(revenue.revenue_by_token?.tpix?.swap || 0) }}</span>
+                    <span v-if="revenue.revenue_by_token?.wtpix?.swap > 0" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400">BSC ${{ formatNum(revenue.revenue_by_token.wtpix.swap) }}</span>
                 </div>
             </div>
             <div class="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">

@@ -16,6 +16,9 @@ use Inertia\Response as InertiaResponse;
  */
 class TransactionController extends Controller
 {
+    /** สถานะที่กรองได้ — ครบตามที่ตาราง transactions ใช้จริง */
+    private const STATUSES = ['pending', 'executing', 'confirming', 'confirmed', 'completed', 'failed', 'cancelled'];
+
     /**
      * Display a paginated listing of transactions with filters.
      */
@@ -23,7 +26,9 @@ class TransactionController extends Controller
     {
         $validated = $request->validate([
             'type' => ['nullable', 'string', 'in:trade,swap,deposit,withdrawal'],
-            'status' => ['nullable', 'string', 'in:pending,confirming,completed,failed,cancelled'],
+            // 'confirmed' / 'executing' คือสถานะจริงของไม้สวอป (BscSwapRecorder / DexSwapIndexer)
+            // เดิมกรองไม่ได้ — ไม้ที่ยืนยันบนเชนแล้วทั้งหมดจึงหาไม่เจอจากตัวกรองนี้
+            'status' => ['nullable', 'string', 'in:'.implode(',', self::STATUSES)],
             'wallet' => ['nullable', 'string', 'max:255'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
@@ -59,6 +64,7 @@ class TransactionController extends Controller
         return Inertia::render('Admin/Transactions/Index', [
             'transactions' => $transactions,
             'filters' => $validated,
+            'statuses' => self::STATUSES,
         ]);
     }
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
 use App\Services\Bridge\BridgePublicInfo;
+use App\Services\ChainResolver;
 use App\Services\FeeCalculationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,6 +25,7 @@ class FeeConfigController extends Controller
     public function __construct(
         private FeeCalculationService $feeCalculationService,
         private BridgePublicInfo $bridgeInfo,
+        private ChainResolver $chains,
     ) {}
 
     /**
@@ -38,12 +40,26 @@ class FeeConfigController extends Controller
     public function index(Request $request): JsonResponse
     {
         $chainId = $request->integer('chain_id') ?: null;
-        // แคชเฉพาะส่วน swap (คีย์ใหม่ — คีย์เดิม api:fees:unified:* เก็บทั้งก้อนรวมสะพาน ห้ามอ่านซ้ำเป็นส่วน swap)
-        $cacheKey = 'api:fees:swap:'.($chainId ?? 'global');
 
-        $swap = Cache::remember($cacheKey, 300, function () use ($chainId) {
+        /*
+         * ?chain_id= คือเลขเชนจริง (56 / 4289) — fee_configs.chain_id คือ PK ของตาราง chains
+         *
+         * ⚠️ เดิมส่งเลขเชนจริงเข้าไปตรงๆ → หาแถวค่าธรรมเนียมรายเชนไม่เจอ (หรือเจอของเชนอื่นที่ PK บังเอิญตรง)
+         *    แอปมือถือจึงโชว์อัตราไม่ตรงกับที่เก็บจริงทันทีที่มีอัตรารายเชน
+         * เชนที่ไม่รู้จัก = ใช้อัตรากลาง และไม่สร้างคีย์แคชใหม่ต่อเลขที่ยิงมามั่ว
+         */
+        $chainRow = $chainId ? $this->chains->resolveActive($chainId) : null;
+        if (! $chainRow) {
+            $chainId = null;
+        }
+
+        // แคชเฉพาะส่วน swap (คีย์ใหม่ — คีย์เดิม api:fees:unified:* เก็บทั้งก้อนรวมสะพาน ห้ามอ่านซ้ำเป็นส่วน swap)
+        // ผูกกับเลขรุ่นของแคชค่าธรรมเนียม — แอดมินแก้อัตรา/กระเป๋าแล้วมีผลทันที
+        $cacheKey = 'api:fees:swap:g'.FeeCalculationService::generation().':'.($chainId ?? 'global');
+
+        $swap = Cache::remember($cacheKey, 300, function () use ($chainId, $chainRow) {
             // Swap fee config — chain-specific if chainId provided
-            $swapFeeRate = $this->feeCalculationService->getEffectiveFeeRate('swap', $chainId);
+            $swapFeeRate = $this->feeCalculationService->getEffectiveFeeRate('swap', $chainRow?->id);
             $feeCollectorWallet = SiteSetting::get('trading', 'fee_collector_wallet', '');
 
             return [

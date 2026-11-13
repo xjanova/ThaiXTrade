@@ -5,6 +5,7 @@ namespace App\Services\Trading;
 use App\Models\Chain;
 use App\Models\SiteSetting;
 use App\Models\Token;
+use App\Models\TradingCredit;
 use App\Models\TradingOrderTicket;
 use App\Models\Transaction;
 use App\Services\FeeCalculationService;
@@ -106,6 +107,7 @@ class BscSwapRecorder
         private readonly OrderTicketService $tickets,
         private readonly TradingFeeQuoteService $quotes,
         private readonly FeeCalculationService $fees,
+        private readonly TradingCreditService $credits,
     ) {}
 
     /**
@@ -531,8 +533,12 @@ class BscSwapRecorder
 
     /**
      * ⚠️ ขั้นราคาของตั๋วมาจากมูลค่าไม้ที่หน้าเว็บบอกตอนขอตั๋ว (ออดิท L3) — เทียบกับไม้จริงที่นี่
-     *    ตั๋ว 0.05 TPIX เคยครอบไม้ $50,000 ได้ ตอนนี้ตั๋วยังปิดตามปกติ (ไม้ลงเชนไปแล้ว ย้อนไม่ได้)
-     *    แต่ติดธงให้แอดมินเห็นว่าจ่ายต่ำกว่าขั้นจริงเท่าไร.
+     *    ตั๋ว 0.05 TPIX เคยครอบไม้ $50,000 ได้ · ไม้ลงเชนไปแล้วย้อนไม่ได้ ตั๋วจึงยังปิดตามปกติ
+     *    แต่ "ส่วนต่างของขั้นจริง" ถูกเก็บจากเครดิต TPIX ของกระเป๋านั้นทันที (เดิมแค่ติดธงไว้ ไม่มีใครเก็บ)
+     *    เก็บไม่ครบ (เครดิตไม่พอ) = จดยอดค้างไว้ใน unpaid_tpix ให้หลังบ้านเห็น
+     *
+     * หน้าเว็บ/แอปที่ไม่ได้ถูกดัดแปลงไม่มีวันมาถึงตรงนี้: มูลค่าที่ส่งตอนขอตั๋วคือมูลค่าเดียวกับไม้ที่ลง
+     * และมีส่วนเผื่อราคาขยับ 10% (TICKET_VALUE_SLACK)
      */
     private function checkTicketValue(TradingOrderTicket $ticket, Transaction $row, array &$meta): void
     {
@@ -546,12 +552,52 @@ class BscSwapRecorder
             return;
         }
 
+        $shortfall = round((float) $tier->fee_tpix - (float) $ticket->fee_amount, 8);
+        $charged = $this->collectTicketShortfall($ticket, $row, $shortfall);
+
         $meta['fee_ticket_undervalued'] = [
             'order_value_usd' => round($valueUsd, 2),
             'required_tpix' => (float) $tier->fee_tpix,
             'paid_tpix' => (float) $ticket->fee_amount,
+            'charged_tpix' => $charged,
+            'unpaid_tpix' => max(0.0, round($shortfall - $charged, 8)),
         ];
         Log::warning('ตั๋ววางไม้จ่ายต่ำกว่าขั้นของมูลค่าไม้จริง', ['ticket' => $ticket->uuid, 'tx_hash' => $row->tx_hash] + $meta['fee_ticket_undervalued']);
+    }
+
+    /**
+     * เก็บส่วนต่างของขั้นค่าวางไม้จากเครดิต TPIX — เท่าที่มี และครั้งเดียวต่อตั๋ว.
+     *
+     * reference ผูกกับตั๋ว: settle() ถูกเรียกซ้ำได้ (หน้าเว็บส่งซ้ำ / reconcile) แต่เก็บได้รอบเดียว
+     * (TradingCreditService::record คืนแถวเดิมเมื่อ reference ซ้ำ)
+     *
+     * @return float ยอด TPIX ที่เก็บได้จริง
+     */
+    private function collectTicketShortfall(TradingOrderTicket $ticket, Transaction $row, float $shortfall): float
+    {
+        $wallet = $ticket->wallet_address;
+        $reference = "ticket-shortfall:{$ticket->uuid}";
+        $meta = ['ticket' => $ticket->uuid, 'order_tx_hash' => $row->tx_hash, 'reason' => 'tier_shortfall'];
+
+        // เก็บเต็มก่อน · เครดิตไม่พอ = เก็บเท่าที่เหลือ (ยอดอ่านนอกล็อก — record() ตรวจซ้ำใต้ล็อกเอง)
+        foreach ([$shortfall, min($shortfall, $this->credits->balanceFor($wallet))] as $take) {
+            $take = round($take, 8);
+            if ($take <= 0) {
+                continue;
+            }
+
+            try {
+                $entry = $this->credits->record($wallet, TradingCredit::TYPE_CHARGE, -$take, $reference, $meta);
+
+                return abs((float) $entry->amount);
+            } catch (RuntimeException $e) {
+                if ($e->getMessage() !== TradingCreditService::ERR_INSUFFICIENT) {
+                    throw $e;
+                }
+            }
+        }
+
+        return 0.0;
     }
 
     /**

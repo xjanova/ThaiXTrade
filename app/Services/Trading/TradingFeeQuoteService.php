@@ -53,9 +53,10 @@ class TradingFeeQuoteService
      *   reason: ?string
      * }
      */
-    public function quote(?string $wallet, float $orderValueUsd, int $chainId, ?int $tradingPairId = null): array
+    public function quote(?string $wallet, float $orderValueUsd, int $chainId, ?int $tradingPairId = null, ?int $networkChainId = null): array
     {
         $orderValueUsd = max(0.0, $orderValueUsd);
+        $creditOnly = $this->creditOnlyChain($networkChainId);
 
         /*
          * เช่าบอทอยู่ = ไม่เก็บค่าวางไม้เลย (เจ้าของสั่ง 28 ส.ค. 2026)
@@ -127,6 +128,24 @@ class TradingFeeQuoteService
         $feeTpix = (float) $tier->fee_tpix;
         $hasEnough = $balance >= $feeTpix;
 
+        /*
+         * TPIX Chain: ค่าวางไม้ต้องจ่ายด้วยเครดิต TPIX ทุกไม้ (เจ้าของสั่ง 2026-11-13)
+         *
+         * ⚠️ เดิมกลับหัว: พูลบนเชน 4289 ไม่มีธุรกรรมโอนค่าธรรมเนียมแยกให้เก็บ ทาง "จ่ายเป็นเหรียญ"
+         *    จึงไม่ถูกเก็บค่าแพลตฟอร์มเลย ขณะที่คนเลือก "จ่ายด้วยเครดิต TPIX" เสียค่าวางไม้เพิ่ม
+         *    ตอนนี้ปิดทางจ่ายเป็นเหรียญบนเชนนี้ — เครดิตไม่พอ = ต้องเติมก่อน (can_place = false)
+         * ไม่มีขั้นครอบคลุม (ความผิดพลาดฝั่งแอดมิน) ยังตกไปทางเดิมด้านบน ไม่ปิดกั้นผู้ใช้
+         */
+        if ($creditOnly) {
+            $onchain = [
+                'available' => false,
+                'fee_rate' => 0.0,
+                'fee_usd' => 0.0,
+                'refund_full' => false,
+                'reason' => __('บน TPIX Chain ต้องจ่ายค่าวางไม้ด้วยเครดิต TPIX'),
+            ];
+        }
+
         $tpix = [
             'available' => true,
             'fee_tpix' => $feeTpix,
@@ -146,11 +165,26 @@ class TradingFeeQuoteService
             'balance' => $balance,
             'tpix' => $tpix,
             'onchain' => $onchain,
-            'recommended' => $hasEnough ? 'tpix_credit' : 'onchain',
-            // ไม่มี TPIX ก็ยังวางไม้ได้ แค่จ่ายแพงกว่า — ไม่ปิดประตูใส่ผู้ใช้ใหม่
-            'can_place' => true,
-            'reason' => null,
+            'recommended' => ($hasEnough || $creditOnly) ? 'tpix_credit' : 'onchain',
+            // BSC: ไม่มี TPIX ก็ยังวางไม้ได้ แค่จ่ายแพงกว่า — ไม่ปิดประตูใส่ผู้ใช้ใหม่
+            // TPIX Chain: เครดิตไม่พอ = วางไม้ไม่ได้จนกว่าจะเติม
+            'can_place' => ! $creditOnly || $hasEnough,
+            'reason' => ($creditOnly && ! $hasEnough)
+                ? __('เครดิต TPIX ไม่พอจ่ายค่าวางไม้ — เติมเครดิตก่อนเทรดบน TPIX Chain')
+                : null,
         ];
+    }
+
+    /**
+     * เชนที่บังคับจ่ายค่าวางไม้ด้วยเครดิต TPIX เท่านั้น (ไม่มีทาง "จ่ายเป็นเหรียญ") = TPIX Chain.
+     *
+     * บน BSC ค่าธรรมเนียม % ถูกโอนเป็นธุรกรรมแยกและเซิร์ฟเวอร์ตรวจจากเชนได้
+     * บน TPIX Chain ไม่มีธุรกรรมแบบนั้น — ทางเดียวที่เก็บได้จริงคือตั๋วที่หักจากเครดิตก่อนส่งไม้
+     */
+    public function creditOnlyChain(?int $networkChainId): bool
+    {
+        return $networkChainId !== null
+            && $networkChainId === (int) config('blockchain.tpix_chain_id', 4289);
     }
 
     /**
