@@ -40,14 +40,30 @@ const MAX_BODY_BYTES = 16 * 1024;
 const SCRIPT_TIMEOUT_MS = 120_000;
 const SCRIPTS_DIR = path.resolve(__dirname, '..');
 
+/**
+ * env ของโปรเซสลูก (สคริปต์เซ็น) — มีเฉพาะที่จำเป็น ไม่ส่ง SIGNER_ENVELOPE_KEY / SIGNER_HMAC_SECRET ลงไป
+ *
+ * NODE_PATH ต้องส่งต่อ: ในอิมเมจ สคริปต์เซ็นอยู่ที่ /app แต่ ethers อยู่ที่ /app/bot-signer/node_modules
+ * ไม่ส่ง = สคริปต์ require('ethers') ไม่เจอ = เซ็นไม่ได้เลยสักรายการ (ในรีโปไม่เห็นอาการนี้ เพราะ node หา
+ * node_modules ของโฟลเดอร์แม่เจอเอง)
+ */
+function childEnv(env, parent = process.env) {
+    const base = { PATH: parent.PATH || '' };
+
+    if (parent.NODE_PATH) {
+        base.NODE_PATH = parent.NODE_PATH;
+    }
+
+    return { ...base, ...env };
+}
+
 /** รันสคริปต์เซ็นตัวเดิมด้วย env ที่กำหนด — คืน JSON ที่สคริปต์พิมพ์ */
 function runScript(scriptName, env) {
     return new Promise((resolve) => {
         execFile(
             process.execPath,
             [path.join(SCRIPTS_DIR, scriptName)],
-            // env ของลูกมีเฉพาะที่จำเป็น — ไม่ส่ง SIGNER_ENVELOPE_KEY / SIGNER_HMAC_SECRET ลงไป
-            { env: { PATH: process.env.PATH || '', ...env }, timeout: SCRIPT_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
+            { env: childEnv(env), timeout: SCRIPT_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
             (error, stdout) => {
                 try {
                     resolve(JSON.parse(String(stdout).trim()));
@@ -317,4 +333,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { createHandler, startServer, runScript, KEY_VERSION };
+module.exports = { createHandler, startServer, runScript, childEnv, KEY_VERSION };

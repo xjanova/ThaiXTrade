@@ -430,6 +430,17 @@ describe('ตัวจัดการคำขอ', () => {
         expect((await post('/v1/unknown', {})).status).toBe(404);
     });
 
+    it('env ของสคริปต์เซ็นได้ NODE_PATH ต่อจากตัวเซ็น แต่ไม่ได้ความลับของตัวเซ็น', () => {
+        const parent = { PATH: '/usr/bin', NODE_PATH: '/app/bot-signer/node_modules', SIGNER_ENVELOPE_KEY: ENVELOPE, SIGNER_HMAC_SECRET: SECRET, HOME: '/home/node' };
+
+        expect(server.childEnv({ BW_ACTION: 'plan' }, parent)).toEqual({
+            PATH: '/usr/bin',
+            NODE_PATH: '/app/bot-signer/node_modules',
+            BW_ACTION: 'plan',
+        });
+        expect(server.childEnv({ BW_ACTION: 'plan' }, { PATH: '/usr/bin' })).toEqual({ PATH: '/usr/bin', BW_ACTION: 'plan' });
+    });
+
     it('/health ตอบได้โดยไม่ต้องมีลายเซ็น และไม่บอกอะไรเกี่ยวกับกุญแจ', async () => {
         const answer = await handle({ method: 'GET', url: '/health', headers: {}, body: Buffer.alloc(0) });
 

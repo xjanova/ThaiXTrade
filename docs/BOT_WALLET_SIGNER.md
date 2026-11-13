@@ -76,6 +76,10 @@ cp .env.example .env && chmod 600 .env
 - รายการเหรียญและสัญญา — รัน `php artisan aibot:signer-env` บนเครื่องเว็บ แล้วคัดลอกบรรทัดมาใส่
 
 ```bash
+# โฟลเดอร์ state ต้องเป็นของ uid 1000 (ผู้ใช้ node ใน container) — ถ้าปล่อยให้ docker สร้างเอง จะเป็นของ root
+# แล้วตัวเซ็นเขียนบันทึกกระเป๋าและตัวนับไม่ได้: สร้างกระเป๋าได้ 500 และไม่เซ็นให้เลยสักรายการ
+mkdir -p state && sudo chown 1000:1000 state && chmod 700 state
+
 docker compose up -d --build
 docker compose logs --tail 5          # ต้องเห็น "listening on ... tokens=N"
 curl -s http://<IP ลิงก์ส่วนตัว>:8787/health
