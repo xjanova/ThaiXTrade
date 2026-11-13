@@ -89,6 +89,8 @@ class WalletReadOwnershipTest extends TestCase
         'api/v1/masternode/my-nodes' => '/api/v1/masternode/my-nodes?wallet_address={wallet}',
         'api/v1/ai-bot/status' => '/api/v1/ai-bot/status?wallet_address={wallet}',
         'api/v1/ai-bot/credits' => '/api/v1/ai-bot/credits?wallet_address={wallet}',
+        // Copy Trade: โปรไฟล์มาสเตอร์ · คนที่ตาม · ค่าบริการ ของกระเป๋านี้ (กระดาน /copy/masters เป็นสาธารณะ ไม่อยู่ในรายการนี้)
+        'api/v1/ai-bot/copy/me' => '/api/v1/ai-bot/copy/me?wallet_address={wallet}',
         'api/v1/ai-bot/bots' => '/api/v1/ai-bot/bots?wallet_address={wallet}',
         'api/v1/ai-bot/decisions' => '/api/v1/ai-bot/decisions?wallet_address={wallet}',
         'api/v1/ai-bot/analytics' => '/api/v1/ai-bot/analytics?wallet_address={wallet}',

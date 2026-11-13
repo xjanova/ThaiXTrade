@@ -130,7 +130,8 @@ class AiBotProbe extends Command
              * ยกเว้นอาร์บิทราจที่ปิดไว้โดยตั้งใจ (รอพูล DEX) — ตัวนั้นตอบ hold
              * ทุกฉากอย่างถูกต้อง และ StrategyAvailability กันไม่ให้สร้างบอทอยู่แล้ว
              */
-            if ($code !== 'arbitrage' && ! in_array($decided, [Signal::BUY, Signal::SELL], true)) {
+            // ก๊อปปี้เทรดก็เช่นกัน: ไม่มีมาสเตอร์ให้ตาม (ไม่มีฐานข้อมูลในคำสั่งนี้) จึงถือทุกฉากอย่างถูกต้อง
+            if (! in_array($code, ['arbitrage', 'copy'], true) && ! in_array($decided, [Signal::BUY, Signal::SELL], true)) {
                 $never[] = $code;
             }
         }

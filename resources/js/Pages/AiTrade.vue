@@ -18,6 +18,7 @@ import AiLivePortfolio from '@/Components/Trading/AiLivePortfolio.vue';
 import AiPlanPrice from '@/Components/AiTrade/AiPlanPrice.vue';
 import AiRuleBuilder from '@/Components/AiTrade/AiRuleBuilder.vue';
 import AiRuleBacktest from '@/Components/AiTrade/AiRuleBacktest.vue';
+import AiCopyTradePanel from '@/Components/AiTrade/AiCopyTradePanel.vue';
 import AiRiskPanel from '@/Components/Trading/AiRiskPanel.vue';
 import AiMarketViewPanel from '@/Components/Trading/AiMarketViewPanel.vue';
 import AiTradeTopupModal from '@/Components/AiTrade/AiTradeTopupModal.vue';
@@ -1477,6 +1478,15 @@ bot.keepBrowserBotsRunning();
                     </div>
                 </section>
             </template>
+
+            <!-- Master / Copy Trade — กระดานเป็นสาธารณะ จึงอยู่นอกบล็อกที่ต้องเชื่อมกระเป๋า -->
+            <AiCopyTradePanel
+                v-if="bot.copyTrade"
+                :api="bot.copyTrade"
+                :wallet="walletStore.address || ''"
+                :limits="limits"
+                @notify="({ type, text }) => flash(type, text)"
+            />
 
             <!-- ที่ปรึกษา AI — อ่านสถิติของบอทแล้วให้ความเห็น สั่งเทรดเองไม่ได้ -->
             <!-- มุมมองที่มีผลต่อการเทรดจริง วางก่อนคำแนะนำที่อ่านประกอบเฉยๆ -->

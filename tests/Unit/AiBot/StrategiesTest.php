@@ -346,7 +346,8 @@ class StrategiesTest extends TestCase
             $this->assertSame(
                 // custom (วางกลยุทธ์เอง) ตอบ true เพราะผู้ใช้ "เปิดเองได้" ด้วย add_to_position — ค่าปริยายปิด
                 // และคลาสเป็นคนไม่สั่งซื้อซ้ำเอง (ดู CustomStrategyTest::ไม่ซื้อเพิ่มขณะถือของถ้าผู้ใช้ไม่ได้เปิด)
-                in_array($code, ['dca', 'custom'], true),
+                // copy (ก๊อปปี้เทรด) เติมตามมาสเตอร์ที่ทยอยสะสม — คุมด้วยสัดส่วนทุนของมาสเตอร์ (CopyStrategyTest)
+                in_array($code, ['dca', 'custom', 'copy'], true),
                 $strategy->allowsPyramiding(),
                 "{$code} ประกาศความสามารถเติมไม้ไม่ตรงกับที่ออกแบบ"
             );
@@ -669,7 +670,8 @@ class StrategiesTest extends TestCase
     {
         foreach ($this->registry->all() as $code => $strategy) {
             $this->assertSame(
-                ! in_array($code, ['dca', 'grid'], true),
+                // copy: ผู้ตามเลือกตามคน ไม่ใช่ AI ของแพลตฟอร์ม — AI ปิดไม้ที่ก๊อปปี้มาไม่ได้
+                ! in_array($code, ['dca', 'grid', 'copy'], true),
                 $strategy->acceptsAiExit(),
                 "{$code} ประกาศการรับ AI exit ไม่ตรงกับที่ออกแบบ"
             );

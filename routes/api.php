@@ -8,6 +8,7 @@
 use App\Http\Controllers\Api\AiBotController;
 use App\Http\Controllers\Api\AiBotWalletController;
 use App\Http\Controllers\Api\AIController;
+use App\Http\Controllers\Api\AiCopyTradeController;
 use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\BannerController as ApiBannerController;
@@ -428,6 +429,8 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
      * (ไม่มีข้อมูลส่วนตัวของใครอยู่ในนั้น — เป็นภาพตลาดล้วน)
      */
     Route::get('/ai-bot/market-view', [AiBotController::class, 'marketView']);
+    // กระดานมาสเตอร์ของ Copy Trade — สาธารณะเหมือน catalog: มีแต่ผลงานเงินจริงที่ปิดแล้ว ไม่มีกฎ ไม่มีข้อมูลส่วนตัว
+    Route::get('/ai-bot/copy/masters', [AiCopyTradeController::class, 'masters']);
     // ความเสี่ยงของคู่เทรด + พาดหัวข่าวที่ทำให้บอทตัดสินใจ — เป็นข้อมูลตลาด ไม่ใช่ข้อมูลส่วนตัว
     Route::get('/ai-bot/risk', [AiBotController::class, 'risk']);
 
@@ -667,6 +670,21 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::post('/backtest', [AiBotController::class, 'backtest'])
             ->withoutMiddleware('throttle:ai-bot')
             ->middleware('throttle:ai-bot-backtest');
+
+        /*
+         * Master / Copy Trade — เปิดตัวเป็นมาสเตอร์ · ตามมาสเตอร์ · เลิกตาม
+         *
+         * ด่าน KYC ของ "ฟังก์ชันขั้นสูง" (kyc:ai_bot) ลงที่การเริ่มตาม เหมือนปลายทางที่ได้ของตัวอื่น
+         * การเปิดตัวเป็นมาสเตอร์ตรวจ KYC ที่อนุมัติแล้วเองใน controller (บังคับเสมอ ไม่ขึ้นกับสวิตช์รวม)
+         * เลิกตาม/ปิดโปรไฟล์ไม่มีด่าน — ต้องออกได้เสมอ
+         */
+        Route::get('/copy/me', [AiCopyTradeController::class, 'me']);
+        Route::post('/copy/master', [AiCopyTradeController::class, 'registerMaster']);
+        Route::put('/copy/master', [AiCopyTradeController::class, 'updateMaster']);
+        Route::post('/copy/master/close', [AiCopyTradeController::class, 'closeMaster']);
+        Route::post('/copy/follow', [AiCopyTradeController::class, 'follow'])->middleware('kyc:ai_bot');
+        Route::post('/copy/follow/{id}/stop', [AiCopyTradeController::class, 'stopFollow'])->where('id', '[0-9]+');
+        Route::post('/copy/follow/{id}/accept', [AiCopyTradeController::class, 'acceptRate'])->where('id', '[0-9]+');
 
         // โหมดทดลอง — พอร์ตกระดาษที่ใช้ราคาจริง ให้ลองก่อนตัดสินใจเช่า
         // สถิติย้อนหลังของกลยุทธ์ + คำแนะนำจากที่ปรึกษา AI (ตามแพลน)

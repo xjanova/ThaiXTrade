@@ -8,6 +8,7 @@ use App\Models\AiBotPosition;
 use App\Models\AiBotWalletTransfer;
 use App\Services\AiBot\Analyst\AiViewGate;
 use App\Services\AiBot\Analyst\AutoPairResolver;
+use App\Services\AiBot\Copy\CopyTradeService;
 use App\Services\AiBot\Live\LiveBroker;
 use App\Services\AiBotService;
 use App\Services\MarketDataService;
@@ -106,6 +107,8 @@ class BotRunner
         'ราคาอยู่เหนือเส้นเทรนด์ใหญ่ EMA :period' => [],
         'ราคาอยู่ใต้เส้นเทรนด์ใหญ่ EMA :period' => [],
         'ครบรอบซื้อทุก :bars แท่ง' => [],
+        // ก๊อปปี้เทรด (CopyStrategy)
+        'ราคาวิ่งเกินจุดเข้าของมาสเตอร์ไปแล้ว :drift% (ยอมได้ :limit%) — ไม่ไล่ราคา' => [],
         // AiViewGate (เหตุผลจาก AI ที่ซ้อนอยู่ในรายการของ BotRunner)
         'AI ไม่แนะนำเหรียญนี้ แต่ประวัติ avoid ที่ความมั่นใจระดับนี้ถูกแค่ :pct% — ไม่ห้ามเข้าไม้' => [],
         'AI ไม่แนะนำเหรียญนี้รอบนี้: :why' => ['why'],
@@ -778,6 +781,25 @@ class BotRunner
             $params['_bars_since_entry'] = $lastBuy
                 ? max(0, (int) floor($lastBuy->created_at->diffInMinutes(now()) / $minutesPerBar))
                 : PHP_INT_MAX;
+        }
+
+        if ($bot->strategy === CopyTradeService::STRATEGY) {
+            /*
+             * ก๊อปปี้เทรด: มาสเตอร์ถือของอยู่ไหม ใช้ทุนกี่ส่วน เข้าที่ราคาเท่าไหร่ — engine เป็นคนรู้
+             * (กลยุทธ์เป็น pure ห้ามอ่านฐานข้อมูลเอง) · ลงบัญชีค่าบริการของไม้ที่ปิดไปแล้วในรอบเดียวกัน
+             * เพราะไม้เงินจริงถูกเขียนตอนเชนยืนยัน ไม่ใช่ตอนที่รอบคิดนี้สั่ง
+             */
+            $copy = app(CopyTradeService::class);
+            $params['_copy'] = $copy->signalContext($bot);
+
+            if ($follow = $copy->followOfBot($bot)) {
+                try {
+                    $copy->settleFees($follow);
+                } catch (\Throwable $e) {
+                    // บัญชีค่าบริการล่มต้องไม่ทำให้บอทหยุดดูแลไม้ที่ถืออยู่ — รอบหน้าไล่ตรวจใหม่ได้ (ไม่นับซ้ำ)
+                    Log::warning('copy trade: ลงบัญชีค่าบริการไม่สำเร็จ', ['bot' => $bot->id, 'error' => $e->getMessage()]);
+                }
+            }
         }
 
         if ($bot->strategy === 'custom') {

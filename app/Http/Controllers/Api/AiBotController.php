@@ -18,6 +18,7 @@ use App\Services\AiBot\Backtest\BacktestData;
 use App\Services\AiBot\Backtest\BacktestEngine;
 use App\Services\AiBot\Backtest\BacktestVerdict;
 use App\Services\AiBot\BotRunner;
+use App\Services\AiBot\Copy\CopyTradeService;
 use App\Services\AiBot\CreditTopupService;
 use App\Services\AiBot\Custom\RuleSet;
 use App\Services\AiBot\Live\LiveBroker;
@@ -662,6 +663,10 @@ class AiBotController extends Controller
             return $this->serviceFailure($e, 403);
         }
 
+        if ($locked = $this->copyTradeLock($bot, $validated)) {
+            return $locked;
+        }
+
         // ถือเหรียญเงินจริงของคู่เดิมอยู่ = ห้ามย้ายคู่ — ไม้เดิมจะค้างอยู่บนคู่ที่บอทไม่ได้ดูแล้ว
         if (strtoupper($validated['pair']) !== strtoupper((string) $bot->pair) && $this->live->hasExposure($bot)) {
             return $this->failure('LIVE_POSITION_OPEN', __('บอทตัวนี้ยังถือเหรียญหรือมีคำสั่งเงินจริงค้างอยู่ — ปิดไม้ก่อนเปลี่ยนคู่เหรียญ'));
@@ -742,6 +747,29 @@ class AiBotController extends Controller
             array_merge($template['params'] ?? [], (array) $request->input('params', [])),
             array_merge($template['risk'] ?? [], (array) $request->input('risk', [])),
         ];
+    }
+
+    /**
+     * บอทที่ผูกกับ Copy Trade แก้ได้แค่ชื่อกับกรอบความเสี่ยง — คืนคำตอบ 422 ถ้าคำขอจะเปลี่ยนสิ่งที่ถูกล็อก.
+     *
+     *  - บอทผู้ตามที่ยังตามอยู่: คู่ · กรอบเวลา · กลยุทธ์ ต้องตรงกับมาสเตอร์ (เปลี่ยนแล้วจะก๊อปปี้ไม้ของคู่อื่น)
+     *  - บอทผลงานของมาสเตอร์ที่เปิดโปรไฟล์อยู่: ย้ายคู่ไม่ได้ (ผู้ตามถือคู่เดิมอยู่) · กลยุทธ์เปลี่ยนได้ เป็นเรื่องของมาสเตอร์
+     */
+    private function copyTradeLock(AiBotConfig $bot, array $validated): ?JsonResponse
+    {
+        $copy = app(CopyTradeService::class);
+        $pairChanged = strtoupper($validated['pair']) !== strtoupper((string) $bot->pair);
+
+        if ($copy->followOfBot($bot)?->isActive()
+            && ($pairChanged || $validated['strategy'] !== $bot->strategy || $validated['timeframe'] !== $bot->timeframe)) {
+            return $this->failure('COPY_BOT_LOCKED', __('บอทตัวนี้กำลังก๊อปปี้มาสเตอร์ — แก้ได้เฉพาะชื่อและกรอบความเสี่ยง เลิกตามก่อนถ้าจะเปลี่ยนคู่ กรอบเวลา หรือกลยุทธ์'));
+        }
+
+        if ($pairChanged && $copy->isOpenMasterBot($bot)) {
+            return $this->failure('COPY_MASTER_BOT', __('บอทตัวนี้เป็นผลงานของโปรไฟล์มาสเตอร์ของคุณและมีผู้ตามผูกอยู่กับคู่นี้ — ปิดโปรไฟล์มาสเตอร์ก่อนเปลี่ยนคู่'));
+        }
+
+        return null;
     }
 
     /**
@@ -987,6 +1015,18 @@ class AiBotController extends Controller
          */
         if ($this->live->hasExposure($bot)) {
             return $this->failure('LIVE_POSITION_OPEN', __('บอทตัวนี้ยังถือเหรียญหรือมีคำสั่งเงินจริงค้างอยู่ — ปิดไม้ให้เรียบร้อยก่อนลบ'));
+        }
+
+        $copy = app(CopyTradeService::class);
+
+        // บอทที่เป็นผลงานของมาสเตอร์ลบไม่ได้ขณะยังเปิดโปรไฟล์ — ผู้ตามจะเหลือแต่บอทที่ไม่มีใครให้ตาม
+        if ($copy->isOpenMasterBot($bot)) {
+            return $this->failure('COPY_MASTER_BOT', __('บอทตัวนี้เป็นผลงานของโปรไฟล์มาสเตอร์ของคุณ — ปิดโปรไฟล์มาสเตอร์ก่อนลบ'));
+        }
+
+        // ลบบอทผู้ตาม = เลิกตาม (ลงบัญชีค่าบริการของไม้ที่ปิดไปแล้วให้จบก่อนแถวบอทหาย)
+        if ($follow = $copy->followOfBot($bot)) {
+            $copy->stopFollow($follow);
         }
 
         $bot->delete();
@@ -1496,6 +1536,18 @@ class AiBotController extends Controller
         // ออกจากโหมดจริงทั้งที่ยังถือเหรียญ = ไม้นั้นไม่มีใครดูแลต่อ (บอทจะคิดจากพอร์ตทดลองแทน)
         if ($validated['mode'] !== $bot->mode && $this->live->hasExposure($bot)) {
             return $this->failure('LIVE_POSITION_OPEN', __('บอทตัวนี้ยังถือเหรียญหรือมีคำสั่งเงินจริงค้างอยู่ — ปิดไม้ก่อนสลับโหมด'));
+        }
+
+        /*
+         * Copy Trade นับและก๊อปปี้เฉพาะเงินจริง — บอทผู้ตามที่ยังตามอยู่กับบอทผลงานของมาสเตอร์สลับไปโหมดทดลองไม่ได้
+         * (ผู้ตามในโหมดทดลองเห็นไม้ของมาสเตอร์ฟรี · มาสเตอร์ในโหมดทดลองทำให้ผู้ตามเงินจริงเทขายตาม "ไม้กระดาษ")
+         */
+        if ($validated['mode'] !== 'live' && $bot->mode === 'live') {
+            $copy = app(CopyTradeService::class);
+
+            if ($copy->isOpenMasterBot($bot) || $copy->followOfBot($bot)?->isActive()) {
+                return $this->failure('COPY_LIVE_ONLY', __('บอทตัวนี้ผูกกับ Copy Trade ซึ่งใช้ได้เฉพาะเงินจริง — เลิกตามหรือปิดโปรไฟล์มาสเตอร์ก่อนสลับโหมด'));
+            }
         }
 
         if ($validated['mode'] === 'live') {

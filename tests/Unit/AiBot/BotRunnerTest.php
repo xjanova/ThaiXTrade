@@ -8,6 +8,8 @@ use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
 use App\Models\AiBotSubscription;
 use App\Models\AiBotTrade;
+use App\Models\AiCopyFollow;
+use App\Models\AiCopyMaster;
 use App\Models\AiMarketView;
 use App\Models\MarketNews;
 use App\Services\AiBot\BotRunner;
@@ -1225,5 +1227,102 @@ class BotRunnerTest extends TestCase
 
         $this->assertSame('hold', $result['action']);
         $this->assertSame(0, AiBotTrade::count());
+    }
+
+    // ─────────────────────── 11) ก๊อปปี้เทรด (copy) ───────────────────────
+
+    /**
+     * บอทผู้ตามที่ผูกกับมาสเตอร์ซึ่งถือไม้เงินจริงอยู่ $exposureUsd จากเพดาน $1000.
+     *
+     * บอทผู้ตามในเทสต์นี้เดินโหมดทดลอง (โบรกเกอร์กระดาษ) เพื่อดูว่าตัวรันส่งข้อมูลของมาสเตอร์ให้กลยุทธ์ถูกต้อง
+     * — ของจริง API บังคับให้บอทผู้ตามเป็นโหมดเงินจริงเท่านั้น (AiCopyTradeTest)
+     */
+    private function makeFollower(?float $exposureUsd, bool $openedAfterFollow = true): AiBotConfig
+    {
+        $masterBot = AiBotConfig::create([
+            'wallet_address' => '0x9999999999999999999999999999999999999999', 'name' => 'master', 'pair' => 'BTC/USDT',
+            'strategy' => 'momentum', 'timeframe' => '1h', 'status' => 'running', 'mode' => 'live',
+            'params' => ['fast_ema' => 5], 'risk' => ['max_position_usd' => 1000],
+        ]);
+
+        $master = AiCopyMaster::create([
+            'wallet_address' => $masterBot->wallet_address, 'ai_bot_config_id' => $masterBot->id, 'display_name' => 'Master',
+            'fee_rate_pct' => 20, 'platform_share_pct' => 30, 'status' => 'active', 'registered_at' => now()->subDays(40),
+        ]);
+
+        $bot = $this->makeBot(['strategy' => 'copy', 'params' => ['news_mode' => 'off', 'macro_filter' => false, 'ai_gate' => false], 'risk' => ['max_position_usd' => 200]]);
+
+        AiCopyFollow::create([
+            'ai_copy_master_id' => $master->id, 'follower_wallet' => self::WALLET, 'ai_bot_config_id' => $bot->id,
+            'fee_rate_pct' => 20, 'platform_share_pct' => 30, 'status' => 'active', 'started_at' => now()->subHour(),
+        ]);
+
+        if ($exposureUsd !== null) {
+            AiBotPosition::create([
+                'ai_bot_config_id' => $masterBot->id, 'pair' => 'BTC/USDT', 'mode' => 'live', 'quantity' => $exposureUsd / 100,
+                'entry_price' => 100.0, 'cost_basis' => $exposureUsd, 'entry_count' => 1,
+                'opened_at' => $openedAfterFollow ? now()->subMinutes(10) : now()->subDay(),
+            ]);
+        }
+
+        return $bot;
+    }
+
+    /** มาสเตอร์เปิดไม้หลังเริ่มตาม → ผู้ตามเข้าด้วยสัดส่วนทุนเดียวกันของเพดานตัวเอง */
+    #[Test]
+    public function a_copy_bot_enters_with_the_masters_share_of_its_own_capital(): void
+    {
+        $bot = $this->makeFollower(500.0);
+        $this->candles = $this->flatCandles(80);
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('buy', $result['action']);
+        $this->assertSame('มาสเตอร์เปิดไม้ — เข้าตามด้วยสัดส่วนทุนเดียวกัน', $result['reason']);
+        // มาสเตอร์ใช้ 50% ของเพดาน $1000 → ผู้ตามลง 50% ของเพดาน $200
+        $this->assertEqualsWithDelta(100.0, (float) AiBotTrade::firstOrFail()->gross_value, 1.0);
+    }
+
+    /** มาสเตอร์ไม่ได้ถือของ หรือถือไม้ที่เปิดไว้ก่อนเริ่มตาม → ผู้ตามไม่เข้า */
+    #[Test]
+    public function a_copy_bot_stays_out_until_the_master_opens_a_new_trade(): void
+    {
+        $bot = $this->makeFollower(500.0, openedAfterFollow: false);
+        $this->candles = $this->flatCandles(80);
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('hold', $result['action']);
+        $this->assertStringContainsString('ก่อนคุณเริ่มตาม', $result['reason']);
+        $this->assertSame(0, AiBotTrade::count());
+    }
+
+    /** มาสเตอร์ปิดไม้แล้ว → ผู้ตามที่ถือของอยู่ปิดตาม */
+    #[Test]
+    public function a_copy_bot_closes_when_the_master_is_flat(): void
+    {
+        $bot = $this->makeFollower(null);
+        $this->giveBotAPosition($bot, 100.0, 1.0);
+        $this->candles = $this->flatCandles(80);
+
+        $result = $this->runner->tick($bot);
+
+        $this->assertSame('sell', $result['action']);
+        $this->assertSame('มาสเตอร์ปิดไม้แล้ว — ปิดตาม', $result['reason']);
+    }
+
+    /** stop loss ของผู้ตามชนะมาสเตอร์เสมอ — มาสเตอร์ยังถืออยู่ ผู้ตามก็ออกตามกรอบของตัวเอง */
+    #[Test]
+    public function a_followers_own_stop_loss_beats_the_master(): void
+    {
+        $bot = $this->makeFollower(500.0);
+        $bot->update(['risk' => ['max_position_usd' => 200, 'stop_loss_pct' => 5]]);
+        $this->giveBotAPosition($bot, 120.0, 1.0);
+        $this->candles = $this->flatCandles(80);
+
+        $result = $this->runner->tick($bot->fresh());
+
+        $this->assertSame('sell', $result['action']);
+        $this->assertStringContainsString('ถึงจุดตัดขาดทุนที่ตั้งไว้', $result['reason']);
     }
 }

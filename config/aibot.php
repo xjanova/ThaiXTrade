@@ -720,6 +720,75 @@ return [
                     'risk' => ['max_position_usd' => 200, 'stop_loss_pct' => 10, 'take_profit_pct' => 20, 'max_daily_loss_usd' => 50]],
             ],
         ],
+        [
+            /*
+             * ก๊อปปี้เทรด — บอทผู้ตามที่ถือของตามมาสเตอร์ (ดู copy_trade ด้านล่าง · CopyStrategy)
+             *
+             * managed = สร้างผ่าน POST /ai-bot/copy/follow เท่านั้น: บอทแบบนี้ต้องผูกกับมาสเตอร์ (ai_copy_follows)
+             * สร้างจากฟอร์มบอทธรรมดาจะได้บอทที่ไม่มีใครให้ตาม StrategyAvailability จึงตอบว่าเลือกเองไม่ได้
+             * ไม่มีช่องตั้งค่าของตัวเอง — ผู้ตามตั้งแค่กรอบความเสี่ยง กฎเป็นของมาสเตอร์และผู้ตามไม่เห็น
+             */
+            'code' => 'copy',
+            'name' => 'Copy Trade',
+            'name_th' => 'ก๊อปปี้เทรด',
+            'description' => 'Mirrors a master trader\'s entries and exits with your own capital and your own risk limits.',
+            'description_th' => 'เข้าและออกตามไม้ของมาสเตอร์ที่คุณเลือก ด้วยทุนและกรอบความเสี่ยงของคุณเอง',
+            'risk' => 'high',
+            'tier' => env('AIBOT_COPY_TIER', 'free'),
+            'icon' => 'users',
+            'timeframes' => ['15m', '1h', '4h', '1d'],
+            'managed' => true,
+            'managed_reason' => 'เลือกมาสเตอร์จากหน้า Copy Trade — บอทก๊อปปี้เทรดถูกสร้างให้ตอนกดตามมาสเตอร์',
+            'managed_reason_en' => 'Pick a master on the Copy Trade board — a copy-trade bot is created when you follow one.',
+            'params' => [],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Master / Copy Trade (เจ้าของสั่ง 2026-11-13)
+    |--------------------------------------------------------------------------
+    | ผู้ใช้ที่ผลเงินจริงดีเปิดตัวเป็นมาสเตอร์ ตั้งค่าบริการเอง ผู้ตามก๊อปปี้ไม้ด้วยทุนของตัวเอง
+    |
+    | เจ้าของตัดสินแล้ว: ผลงานนับเฉพาะเงินจริง (โหมดทดลองไม่นับ ไม่โชว์) · ค่าบริการเป็น TPIX ·
+    | มาสเตอร์ต้องผ่าน KYC · มาสเตอร์ที่แบ่งให้แพลตฟอร์มมากกว่าถูกนำเสนอมากกว่า
+    |
+    | enabled        ปิด = ทุก endpoint ของ Copy Trade ตอบว่ายังไม่เปิด (ค่าปริยายปิด — เปิดด้วย AIBOT_COPY_TRADE_ENABLED)
+    | fees.collect   ปิด = ค่าบริการถูก "ลงบัญชีให้เห็น" เท่านั้น (recorded) · เปิด = ลงเป็นค้างเก็บ (accrued)
+    |                ⚠️ ยังไม่มีโค้ดเก็บ TPIX จากผู้ตามหรือจ่ายให้มาสเตอร์ — เปิดธงนี้ไม่ได้ทำให้เหรียญเปลี่ยนมือ
+    | fees.rate_pct            ค่าบริการที่มาสเตอร์ตั้งได้ = % ของกำไรที่ปิดแล้วของผู้ตาม (high-water mark)
+    | fees.platform_share_pct  ส่วนของแพลตฟอร์ม = % ของค่าบริการ · มาสเตอร์เลือกได้ตั้งแต่ขั้นต่ำถึงเพดาน
+    | master.*       เกณฑ์เปิดตัวเป็นมาสเตอร์ — คิดจากไม้เงินจริงที่ปิดแล้วของบอทตัวเดียว
+    | follow.max_entry_drift_pct  ราคาวิ่งเกินจุดเข้าของมาสเตอร์ได้ไม่เกินนี้ ผู้ตามถึงจะเข้าตาม
+    | promotion.slots  จำนวนช่องของแถบ "แนะนำ" — เรียงตามส่วนแบ่งแพลตฟอร์ม เฉพาะมาสเตอร์ที่ยังผ่านเกณฑ์
+    |                  (กระดานหลักเรียงตามผลงานล้วน ส่วนแบ่งไม่มีผลกับอันดับ)
+    */
+    'copy_trade' => [
+        'enabled' => (bool) env('AIBOT_COPY_TRADE_ENABLED', false),
+        'stats_minutes' => 15,
+        'fees' => [
+            'collect' => (bool) env('AIBOT_COPY_FEES_COLLECT', false),
+            'currency' => 'TPIX',
+            'rate_pct' => ['min' => 5, 'max' => 30, 'default' => 20],
+            'platform_share_pct' => ['min' => 20, 'max' => 50, 'default' => 20],
+        ],
+        'master' => [
+            'requires_kyc' => true,
+            'kyc_level' => 'basic',
+            'min_days' => 30,
+            'min_closed_trades' => 20,
+            'min_return_pct' => 10,
+            'max_drawdown_pct' => 25,
+            'max_name_length' => 40,
+            'max_bio_length' => 280,
+        ],
+        'follow' => [
+            'max_entry_drift_pct' => 1.0,
+            'min_add_usd' => 10,
+        ],
+        'promotion' => [
+            'slots' => 3,
+        ],
     ],
 
     /*
