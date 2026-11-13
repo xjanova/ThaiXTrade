@@ -102,7 +102,29 @@ curl -s http://<IP ลิงก์ส่วนตัว>:8787/health
 
 พอร์ตที่ docker เปิดข้าม ufw — ผูก `SIGNER_PUBLISH` กับ IP ส่วนตัวเท่านั้น ห้ามใช้ `0.0.0.0`
 
-### 2. เครื่องเว็บ
+### ขั้นที่ 2 — เปิดให้เครื่องเว็บเรียก (รันบนเครื่องตัวเซ็น ตามลำดับนี้เท่านั้น)
+
+เครื่องเว็บกับเครื่องเชนอยู่วง /24 เดียวกัน จึงใช้ IP ของเครื่องเชนตรง ๆ และให้ไฟร์วอลล์รับเฉพาะต้นทางที่เป็นเครื่องเว็บ
+ไฟล์ทั้งสองอยู่ใน `scripts/blockchain/bot-signer/` (บนเครื่องเชนวางไว้ที่ `/opt/tpix-bot-signer/bot-signer/` แล้ว)
+
+```bash
+cd /opt/tpix-bot-signer/bot-signer
+
+# 1) ไฟร์วอลล์ก่อน — ถ้าเปิดพอร์ตก่อนใส่กฎ พอร์ตของตัวเซ็นจะเปิดสู่อินเทอร์เน็ต
+sudo install -m 0755 tpix-signer-firewall /usr/local/sbin/tpix-signer-firewall
+sudo install -m 0644 tpix-signer-firewall.service /etc/systemd/system/tpix-signer-firewall.service
+sudo systemctl daemon-reload && sudo systemctl enable --now tpix-signer-firewall.service
+sudo tpix-signer-firewall status          # ต้องเห็นกฎ tpix-signer-webonly
+
+# 2) แล้วค่อยเปิดพอร์ตบน IP ของเครื่อง
+sudo sed -i 's|^SIGNER_PUBLISH=.*|SIGNER_PUBLISH=123.253.62.252:8787|' .env
+sudo docker compose up -d
+```
+
+ตรวจ: จากเครื่องเว็บ `curl -s http://123.253.62.252:8787/health` ต้องตอบ `{"ok":true,...}`
+และจากเครื่องอื่นใดต้องต่อไม่ติด ถอยกลับ: ตั้ง `SIGNER_PUBLISH=127.0.0.1:8787` แล้ว `sudo docker compose up -d`
+
+### เครื่องเว็บ
 
 เพิ่มใน `.env` ของ tpix.online แล้ว `php artisan config:cache`:
 
