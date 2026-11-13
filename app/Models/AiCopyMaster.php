@@ -29,6 +29,7 @@ class AiCopyMaster extends Model
         'fee_rate_pct', 'platform_share_pct', 'status', 'stats', 'stats_at',
         'registered_at', 'closed_at',
         'rank_tier', 'rank_score', 'rank_below_since', 'rank_evaluated_at', 'rating_avg', 'rating_count',
+        'media_revoked_at',
     ];
 
     protected function casts(): array
@@ -46,6 +47,7 @@ class AiCopyMaster extends Model
             'rank_evaluated_at' => 'datetime',
             'rating_avg' => 'float',
             'rating_count' => 'integer',
+            'media_revoked_at' => 'datetime',
         ];
     }
 

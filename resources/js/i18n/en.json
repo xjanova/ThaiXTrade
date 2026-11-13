@@ -1900,7 +1900,25 @@
             "reviewComment": "Comment (optional)",
             "reviewSubmit": "Submit review",
             "reviewOk": "Review saved",
-            "reviewLocked": "You can review after copying with real money for the minimum period and closing a copied trade"
+            "reviewLocked": "You can review after copying with real money for the minimum period and closing a copied trade",
+            "mediaToggle": "Lives / clips ({n})",
+            "mediaHide": "Hide lives / clips",
+            "mediaLive": "Live",
+            "mediaClip": "Clip",
+            "mediaOpen": "Open on {provider}",
+            "mediaPlay": "Play here",
+            "mediaExternalNote": "Videos live on the master's own channel. They are not TPIX TRADE content and not investment advice",
+            "mediaMine": "My lives and clips",
+            "mediaLocked": "Lives and clips are locked — they unlock at tier {tierNeed} (now {tierHave}) and ${revNeed} of platform revenue (now ${revHave})",
+            "mediaRevoked": "The team has revoked lives and clips for this profile — your links are not shown publicly",
+            "mediaKind": "Type",
+            "mediaUrl": "Video link (YouTube / Facebook / TikTok)",
+            "mediaTitle": "Title",
+            "mediaAdd": "Add link",
+            "mediaAdded": "Link added",
+            "mediaRemove": "Remove",
+            "mediaHidden": "Hidden by the team",
+            "mediaCount": "{used}/{max} items"
         }
     },
     "walletProfile": {

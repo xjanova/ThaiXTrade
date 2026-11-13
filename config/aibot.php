@@ -826,6 +826,25 @@ return [
             'min_follow_days' => 14,
             'max_comment_length' => 500,
         ],
+
+        /*
+         * ไลฟ์/คลิปของมาสเตอร์ — แปะลิงก์จากช่องของตัวเอง เราไม่โฮสต์วิดีโอ (ดู MediaService · MediaLink)
+         *
+         * ปลดล็อกเมื่อครบทั้งสองข้อ: ระดับถึง min_tier และทำยอดให้แพลตฟอร์มถึง min_platform_revenue_usd
+         * (ส่วนของแพลตฟอร์มในบัญชีค่าบริการ) · ทีมงานถอนสิทธิ์รายคนได้ด้วย aibot:copy-media
+         * ผู้ให้บริการที่รับฝังอยู่ในโค้ด (MediaLink::PROVIDERS) ไม่ใช่ค่าตั้ง — เพิ่มโฮสต์ต้องเขียนตัวตรวจรหัสวิดีโอของมันด้วย
+         *
+         * embed  false = โชว์เป็นลิงก์เปิดแท็บใหม่ · true = ฝังเครื่องเล่นของผู้ให้บริการในหน้า
+         *        ⚠️ เปิด true ต้องเพิ่มโดเมนเครื่องเล่น (youtube-nocookie.com · facebook.com · tiktok.com) ใน frame-src
+         *           ของ CSP ทั้งสองที่ก่อน (app/Http/Middleware/SecurityHeaders.php และ public_html/.htaccess)
+         *           ไม่งั้นเบราว์เซอร์บล็อกกรอบวิดีโอ — เป็นการผ่อนนโยบายความปลอดภัยทั้งเว็บ จึงให้เจ้าของตัดสิน
+         */
+        'media' => [
+            'min_tier' => 3,
+            'min_platform_revenue_usd' => 50,
+            'max_items' => 10,
+            'embed' => (bool) env('AIBOT_COPY_MEDIA_EMBED', false),
+        ],
     ],
 
     /*

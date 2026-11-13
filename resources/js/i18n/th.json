@@ -1900,7 +1900,25 @@
             "reviewComment": "ความเห็น (ไม่บังคับ)",
             "reviewSubmit": "ส่งรีวิว",
             "reviewOk": "บันทึกรีวิวแล้ว",
-            "reviewLocked": "รีวิวได้เมื่อก๊อปปี้ด้วยเงินจริงครบระยะขั้นต่ำและปิดไม้ที่ก๊อปปี้ไปแล้ว"
+            "reviewLocked": "รีวิวได้เมื่อก๊อปปี้ด้วยเงินจริงครบระยะขั้นต่ำและปิดไม้ที่ก๊อปปี้ไปแล้ว",
+            "mediaToggle": "ไลฟ์/คลิป ({n})",
+            "mediaHide": "ซ่อนไลฟ์/คลิป",
+            "mediaLive": "ไลฟ์",
+            "mediaClip": "คลิป",
+            "mediaOpen": "เปิดดูที่ {provider}",
+            "mediaPlay": "เล่นที่นี่",
+            "mediaExternalNote": "วิดีโออยู่บนช่องของมาสเตอร์เอง ไม่ใช่เนื้อหาของ TPIX TRADE และไม่ใช่คำแนะนำการลงทุน",
+            "mediaMine": "ไลฟ์และคลิปของฉัน",
+            "mediaLocked": "ยังแปะไลฟ์/คลิปไม่ได้ — ปลดล็อกเมื่อระดับถึง {tierNeed} (ตอนนี้ {tierHave}) และทำยอดให้แพลตฟอร์มถึง ${revNeed} (ตอนนี้ ${revHave})",
+            "mediaRevoked": "ทีมงานถอนสิทธิ์แปะไลฟ์/คลิปของโปรไฟล์นี้ไว้ — ลิงก์ของคุณไม่แสดงต่อสาธารณะ",
+            "mediaKind": "ประเภท",
+            "mediaUrl": "ลิงก์วิดีโอ (YouTube / Facebook / TikTok)",
+            "mediaTitle": "ชื่อเรื่อง",
+            "mediaAdd": "แปะลิงก์",
+            "mediaAdded": "แปะลิงก์แล้ว",
+            "mediaRemove": "ลบ",
+            "mediaHidden": "ทีมงานซ่อนไว้",
+            "mediaCount": "{used}/{max} รายการ"
         }
     },
     "walletProfile": {

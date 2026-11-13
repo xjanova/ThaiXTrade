@@ -62,6 +62,7 @@ function makeApi(board = boardData(), mine = mineData()) {
         loadMine: vi.fn(() => Promise.resolve({ ok: true, data: mine })),
         registerMaster: ok(), updateMaster: ok(), closeMaster: ok(), follow: ok(), stopFollow: ok(), acceptRate: ok(),
         loadReviews: ok({ rating: { avg: 3.5, count: 2 }, reviews: [] }), review: ok(), reportReview: ok({ reported: true }),
+        loadMedia: ok({ embed: false, items: [] }), addMedia: ok(), removeMedia: ok(),
     };
 }
 
@@ -471,5 +472,132 @@ describe('AiCopyTradePanel — rank and stars', () => {
 
         expect(byId(wrapper, 'copy-review-form-9').exists()).toBe(false);
         expect(byId(wrapper, 'copy-follow-row-9').text()).toContain('You can review after copying with real money');
+    });
+});
+
+describe('AiCopyTradePanel — lives and clips', () => {
+    const item = (overrides = {}) => ({
+        id: 3, kind: 'live', provider: 'youtube', title: 'Friday live', status: 'visible',
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', embed_url: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ', ...overrides,
+    });
+    const withMedia = (items, embed = false) => {
+        const api = makeApi(boardData({ masters: [master({ media_count: items.length })], promoted: [] }));
+        api.loadMedia.mockResolvedValue({ ok: true, data: { embed, items } });
+        return api;
+    };
+    const own = (media) => ({ ...master(), earnings: { master_usd: 0, collect: false }, media });
+
+    it('offers no media button for a master with nothing to show', async () => {
+        const { wrapper } = await mountPanel();
+
+        expect(byId(wrapper, 'copy-media-toggle-1').exists()).toBe(false);
+    });
+
+    it('links out to the provider in a new tab without leaking the referrer, and says it is not our content', async () => {
+        const { wrapper } = await mountPanel(withMedia([item()]));
+
+        await byId(wrapper, 'copy-media-toggle-1').trigger('click');
+        await flushPromises();
+
+        const link = byId(wrapper, 'copy-media-item-3').find('a');
+        expect(link.attributes('href')).toBe('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+        expect(link.attributes('target')).toBe('_blank');
+        expect(link.attributes('rel')).toBe('noopener noreferrer nofollow');
+        expect(link.text()).toBe('Open on YouTube');
+        expect(byId(wrapper, 'copy-media-item-3').text()).toContain('Live');
+        expect(byId(wrapper, 'copy-media-1').text()).toContain('not investment advice');
+    });
+
+    it('drops any item whose link is not on a known provider origin', async () => {
+        const hostile = [
+            item({ id: 4, url: 'javascript:alert(1)' }),
+            item({ id: 5, url: 'https://www.youtube.com.evil.example/watch?v=x' }),
+            item({ id: 6, url: 'data:text/html,<script>1</script>' }),
+            item({ id: 7 }),
+        ];
+        const { wrapper } = await mountPanel(withMedia(hostile));
+
+        await byId(wrapper, 'copy-media-toggle-1').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.findAll('[data-testid^="copy-media-item-"]')).toHaveLength(1);
+        expect(wrapper.html()).not.toContain('javascript:');
+        expect(wrapper.html()).not.toContain('evil.example');
+    });
+
+    it('renders a title as text, never as markup', async () => {
+        const { wrapper } = await mountPanel(withMedia([item({ title: '<img src=x onerror=alert(1)>' })]));
+
+        await byId(wrapper, 'copy-media-toggle-1').trigger('click');
+        await flushPromises();
+
+        expect(byId(wrapper, 'copy-media-item-3').text()).toContain('<img src=x onerror=alert(1)>');
+        expect(byId(wrapper, 'copy-media-item-3').find('img').exists()).toBe(false);
+    });
+
+    it('never embeds a player unless the server allows it', async () => {
+        const { wrapper } = await mountPanel(withMedia([item()], false));
+
+        await byId(wrapper, 'copy-media-toggle-1').trigger('click');
+        await flushPromises();
+
+        expect(byId(wrapper, 'copy-media-play-3').exists()).toBe(false);
+        expect(wrapper.find('iframe').exists()).toBe(false);
+    });
+
+    it('embeds only a known player origin, sandboxed, and only after a click', async () => {
+        const { wrapper } = await mountPanel(withMedia([item(), item({ id: 8, embed_url: 'https://evil.example/embed/x' })], true));
+
+        await byId(wrapper, 'copy-media-toggle-1').trigger('click');
+        await flushPromises();
+
+        expect(wrapper.find('iframe').exists()).toBe(false);
+        expect(byId(wrapper, 'copy-media-play-8').exists()).toBe(false);
+
+        await byId(wrapper, 'copy-media-play-3').trigger('click');
+
+        const frame = byId(wrapper, 'copy-media-frame-3');
+        expect(frame.attributes('src')).toBe('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ');
+        expect(frame.attributes('sandbox')).toBe('allow-scripts allow-same-origin allow-presentation allow-popups');
+        expect(frame.attributes('referrerpolicy')).toBe('strict-origin-when-cross-origin');
+        expect(wrapper.findAll('iframe')).toHaveLength(1);
+    });
+
+    it('tells a master what is still missing while media is locked', async () => {
+        const media = { unlocked: false, revoked: false, tier: { need: 3, have: 2 }, revenue_usd: { need: 50, have: 12.5 }, max_items: 10, items: [] };
+        const { wrapper } = await mountPanel(makeApi(boardData(), mineData({ master: own(media) })));
+
+        expect(byId(wrapper, 'copy-media-locked').text()).toBe('Lives and clips are locked — they unlock at tier 3 (now 2) and $50 of platform revenue (now $12.50)');
+        expect(byId(wrapper, 'copy-media-form').exists()).toBe(false);
+    });
+
+    it('tells a master when the team revoked media', async () => {
+        const media = { unlocked: false, revoked: true, tier: { need: 3, have: 5 }, revenue_usd: { need: 50, have: 900 }, max_items: 10, items: [item()] };
+        const { wrapper } = await mountPanel(makeApi(boardData(), mineData({ master: own(media) })));
+
+        expect(byId(wrapper, 'copy-media-revoked').text()).toContain('revoked');
+        expect(byId(wrapper, 'copy-media-form').exists()).toBe(false);
+        // ยังลบของตัวเองได้
+        expect(byId(wrapper, 'copy-media-remove-3').exists()).toBe(true);
+    });
+
+    it('adds and removes links for an unlocked master', async () => {
+        const media = { unlocked: true, revoked: false, tier: { need: 3, have: 4 }, revenue_usd: { need: 50, have: 80 }, max_items: 10, items: [item({ status: 'hidden' })] };
+        const { wrapper, api } = await mountPanel(makeApi(boardData(), mineData({ master: own(media) })));
+
+        expect(byId(wrapper, 'copy-my-media').text()).toContain('1/10 items');
+        expect(byId(wrapper, 'copy-my-media-item-3').text()).toContain('Hidden by the team');
+        expect(byId(wrapper, 'copy-media-add').attributes('disabled')).toBeDefined();
+
+        await byId(wrapper, 'copy-media-url').setValue('  https://youtu.be/dQw4w9WgXcQ ');
+        await byId(wrapper, 'copy-media-title').setValue('Trend basics');
+        await byId(wrapper, 'copy-media-form').trigger('submit');
+        await flushPromises();
+
+        expect(api.addMedia).toHaveBeenCalledWith({ kind: 'clip', url: 'https://youtu.be/dQw4w9WgXcQ', title: 'Trend basics' });
+
+        await byId(wrapper, 'copy-media-remove-3').trigger('click');
+        await flushPromises();
+        expect(api.removeMedia).toHaveBeenCalledWith(3);
     });
 });

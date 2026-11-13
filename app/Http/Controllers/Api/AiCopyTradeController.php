@@ -9,6 +9,7 @@ use App\Models\AiCopyFollow;
 use App\Models\AiCopyMaster;
 use App\Models\AiCopyReview;
 use App\Services\AiBot\Copy\CopyTradeService;
+use App\Services\AiBot\Copy\MediaService;
 use App\Services\AiBot\Copy\RankService;
 use App\Services\AiBot\Copy\ReviewService;
 use App\Services\AiBot\Live\LiveBroker;
@@ -53,6 +54,11 @@ class AiCopyTradeController extends Controller
         ReviewService::ERR_NOT_ELIGIBLE => 'รีวิวได้เมื่อคุณก๊อปปี้มาสเตอร์คนนี้ด้วยเงินจริงครบระยะขั้นต่ำ และปิดไม้ที่ก๊อปปี้ไปแล้วอย่างน้อยหนึ่งไม้',
         ReviewService::ERR_NOT_FOUND => 'ไม่พบรีวิวนี้',
         ReviewService::ERR_OWN_REVIEW => 'รายงานรีวิวของตัวเองไม่ได้',
+        MediaService::ERR_LOCKED => 'ยังแปะไลฟ์/คลิปไม่ได้ — ปลดล็อกเมื่อระดับและยอดที่ทำให้แพลตฟอร์มถึงเกณฑ์',
+        MediaService::ERR_INVALID_LINK => 'ลิงก์นี้ใช้ไม่ได้ — รับเฉพาะลิงก์วิดีโอแบบเต็ม (https) ของ YouTube, Facebook หรือ TikTok',
+        MediaService::ERR_LIMIT => 'แปะลิงก์ครบจำนวนสูงสุดแล้ว — ลบรายการเดิมก่อน',
+        MediaService::ERR_DUPLICATE => 'ลิงก์นี้แปะไว้แล้ว',
+        MediaService::ERR_NOT_FOUND => 'ไม่พบลิงก์นี้',
         AiBotService::ERR_NO_SUBSCRIPTION => 'ยังไม่มีการเช่าที่ใช้งานอยู่ กรุณาเช่าบอทก่อน',
         AiBotService::ERR_BOT_LIMIT => 'จำนวนบอทเต็มโควตาของแพลนนี้แล้ว',
         AiBotService::ERR_STRATEGY_LOCKED => 'กลยุทธ์นี้ต้องใช้แพลนระดับสูงกว่า',
@@ -65,6 +71,7 @@ class AiCopyTradeController extends Controller
         private readonly KycGate $kyc,
         private readonly RankService $ranks,
         private readonly ReviewService $reviews,
+        private readonly MediaService $media,
     ) {}
 
     /** กระดานมาสเตอร์ — สาธารณะ: มีแต่ผลงานเงินจริงที่ปิดแล้ว ไม่มีกฎ ไม่มีที่อยู่กระเป๋าเต็ม */
@@ -227,6 +234,76 @@ class AiCopyTradeController extends Controller
         }
 
         return response()->json(['success' => true, 'data' => $this->presentFollow($this->copy->acceptCurrentRate($follow)->fresh(['master', 'bot']))]);
+    }
+
+    // =========================================================================
+    // ไลฟ์ / คลิป
+    // =========================================================================
+
+    /** ไลฟ์/คลิปของมาสเตอร์คนหนึ่ง — สาธารณะ: โชว์เฉพาะตอนที่มาสเตอร์ยังมีสิทธิ์ และเฉพาะรายการที่ไม่ถูกซ่อน */
+    public function mediaOf(int $id): JsonResponse
+    {
+        $master = $this->copy->enabled() ? AiCopyMaster::open()->find($id) : null;
+
+        if (! $master) {
+            return $this->failure(CopyTradeService::ERR_MASTER_NOT_FOUND, null, 404);
+        }
+
+        return response()->json(['success' => true, 'data' => [
+            'embed' => (bool) config('aibot.copy_trade.media.embed', false),
+            'items' => $this->media->items($master),
+        ]]);
+    }
+
+    public function addMedia(Request $request): JsonResponse
+    {
+        $master = $this->copy->enabled() ? $this->copy->masterOf($this->wallet($request)) : null;
+
+        if (! $master || ! $master->isOpen()) {
+            return $this->failure(CopyTradeService::ERR_MASTER_NOT_FOUND, null, 404);
+        }
+
+        $validated = $request->validate([
+            'kind' => ['required', 'string', 'in:live,clip'],
+            // ตรวจแค่ว่าเป็นข้อความสั้น — การตัดสินว่า "เป็นลิงก์ที่รับ" อยู่ที่ MediaLink ที่เดียว
+            'url' => ['required', 'string', 'max:300'],
+            'title' => ['sometimes', 'nullable', 'string', 'max:120'],
+        ]);
+
+        try {
+            $this->media->add($master, $validated['kind'], $validated['url'], $validated['title'] ?? null);
+        } catch (RuntimeException $e) {
+            return $this->serviceFailure($e);
+        }
+
+        return response()->json(['success' => true, 'data' => $this->mediaState($master)], 201);
+    }
+
+    public function removeMedia(Request $request, int $id): JsonResponse
+    {
+        $master = $this->copy->masterOf($this->wallet($request));
+
+        if (! $master) {
+            return $this->failure(CopyTradeService::ERR_MASTER_NOT_FOUND, null, 404);
+        }
+
+        try {
+            // ลบของตัวเองได้เสมอ แม้ถูกถอนสิทธิ์หรือระบบปิดอยู่ — เอาของออกต้องไม่มีด่าน
+            $this->media->remove($master, $id);
+        } catch (RuntimeException $e) {
+            return $this->serviceFailure($e);
+        }
+
+        return response()->json(['success' => true, 'data' => $this->mediaState($master)]);
+    }
+
+    /** สิทธิ์แปะลิงก์ + รายการทั้งหมดของเจ้าของ (รวมที่ถูกซ่อน) */
+    private function mediaState(AiCopyMaster $master): array
+    {
+        return $this->media->access($master) + [
+            'max_items' => (int) config('aibot.copy_trade.media.max_items', 10),
+            'items' => $this->media->items($master, forOwner: true),
+        ];
     }
 
     // =========================================================================
@@ -405,6 +482,8 @@ class AiCopyTradeController extends Controller
             'rank' => $this->ranks->present((int) $master->rank_tier),
             'rank_score' => $master->rank_score,
             'rating' => ['avg' => $master->rating_avg, 'count' => (int) $master->rating_count],
+            // จำนวนไลฟ์/คลิปที่คนทั่วไปเห็นตอนนี้ (0 เมื่อยังไม่ปลดล็อก/ถูกถอนสิทธิ์) — รายการจริงโหลดแยกเมื่อกดดู
+            'media_count' => count($this->media->items($master)),
             'stats_at' => $master->stats_at?->toIso8601String(),
             'registered_at' => $master->registered_at?->toIso8601String(),
         ];
@@ -412,6 +491,7 @@ class AiCopyTradeController extends Controller
         if ($own) {
             $data += [
                 'bot_id' => $master->ai_bot_config_id,
+                'media' => $this->mediaState($master),
                 'earnings' => [
                     'master_usd' => round((float) AiCopyFee::where('ai_copy_master_id', $master->id)->where('status', '!=', AiCopyFee::STATUS_VOID)->sum('master_usd'), 2),
                     'collect' => (bool) config('aibot.copy_trade.fees.collect', false),

@@ -245,6 +245,57 @@ function draftFor(follow) {
     return reviewDrafts.value[follow.id];
 }
 
+// ── ไลฟ์ / คลิป ──────────────────────────────────────────────────────────────
+
+/*
+ * ต้นทางที่ยอมให้เป็นลิงก์/กรอบวิดีโอ — ตรวจซ้ำที่หน้าเว็บแม้เซิร์ฟเวอร์จะประกอบลิงก์เองอยู่แล้ว
+ * (ลิงก์ที่ไม่ขึ้นต้นด้วยต้นทางพวกนี้ไม่ถูกวาดเป็น href หรือ src เลย — javascript: ไม่มีทางหลุดมาถึง DOM)
+ */
+const MEDIA_LINK_ORIGINS = ['https://www.youtube.com/', 'https://www.facebook.com/', 'https://www.tiktok.com/'];
+const MEDIA_EMBED_ORIGINS = ['https://www.youtube-nocookie.com/embed/', 'https://www.facebook.com/plugins/video.php?', 'https://www.tiktok.com/embed/v2/'];
+const PROVIDER_NAMES = { youtube: 'YouTube', facebook: 'Facebook', tiktok: 'TikTok' };
+
+const safeLink = (url) => (typeof url === 'string' && MEDIA_LINK_ORIGINS.some((origin) => url.startsWith(origin)) ? url : null);
+const safeEmbed = (url) => (typeof url === 'string' && MEDIA_EMBED_ORIGINS.some((origin) => url.startsWith(origin)) ? url : null);
+
+const openMedia = ref(null);        // รหัสมาสเตอร์ที่กำลังเปิดดูไลฟ์/คลิป
+const mediaList = ref([]);
+const mediaEmbed = ref(false);      // เซิร์ฟเวอร์อนุญาตให้ฝังเครื่องเล่นในหน้าไหม (ต้องผ่อน CSP ก่อน)
+const playing = ref(null);          // รหัสรายการที่กดเล่นในหน้า
+const mediaForm = ref({ kind: 'clip', url: '', title: '' });
+
+async function toggleMedia(master) {
+    playing.value = null;
+
+    if (openMedia.value === master.id) {
+        openMedia.value = null;
+        return;
+    }
+
+    const result = await props.api.loadMedia(master.id);
+    // รายการที่ลิงก์ไม่ผ่านการตรวจต้นทางถูกทิ้งทั้งรายการ
+    mediaList.value = result.ok ? (result.data?.items ?? []).filter((item) => safeLink(item.url)) : [];
+    mediaEmbed.value = result.ok && result.data?.embed === true;
+    openMedia.value = master.id;
+}
+
+async function addMedia() {
+    const ok = await act(() => props.api.addMedia({ ...mediaForm.value, url: mediaForm.value.url.trim() }), t('aiTrade.copy.mediaAdded'));
+
+    if (ok) mediaForm.value = { kind: 'clip', url: '', title: '' };
+}
+
+function removeMedia(item) {
+    act(() => props.api.removeMedia(item.id));
+}
+
+function mediaLockedText(media) {
+    return t('aiTrade.copy.mediaLocked', {
+        tierNeed: media.tier?.need, tierHave: media.tier?.have,
+        revNeed: Number(media.revenue_usd?.need ?? 0).toFixed(0), revHave: Number(media.revenue_usd?.have ?? 0).toFixed(2),
+    });
+}
+
 async function submitReview(follow) {
     const draft = draftFor(follow);
     if (!draft.stars || !follow.master) return;
@@ -355,6 +406,42 @@ async function submitReview(follow) {
                     <button type="button" class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50" :disabled="busy" data-testid="copy-rate-save" @click="saveRates">{{ t('aiTrade.copy.editRate') }}</button>
                 </div>
                 <p class="text-[10px] text-dark-500 leading-relaxed">{{ t('aiTrade.copy.editRateNote') }}</p>
+                <div v-if="myMaster.media" class="rounded-lg bg-dark-900/40 p-2.5 space-y-2" data-testid="copy-my-media">
+                    <p class="text-xs font-bold text-white">
+                        {{ t('aiTrade.copy.mediaMine') }}
+                        <span class="text-[10px] text-dark-500 font-mono font-normal ml-1">{{ t('aiTrade.copy.mediaCount', { used: myMaster.media.items.length, max: myMaster.media.max_items }) }}</span>
+                    </p>
+                    <p v-if="myMaster.media.revoked" class="text-[11px] text-amber-300 leading-relaxed" data-testid="copy-media-revoked">{{ t('aiTrade.copy.mediaRevoked') }}</p>
+                    <p v-else-if="!myMaster.media.unlocked" class="text-[11px] text-dark-400 leading-relaxed" data-testid="copy-media-locked">{{ mediaLockedText(myMaster.media) }}</p>
+                    <form v-else class="grid gap-2 sm:grid-cols-4 items-end" data-testid="copy-media-form" @submit.prevent="addMedia">
+                        <label class="block">
+                            <span class="block text-[10px] text-dark-400 mb-1">{{ t('aiTrade.copy.mediaKind') }}</span>
+                            <select v-model="mediaForm.kind" class="trading-input text-xs py-1.5">
+                                <option value="clip">{{ t('aiTrade.copy.mediaClip') }}</option>
+                                <option value="live">{{ t('aiTrade.copy.mediaLive') }}</option>
+                            </select>
+                        </label>
+                        <label class="block sm:col-span-2">
+                            <span class="block text-[10px] text-dark-400 mb-1">{{ t('aiTrade.copy.mediaUrl') }}</span>
+                            <input v-model="mediaForm.url" type="url" maxlength="300" class="trading-input text-xs py-1.5" placeholder="https://" data-testid="copy-media-url">
+                        </label>
+                        <label class="block">
+                            <span class="block text-[10px] text-dark-400 mb-1">{{ t('aiTrade.copy.mediaTitle') }}</span>
+                            <input v-model="mediaForm.title" type="text" maxlength="120" class="trading-input text-xs py-1.5" data-testid="copy-media-title">
+                        </label>
+                        <button type="submit" class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50" :disabled="busy || !mediaForm.url.trim()" data-testid="copy-media-add">{{ t('aiTrade.copy.mediaAdd') }}</button>
+                    </form>
+                    <ul v-if="myMaster.media.items.length" class="space-y-1">
+                        <li v-for="item in myMaster.media.items" :key="item.id" class="text-[11px] text-dark-200" :data-testid="`copy-my-media-item-${item.id}`">
+                            <span class="px-1 rounded bg-dark-700 text-[9px]">{{ item.kind === 'live' ? t('aiTrade.copy.mediaLive') : t('aiTrade.copy.mediaClip') }}</span>
+                            <span class="ml-1">{{ item.title }}</span>
+                            <span class="text-dark-500 ml-1">{{ PROVIDER_NAMES[item.provider] ?? item.provider }}</span>
+                            <span v-if="item.status === 'hidden'" class="text-amber-300 ml-1">{{ t('aiTrade.copy.mediaHidden') }}</span>
+                            <button type="button" class="ml-2 text-dark-500 hover:text-trading-red" :disabled="busy" :data-testid="`copy-media-remove-${item.id}`" @click="removeMedia(item)">{{ t('aiTrade.copy.mediaRemove') }}</button>
+                        </li>
+                    </ul>
+                </div>
+
                 <div class="flex flex-wrap gap-3 text-[11px]">
                     <button type="button" class="text-primary-300 hover:text-primary-200" :disabled="busy" data-testid="copy-toggle-accepting" @click="toggleAccepting">
                         {{ myMaster.status === 'active' ? t('aiTrade.copy.pause') : t('aiTrade.copy.resume') }}
@@ -432,6 +519,47 @@ async function submitReview(follow) {
                             >
                                 {{ openReviews === m.id ? t('aiTrade.copy.hideReviews') : t('aiTrade.copy.showReviews') }}
                             </button>
+                            <button
+                                v-if="m.media_count"
+                                type="button"
+                                class="ml-3 text-[11px] text-primary-300 hover:text-primary-200"
+                                :data-testid="`copy-media-toggle-${m.id}`"
+                                @click="toggleMedia(m)"
+                            >
+                                {{ openMedia === m.id ? t('aiTrade.copy.mediaHide') : t('aiTrade.copy.mediaToggle', { n: m.media_count }) }}
+                            </button>
+                        </div>
+
+                        <!-- ไลฟ์/คลิป — ลิงก์ออกไปช่องของมาสเตอร์ (ผ่านการตรวจต้นทางแล้วเท่านั้น) ชื่อเรื่องแสดงแบบ escape -->
+                        <div v-if="openMedia === m.id" class="mt-2 rounded-lg bg-dark-900/40 p-2.5 space-y-1.5" :data-testid="`copy-media-${m.id}`">
+                            <p class="text-[10px] text-dark-500 leading-relaxed">{{ t('aiTrade.copy.mediaExternalNote') }}</p>
+                            <div v-for="item in mediaList" :key="item.id" class="text-[11px]" :data-testid="`copy-media-item-${item.id}`">
+                                <span class="px-1 rounded bg-dark-700 text-dark-200 text-[9px]">{{ item.kind === 'live' ? t('aiTrade.copy.mediaLive') : t('aiTrade.copy.mediaClip') }}</span>
+                                <span class="text-white ml-1">{{ item.title }}</span>
+                                <a :href="safeLink(item.url)" target="_blank" rel="noopener noreferrer nofollow" class="ml-2 text-primary-300 hover:text-primary-200 underline">
+                                    {{ t('aiTrade.copy.mediaOpen', { provider: PROVIDER_NAMES[item.provider] ?? item.provider }) }}
+                                </a>
+                                <button
+                                    v-if="mediaEmbed && safeEmbed(item.embed_url) && playing !== item.id"
+                                    type="button"
+                                    class="ml-2 text-primary-300 hover:text-primary-200"
+                                    :data-testid="`copy-media-play-${item.id}`"
+                                    @click="playing = item.id"
+                                >
+                                    {{ t('aiTrade.copy.mediaPlay') }}
+                                </button>
+                                <iframe
+                                    v-if="mediaEmbed && playing === item.id && safeEmbed(item.embed_url)"
+                                    :src="safeEmbed(item.embed_url)"
+                                    :title="item.title"
+                                    class="mt-1.5 w-full aspect-video rounded-lg border border-white/10"
+                                    sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
+                                    referrerpolicy="strict-origin-when-cross-origin"
+                                    loading="lazy"
+                                    allowfullscreen
+                                    :data-testid="`copy-media-frame-${item.id}`"
+                                />
+                            </div>
                         </div>
 
                         <!-- รีวิว — ข้อความแสดงแบบ escape เสมอ (interpolation ธรรมดา ห้ามใช้ v-html กับข้อความจากผู้ใช้) -->

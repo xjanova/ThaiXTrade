@@ -900,9 +900,16 @@ export function useAiBot() {
 
         try {
             const url = `/api/v1/ai-bot/copy${path}`;
-            const { data } = method === 'get'
-                ? await axios.get(url, needsWallet ? { params: { wallet_address: address } } : undefined)
-                : await axios[method](url, { ...body, wallet_address: address });
+            let response;
+            if (method === 'get') {
+                response = await axios.get(url, needsWallet ? { params: { wallet_address: address } } : undefined);
+            } else if (method === 'delete') {
+                // axios.delete รับ body ทาง config.data ไม่ใช่อาร์กิวเมนต์ที่สอง
+                response = await axios.delete(url, { data: { ...body, wallet_address: address } });
+            } else {
+                response = await axios[method](url, { ...body, wallet_address: address });
+            }
+            const { data } = response;
 
             // สลับกระเป๋าระหว่างรอ — ผลนี้เป็นของกระเป๋าเดิม
             if (needsWallet && !isCurrentWallet(address)) {
@@ -938,6 +945,10 @@ export function useAiBot() {
         loadReviews: (masterId) => copyRequest('get', `/masters/${masterId}/reviews`, {}, false),
         review: (masterId, payload) => copyRequest('post', `/masters/${masterId}/review`, payload),
         reportReview: (id, reason = null) => copyRequest('post', `/reviews/${id}/report`, { reason }),
+        // ไลฟ์/คลิป — รายการเป็นสาธารณะ · แปะ/ลบเป็นของมาสเตอร์เจ้าของโปรไฟล์
+        loadMedia: (masterId) => copyRequest('get', `/masters/${masterId}/media`, {}, false),
+        addMedia: (payload) => copyRequest('post', '/master/media', payload),
+        removeMedia: (id) => copyRequest('delete', `/master/media/${id}`),
     };
 
     // ── โหมดทดลอง ────────────────────────────────────────────────────────────

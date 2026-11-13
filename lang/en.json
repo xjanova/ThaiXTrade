@@ -1272,5 +1272,10 @@
     "เลิกตามมาสเตอร์แล้ว — บอทถูกพักไว้": "You stopped following — the bot is paused",
     "รีวิวได้เมื่อคุณก๊อปปี้มาสเตอร์คนนี้ด้วยเงินจริงครบระยะขั้นต่ำ และปิดไม้ที่ก๊อปปี้ไปแล้วอย่างน้อยหนึ่งไม้": "You can review once you have copied this master with real money for the minimum period and closed at least one copied trade",
     "ไม่พบรีวิวนี้": "Review not found",
-    "รายงานรีวิวของตัวเองไม่ได้": "You cannot report your own review"
+    "รายงานรีวิวของตัวเองไม่ได้": "You cannot report your own review",
+    "ยังแปะไลฟ์/คลิปไม่ได้ — ปลดล็อกเมื่อระดับและยอดที่ทำให้แพลตฟอร์มถึงเกณฑ์": "Lives and clips are locked — they unlock once your rank and the revenue you bring the platform reach the thresholds",
+    "ลิงก์นี้ใช้ไม่ได้ — รับเฉพาะลิงก์วิดีโอแบบเต็ม (https) ของ YouTube, Facebook หรือ TikTok": "This link cannot be used — only full https video links from YouTube, Facebook or TikTok are accepted",
+    "แปะลิงก์ครบจำนวนสูงสุดแล้ว — ลบรายการเดิมก่อน": "You have reached the maximum number of links — remove one first",
+    "ลิงก์นี้แปะไว้แล้ว": "This link is already added",
+    "ไม่พบลิงก์นี้": "Link not found"
 }
