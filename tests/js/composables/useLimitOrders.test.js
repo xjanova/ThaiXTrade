@@ -24,6 +24,7 @@ vi.mock('axios', () => ({
 const {
     useLimitOrders,
     isLimitPriceReached,
+    isLimitExpired,
     limitPairKey,
     LIMIT_COST_MARGIN,
     SUBMIT_QUEUE_KEY,
@@ -69,6 +70,20 @@ describe('isLimitPriceReached', () => {
     it('works for tiny prices without float notation getting in the way', () => {
         expect(isLimitPriceReached({ side: 'sell', price: '0.00000394' }, 0.00000400)).toBe(true);
         expect(isLimitPriceReached({ side: 'sell', price: '0.00000394' }, 0.00000395)).toBe(false);
+    });
+});
+
+describe('isLimitExpired', () => {
+    it('is true once the expiry time has passed and false before it or when unknown', () => {
+        const now = Date.parse('2026-11-13T10:00:00Z');
+
+        expect(isLimitExpired({ expires_at: '2026-11-13T09:59:59Z' }, now)).toBe(true);
+        expect(isLimitExpired({ expires_at: '2026-11-13T10:00:00Z' }, now)).toBe(true);
+        expect(isLimitExpired({ expires_at: '2026-11-13T10:00:01Z' }, now)).toBe(false);
+        // ไม่รู้เวลาหมดอายุ = ไม่ตัดสินว่าหมดอายุ (เซิร์ฟเวอร์เป็นตัวตัดสินจริง)
+        expect(isLimitExpired({ expires_at: null }, now)).toBe(false);
+        expect(isLimitExpired({}, now)).toBe(false);
+        expect(isLimitExpired(null, now)).toBe(false);
     });
 });
 

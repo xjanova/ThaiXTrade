@@ -12,6 +12,7 @@ use App\Services\Trading\LimitOrderService;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Tests\Support\FakesBscSwapChain;
 use Tests\TestCase;
 
 /**
@@ -28,6 +29,8 @@ use Tests\TestCase;
  */
 class LimitOrderApiTest extends TestCase
 {
+    use FakesBscSwapChain;
+
     private const WALLET = '0x1234567890abcdef1234567890abcdef12345678';
 
     private const OTHER = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
@@ -47,6 +50,9 @@ class LimitOrderApiTest extends TestCase
 
         // ด่านลายเซ็นกระเป๋า/โควตามีเทสต์ของตัวเอง — ที่นี่ทดสอบตัวคำสั่ง (มีเทสต์ด่านจริงแยกไว้ท้ายไฟล์)
         $this->withoutMiddleware([VerifyWalletOwnership::class, ThrottleRequests::class]);
+
+        // งานตามเวลาถามผลของธุรกรรมจากเชนเอง — ต้องเป็นเชนจำลอง ไม่งั้นเทสต์ยิง RPC จริง
+        $this->fakeBscChain();
 
         $this->bsc = Chain::where('chain_id', 56)->firstOrFail();
         $this->bsc->update(['is_active' => true, 'status' => Chain::STATUS_LIVE]);
@@ -353,6 +359,86 @@ class LimitOrderApiTest extends TestCase
         $this->postJson("/api/v1/trading/limit-orders/{$id}/submitted", ['wallet_address' => self::WALLET, 'tx_hash' => $this->hash('e')])
             ->assertOk()
             ->assertJsonPath('data.status', 'submitted');
+    }
+
+    /**
+     * หน้าเว็บ/แอปแจ้งบันทึกไม้ไม่สำเร็จ ทั้งที่ธุรกรรมลงเชนไปแล้ว — เราไม่มีแถว swap
+     * ห้ามเปิดคำสั่งคืน: คำสั่งที่เปิดคืนจะชวนเจ้าของยืนยันอีกรอบ = ไม้ลงสองรอบ
+     */
+    public function test_a_swap_that_landed_on_chain_fills_the_order_even_when_no_swap_row_ever_reached_us(): void
+    {
+        $id = $this->place()->json('data.id');
+        $hash = $this->hash('7');
+        $this->postJson("/api/v1/trading/limit-orders/{$id}/submitted", ['wallet_address' => self::WALLET, 'tx_hash' => $hash])->assertOk();
+
+        // ลงเชนจริงจากกระเป๋าเรา แต่ไม่มีใครแจ้งบันทึก
+        $this->bscSwap($hash, self::WALLET, self::USDT, self::BTCB, self::wei('100', 18), self::wei('0.00201', 18));
+
+        $this->travel(LimitOrderService::SUBMITTED_GRACE_MINUTES + 5)->minutes();
+        $this->artisan('trading:settle-limit-orders')->assertSuccessful();
+
+        $order = LimitOrder::firstOrFail();
+        $this->assertSame('filled', $order->status);
+        $this->assertSame($hash, $order->tx_hash);
+        // ไม่มีแถวให้อ่านยอด — เว้นว่าง ไม่เดาจากตัวเลขของคำสั่ง
+        $this->assertNull($order->filled_base);
+        $this->assertNull($order->filled_quote);
+    }
+
+    public function test_a_swap_that_reverted_on_chain_reopens_the_order_without_waiting_for_the_grace_period(): void
+    {
+        $id = $this->place()->json('data.id');
+        $hash = $this->hash('8');
+        $this->postJson("/api/v1/trading/limit-orders/{$id}/submitted", ['wallet_address' => self::WALLET, 'tx_hash' => $hash])->assertOk();
+        $this->bscSwap($hash, self::WALLET, self::USDT, self::BTCB, self::wei('100', 18), self::wei('0.00201', 18), 'failed');
+
+        $this->artisan('trading:settle-limit-orders')->assertSuccessful();
+
+        $order = LimitOrder::firstOrFail();
+        $this->assertSame('open', $order->status);
+        $this->assertSame('tx_failed', $order->close_reason);
+    }
+
+    public function test_a_transaction_still_in_the_mempool_keeps_the_order_waiting(): void
+    {
+        $id = $this->place()->json('data.id');
+        $hash = $this->hash('9');
+        $this->postJson("/api/v1/trading/limit-orders/{$id}/submitted", ['wallet_address' => self::WALLET, 'tx_hash' => $hash])->assertOk();
+        $this->bscSwap($hash, self::WALLET, self::USDT, self::BTCB, self::wei('100', 18), self::wei('0.00201', 18), 'pending');
+
+        $this->travel(LimitOrderService::SUBMITTED_GRACE_MINUTES + 5)->minutes();
+        $this->artisan('trading:settle-limit-orders')->assertSuccessful();
+
+        $this->assertSame('submitted', LimitOrder::firstOrFail()->status);
+    }
+
+    public function test_the_order_keeps_waiting_while_the_chain_cannot_be_asked(): void
+    {
+        $id = $this->place()->json('data.id');
+        $hash = $this->hash('0');
+        $this->postJson("/api/v1/trading/limit-orders/{$id}/submitted", ['wallet_address' => self::WALLET, 'tx_hash' => $hash])->assertOk();
+        $this->bscDown();
+
+        // RPC ล่ม = ไม่รู้ผล — เปิดคำสั่งคืนตอนนี้อาจชวนยืนยันไม้ที่ลงไปแล้วซ้ำ
+        $this->travel(LimitOrderService::SUBMITTED_GRACE_MINUTES + 5)->minutes();
+        $this->artisan('trading:settle-limit-orders')->assertSuccessful();
+
+        $this->assertSame('submitted', LimitOrder::firstOrFail()->status);
+    }
+
+    public function test_someone_elses_transaction_on_chain_never_fills_my_order(): void
+    {
+        $id = $this->place()->json('data.id');
+        $hash = $this->hash('5');
+        $this->postJson("/api/v1/trading/limit-orders/{$id}/submitted", ['wallet_address' => self::WALLET, 'tx_hash' => $hash])->assertOk();
+        // ธุรกรรมจริงบนเชน แต่ของกระเป๋าอื่น — อ้าง hash ของคนอื่นมาปิดคำสั่งตัวเองไม่ได้
+        $this->bscSwap($hash, self::OTHER, self::USDT, self::BTCB, self::wei('100', 18), self::wei('0.00201', 18));
+
+        $this->artisan('trading:settle-limit-orders')->assertSuccessful();
+
+        $order = LimitOrder::firstOrFail();
+        $this->assertSame('open', $order->status);
+        $this->assertSame('tx_failed', $order->close_reason);
     }
 
     public function test_pending_swap_keeps_the_order_waiting_even_after_the_grace_period(): void

@@ -35,7 +35,7 @@ import RowResizer from '@/Components/Trading/RowResizer.vue';
 import PageArt from '@/Components/PageArt.vue';
 import { useBinanceData } from '@/Composables/useBinanceData';
 import { useSwap, BSC_PRICE_IMPACT_BLOCK_PCT, toUnits, toDecimalString } from '@/Composables/useSwap';
-import { useLimitOrders, isLimitPriceReached, limitPairKey } from '@/Composables/useLimitOrders';
+import { useLimitOrders, isLimitPriceReached, isLimitExpired, limitPairKey } from '@/Composables/useLimitOrders';
 import { useTpixDex, toDexAddress } from '@/Composables/useTpixDex';
 import { loadDexConfig, isDexConfigured } from '@/Config/dexContracts';
 import { useTradingFee } from '@/Composables/useTradingFee';
@@ -1183,6 +1183,7 @@ const readyLimitOrders = computed(() => {
         && limitPairKey(o.pair) === pairKey
         && Number(o.network_chain_id) === tradeChainId.value
         && !limitOrders.hasPendingSubmit(o.id)
+        && !isLimitExpired(o)
         && isLimitPriceReached(o, marketPrice));
 });
 
@@ -1280,8 +1281,8 @@ async function executeLimitOrder(target) {
 
     const id = typeof target === 'object' ? target?.id : target;
     const row = limitOrders.orders.value.find(o => o.id === id);
-    // คำสั่งถูกยกเลิก/ปิดไปจากอีกแท็บ หรือส่งธุรกรรมไปแล้ว — ไม่ส่งซ้ำ
-    if (!row || row.status !== 'open' || limitOrders.hasPendingSubmit(row.id)) {
+    // คำสั่งถูกยกเลิก/ปิดไปจากอีกแท็บ ส่งธุรกรรมไปแล้ว หรือเลยอายุ — ไม่ส่ง
+    if (!row || row.status !== 'open' || limitOrders.hasPendingSubmit(row.id) || isLimitExpired(row)) {
         await reloadLimitOrders();
         return;
     }

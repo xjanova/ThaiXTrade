@@ -43,6 +43,16 @@ export function isLimitPriceReached(order, marketPrice, margin = LIMIT_COST_MARG
         : market >= limit * (1 + margin);
 }
 
+/**
+ * คำสั่งเลยอายุแล้วหรือยัง — รายการในหน้าจอโหลดใหม่ทุกนาที ระหว่างนั้นคำสั่งอาจหมดอายุที่เซิร์ฟเวอร์ไปแล้ว
+ * ห้ามชวนยืนยันคำสั่งที่หมดอายุ: ไม้จะลงจริง แต่เซิร์ฟเวอร์ไม่รับผูกกับคำสั่งที่ปิดไปแล้ว
+ */
+export function isLimitExpired(order, now = Date.now()) {
+    const expires = Date.parse(order?.expires_at ?? '');
+
+    return Number.isFinite(expires) && expires <= now;
+}
+
 function readQueue() {
     try {
         const rows = JSON.parse(localStorage.getItem(SUBMIT_QUEUE_KEY) || '[]');

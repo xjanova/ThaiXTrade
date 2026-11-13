@@ -51,6 +51,10 @@ class LimitOrderService
 
     private const SCALE = 18;
 
+    public function __construct(
+        private readonly TicketSettlementService $chain,
+    ) {}
+
     /**
      * สร้างคำสั่งตั้งราคา.
      *
@@ -212,41 +216,88 @@ class LimitOrderService
      *   ไม่มีแถวเลยเกินช่วงผ่อนผัน → เปิดคำสั่งคืน (ธุรกรรมไม่เคยถึงเชน หรือ hash ไม่ใช่ไม้ของกระเป๋านี้)
      *   ยังรอ                    → คงเดิม
      */
-    public function settle(LimitOrder $order): LimitOrder
+    /**
+     * @param  bool  $askChain  ไม่มีแถว swap → ถามผลจากเชนเอง (งานตามเวลาเท่านั้น — ไม่ถาม RPC ในคำขอของผู้ใช้)
+     */
+    public function settle(LimitOrder $order, bool $askChain = false): LimitOrder
     {
         if ($order->status !== LimitOrder::STATUS_SUBMITTED || ! $order->tx_hash) {
             return $order;
         }
 
-        // เทียบแบบไม่สนตัวพิมพ์ — แถว swap เก่าบางแถวเก็บ address/hash แบบ checksum
-        $swap = Transaction::query()
-            ->where('type', 'swap')
-            ->whereRaw('LOWER(tx_hash) = ?', [strtolower($order->tx_hash)])
-            ->whereRaw('LOWER(wallet_address) = ?', [strtolower($order->wallet_address)])
-            ->first();
+        $swap = $this->swapRowOf($order);
 
         if ($swap && in_array($swap->status, ['confirmed', 'completed'], true)) {
-            $buy = $order->side === 'buy';
+            return $this->fill($order, $swap);
+        }
 
-            $order->update([
-                'status' => LimitOrder::STATUS_FILLED,
-                'filled_at' => now(),
-                'filled_base' => $buy ? $swap->to_amount : $swap->from_amount,
-                'filled_quote' => $buy ? $swap->from_amount : $swap->to_amount,
-                'close_reason' => 'filled',
-            ]);
+        if ($swap && in_array($swap->status, ['failed', 'cancelled'], true)) {
+            $this->reopenOrExpire($order, 'tx_failed');
 
             return $order;
         }
 
-        $failed = $swap && in_array($swap->status, ['failed', 'cancelled'], true);
-        $stale = ! $swap
-            && $order->submitted_at
+        // มีแถวที่ยังรอผล = ตัวบันทึกไม้กำลังตามให้อยู่ รอต่อ
+        if ($swap) {
+            return $order;
+        }
+
+        /*
+         * ไม่มีแถว swap เลย — หน้าเว็บ/แอปอาจแจ้งบันทึกไม้ไม่สำเร็จ ทั้งที่ธุรกรรมลงเชนไปแล้ว
+         *
+         * ⚠️ ห้ามเปิดคำสั่งคืนเพียงเพราะ "เราไม่มีแถว": คำสั่งที่เปิดคืนจะชวนเจ้าของยืนยันอีกรอบ
+         *    = ไม้ลงสองรอบ ต้องถามเชนก่อนเสมอ
+         *      ลงแล้ว            → ปิดเป็นสำเร็จ (ยอดจากแถวที่ตัวอ่านเชนเพิ่งบันทึก ถ้ามี)
+         *      revert / ไม่ใช่ไม้ → เปิดคืน
+         *      ยังไม่รู้ผล       → รอ
+         *      ไม่มีใครเห็นธุรกรรม → เปิดคืนเมื่อเลยช่วงผ่อนผัน
+         */
+        $stale = $order->submitted_at
             && $order->submitted_at->lt(now()->subMinutes(self::SUBMITTED_GRACE_MINUTES));
 
-        if ($failed || $stale) {
-            $this->reopenOrExpire($order, $failed ? 'tx_failed' : 'tx_not_found');
+        if (! $askChain) {
+            return $order;
         }
+
+        $outcome = $this->chain->chainOutcome($order->tx_hash, $order->wallet_address, (int) $order->network_chain_id);
+
+        if ($outcome === TicketSettlementService::CONSUME) {
+            return $this->fill($order, $this->swapRowOf($order));
+        }
+
+        if ($outcome === TicketSettlementService::REFUND) {
+            $this->reopenOrExpire($order, 'tx_failed');
+        } elseif ($outcome === TicketSettlementService::GONE && $stale) {
+            $this->reopenOrExpire($order, 'tx_not_found');
+        }
+
+        return $order;
+    }
+
+    /** แถว swap ของธุรกรรมที่ผูกกับคำสั่งนี้ จากกระเป๋าเดียวกัน (null = ยังไม่มีใครบันทึก) */
+    private function swapRowOf(LimitOrder $order): ?Transaction
+    {
+        // เทียบแบบไม่สนตัวพิมพ์ — แถว swap เก่าบางแถวเก็บ address/hash แบบ checksum
+        return Transaction::query()
+            ->where('type', 'swap')
+            ->whereRaw('LOWER(tx_hash) = ?', [strtolower((string) $order->tx_hash)])
+            ->whereRaw('LOWER(wallet_address) = ?', [strtolower($order->wallet_address)])
+            ->first();
+    }
+
+    /** ปิดคำสั่งเป็นสำเร็จ — ยอดจริงจากแถว swap ถ้ามี (ไม้ที่ลงเชนแต่ไม่มีแถว: ยอดว่างไว้ ไม่เดา) */
+    private function fill(LimitOrder $order, ?Transaction $swap): LimitOrder
+    {
+        $settled = $swap && in_array($swap->status, ['confirmed', 'completed'], true);
+        $buy = $order->side === 'buy';
+
+        $order->update([
+            'status' => LimitOrder::STATUS_FILLED,
+            'filled_at' => now(),
+            'filled_base' => $settled ? ($buy ? $swap->to_amount : $swap->from_amount) : null,
+            'filled_quote' => $settled ? ($buy ? $swap->from_amount : $swap->to_amount) : null,
+            'close_reason' => 'filled',
+        ]);
 
         return $order;
     }
@@ -266,7 +317,7 @@ class LimitOrderService
             ->limit(500)
             ->get()
             ->each(function (LimitOrder $order) use (&$settled, &$reopened) {
-                $after = $this->settle($order)->status;
+                $after = $this->settle($order, askChain: true)->status;
 
                 if ($after === LimitOrder::STATUS_FILLED) {
                     $settled++;
