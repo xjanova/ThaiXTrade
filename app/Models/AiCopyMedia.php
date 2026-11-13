@@ -21,7 +21,12 @@ class AiCopyMedia extends Model
 
     protected $table = 'ai_copy_media';
 
-    protected $fillable = ['ai_copy_master_id', 'kind', 'provider', 'external_id', 'title', 'status'];
+    protected $fillable = ['ai_copy_master_id', 'kind', 'provider', 'external_id', 'title', 'status', 'featured_at'];
+
+    protected function casts(): array
+    {
+        return ['featured_at' => 'datetime'];
+    }
 
     public function master(): BelongsTo
     {

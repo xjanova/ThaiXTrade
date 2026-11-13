@@ -1277,5 +1277,12 @@
     "ลิงก์นี้ใช้ไม่ได้ — รับเฉพาะลิงก์วิดีโอแบบเต็ม (https) ของ YouTube, Facebook หรือ TikTok": "This link cannot be used — only full https video links from YouTube, Facebook or TikTok are accepted",
     "แปะลิงก์ครบจำนวนสูงสุดแล้ว — ลบรายการเดิมก่อน": "You have reached the maximum number of links — remove one first",
     "ลิงก์นี้แปะไว้แล้ว": "This link is already added",
-    "ไม่พบลิงก์นี้": "Link not found"
+    "ไม่พบลิงก์นี้": "Link not found",
+    "ยอด TPIX ที่เติมไว้ไม่พอจ่ายค่าบริการ Copy Trade — บอทหยุดเปิดไม้ใหม่จนกว่าจะเติม TPIX (ไม้ที่ถืออยู่ยังปิดตามมาสเตอร์ตามปกติ)": "Your prepaid TPIX balance cannot cover the Copy Trade fee — the bot opens no new trades until you top up (open positions still close with the master)",
+    "ยอด TPIX ที่เติมไว้ไม่พอสำหรับค่าบริการ Copy Trade — ต้องมีอย่างน้อย :need TPIX (ตอนนี้มี :have TPIX ขาดอีก :short TPIX) เติม TPIX ก่อนแล้วกดตามอีกครั้ง": "Your prepaid TPIX balance is too low for Copy Trade fees — you need at least :need TPIX (you have :have TPIX, :short TPIX short). Top up TPIX, then follow again",
+    "มีค่าบริการ Copy Trade ค้างจ่าย :owed TPIX — เติม TPIX ให้พอจ่ายก่อนแล้วกดตามอีกครั้ง (ต้องมีรวม :need TPIX ตอนนี้มี :have TPIX)": "You have :owed TPIX of unpaid Copy Trade fees — top up enough to clear them, then follow again (you need :need TPIX in total, you have :have TPIX)",
+    "ตั้งคลิปแนะนำครบจำนวนสูงสุดแล้ว — เอาคลิปเดิมออกก่อน": "You have reached the maximum number of featured clips — remove one first",
+    "ยอด TPIX ที่เติมไว้ไม่พอสำหรับค่าบริการ Copy Trade — เติม TPIX ก่อนแล้วกดตามอีกครั้ง": "Your prepaid TPIX balance is too low for Copy Trade fees — top up TPIX, then follow again",
+    "คลิปแนะนำต้องเป็นคลิป ไม่ใช่ไลฟ์": "A featured item must be a clip, not a live",
+    "ทีมงานถอนสิทธิ์แปะลิงก์ของโปรไฟล์นี้อยู่": "Staff have revoked link posting for this profile"
 }

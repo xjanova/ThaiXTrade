@@ -149,4 +149,28 @@ class CopyStrategyTest extends TestCase
         $this->assertFalse($this->strategy->acceptsAiExit());
         $this->assertSame($this->copy(), $this->strategy->withAiRelief($this->copy(), 8.0));
     }
+
+    #[Test]
+    public function an_empty_fee_balance_blocks_buying_but_never_selling(): void
+    {
+        $blocked = ['fee_blocked' => true];
+
+        // ไม่มีของ: ไม่เข้า และบอกเหตุผลก่อนเหตุผลอื่น แม้มาสเตอร์ยังไม่ได้เปิดไม้
+        foreach ([$this->copy($blocked), $this->copy($blocked + ['holding' => false, 'exposure' => 0.0])] as $params) {
+            $signal = $this->strategy->decide($this->candles(100.2), $params, null);
+
+            $this->assertSame(Signal::HOLD, $signal->action);
+            $this->assertSame(CopyStrategy::FEE_BLOCKED_REASON, $signal->reason);
+        }
+
+        // มีของ: ไม่เติมตามมาสเตอร์
+        $position = ['qty' => 0.2, 'entry' => 100.0];
+        $add = $this->strategy->decide($this->candles(100.2), $this->copy($blocked + ['exposure' => 1.0]), $position);
+        $this->assertSame(Signal::HOLD, $add->action);
+        $this->assertSame(CopyStrategy::FEE_BLOCKED_REASON, $add->reason);
+
+        // แต่ถือตามปกติเมื่อไม่มีอะไรต้องซื้อ และปิดตามมาสเตอร์ได้เสมอ
+        $this->assertSame('ถือตามมาสเตอร์', $this->strategy->decide($this->candles(100.2), $this->copy($blocked + ['exposure' => 0.1]), $position)->reason);
+        $this->assertSame(Signal::SELL, $this->strategy->decide($this->candles(100.2), $this->copy($blocked + ['holding' => false]), $position)->action);
+    }
 }

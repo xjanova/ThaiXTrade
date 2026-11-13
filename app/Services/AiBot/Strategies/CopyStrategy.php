@@ -21,6 +21,8 @@ use App\Services\AiBot\Signal;
  */
 class CopyStrategy implements Strategy
 {
+    public const FEE_BLOCKED_REASON = 'ยอด TPIX ที่เติมไว้ไม่พอจ่ายค่าบริการ Copy Trade — บอทหยุดเปิดไม้ใหม่จนกว่าจะเติม TPIX (ไม้ที่ถืออยู่ยังปิดตามมาสเตอร์ตามปกติ)';
+
     public function code(): string
     {
         return 'copy';
@@ -67,6 +69,8 @@ class CopyStrategy implements Strategy
         $exposure = max(0.0, min(1.0, (float) ($copy['exposure'] ?? 0)));
         $entry = (float) ($copy['entry_market'] ?? 0);
         $meta = ['master_holding' => $holding, 'master_exposure' => round($exposure, 4)];
+        // คลังค่าบริการไม่พอ/ค้างจ่าย — ห้ามซื้อเพิ่มอย่างเดียว การขายตามมาสเตอร์ไม่ถูกแตะ
+        $feeBlocked = (bool) ($copy['fee_blocked'] ?? false);
 
         // ไม่ไล่ราคา: เข้าช้ากว่ามาสเตอร์แล้วราคาวิ่งไปไกล = ได้ราคาคนละจุด ผลของผู้ตามจะไม่เหมือนที่เห็นบนกระดาน
         $maxDrift = (float) config('aibot.copy_trade.follow.max_entry_drift_pct', 1.0);
@@ -83,10 +87,19 @@ class CopyStrategy implements Strategy
             $step = max((float) config('aibot.copy_trade.follow.min_add_usd', 10), $cap * 0.1);
 
             if ($gap >= $step && $drift <= $maxDrift) {
+                if ($feeBlocked) {
+                    return Signal::hold(self::FEE_BLOCKED_REASON, $meta);
+                }
+
                 return Signal::buy(min(1.0, $gap / $cap), 'มาสเตอร์เติมไม้ — เติมตามสัดส่วนทุน', $meta);
             }
 
             return Signal::hold('ถือตามมาสเตอร์', $meta);
+        }
+
+        // ผู้ตามต้องรู้ทันทีว่าทำไมบอทไม่เข้า — บอกก่อนเหตุผลอื่น ไม่รอให้มาสเตอร์เปิดไม้
+        if ($feeBlocked) {
+            return Signal::hold(self::FEE_BLOCKED_REASON, $meta);
         }
 
         if (! $holding) {

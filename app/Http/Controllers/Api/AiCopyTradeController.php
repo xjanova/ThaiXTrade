@@ -9,6 +9,8 @@ use App\Models\AiCopyFollow;
 use App\Models\AiCopyMaster;
 use App\Models\AiCopyReview;
 use App\Services\AiBot\Copy\CopyTradeService;
+use App\Services\AiBot\Copy\FeeBalanceLow;
+use App\Services\AiBot\Copy\FeeCollector;
 use App\Services\AiBot\Copy\MediaService;
 use App\Services\AiBot\Copy\RankService;
 use App\Services\AiBot\Copy\ReviewService;
@@ -24,11 +26,13 @@ use RuntimeException;
  * TPIX TRADE — Master / Copy Trade API.
  *
  *   GET  /api/v1/ai-bot/copy/masters              กระดานมาสเตอร์ (สาธารณะ — ดูผลงานได้ก่อนเชื่อมกระเป๋า)
- *   GET  /api/v1/ai-bot/copy/me                   ของฉัน: โปรไฟล์มาสเตอร์ · คำชวน · คนที่ฉันตาม · ค่าบริการ
+ *   GET  /api/v1/ai-bot/copy/masters/{id}         หน้าแนะนำตัวของมาสเตอร์ (สาธารณะ): ผลงาน · แนะนำตัว · คลิปแนะนำ
+ *   GET  /api/v1/ai-bot/copy/me                   ของฉัน: โปรไฟล์มาสเตอร์ · คำชวน · คนที่ฉันตาม · ค่าบริการ · คลัง TPIX
  *   POST /api/v1/ai-bot/copy/master               เปิดตัวเป็นมาสเตอร์
- *   PUT  /api/v1/ai-bot/copy/master               แก้ชื่อ/อัตรา/พักรับผู้ตาม
+ *   PUT  /api/v1/ai-bot/copy/master               แก้ชื่อ/แนะนำตัว/อัตรา/พักรับผู้ตาม
+ *   PUT  /api/v1/ai-bot/copy/master/media/{id}    ตั้ง/ถอดคลิปแนะนำบนหน้าโปรไฟล์
  *   POST /api/v1/ai-bot/copy/master/close         ปิดโปรไฟล์
- *   POST /api/v1/ai-bot/copy/follow               เริ่มก๊อปปี้มาสเตอร์
+ *   POST /api/v1/ai-bot/copy/follow               เริ่มก๊อปปี้มาสเตอร์ (ยอด TPIX ในคลังไม่พอค่าบริการ = ปฏิเสธพร้อมตัวเลขที่ต้องเติม)
  *   POST /api/v1/ai-bot/copy/follow/{id}/stop     เลิกตาม
  *   POST /api/v1/ai-bot/copy/follow/{id}/accept   ยอมรับอัตราใหม่ของมาสเตอร์
  *
@@ -59,6 +63,10 @@ class AiCopyTradeController extends Controller
         MediaService::ERR_LIMIT => 'แปะลิงก์ครบจำนวนสูงสุดแล้ว — ลบรายการเดิมก่อน',
         MediaService::ERR_DUPLICATE => 'ลิงก์นี้แปะไว้แล้ว',
         MediaService::ERR_NOT_FOUND => 'ไม่พบลิงก์นี้',
+        MediaService::ERR_REVOKED => 'ทีมงานถอนสิทธิ์แปะลิงก์ของโปรไฟล์นี้อยู่',
+        MediaService::ERR_FEATURED_LIMIT => 'ตั้งคลิปแนะนำครบจำนวนสูงสุดแล้ว — เอาคลิปเดิมออกก่อน',
+        MediaService::ERR_FEATURED_KIND => 'คลิปแนะนำต้องเป็นคลิป ไม่ใช่ไลฟ์',
+        FeeCollector::ERR_BALANCE_LOW => 'ยอด TPIX ที่เติมไว้ไม่พอสำหรับค่าบริการ Copy Trade — เติม TPIX ก่อนแล้วกดตามอีกครั้ง',
         AiBotService::ERR_NO_SUBSCRIPTION => 'ยังไม่มีการเช่าที่ใช้งานอยู่ กรุณาเช่าบอทก่อน',
         AiBotService::ERR_BOT_LIMIT => 'จำนวนบอทเต็มโควตาของแพลนนี้แล้ว',
         AiBotService::ERR_STRATEGY_LOCKED => 'กลยุทธ์นี้ต้องใช้แพลนระดับสูงกว่า',
@@ -72,6 +80,7 @@ class AiCopyTradeController extends Controller
         private readonly RankService $ranks,
         private readonly ReviewService $reviews,
         private readonly MediaService $media,
+        private readonly FeeCollector $feeCollector,
     ) {}
 
     /** กระดานมาสเตอร์ — สาธารณะ: มีแต่ผลงานเงินจริงที่ปิดแล้ว ไม่มีกฎ ไม่มีที่อยู่กระเป๋าเต็ม */
@@ -92,13 +101,38 @@ class AiCopyTradeController extends Controller
         ]);
     }
 
+    /**
+     * หน้าแนะนำตัวของมาสเตอร์คนหนึ่ง — สาธารณะ (เจ้าของสั่ง 2026-11-13: "ต้องทำหน้าแนะนำ โปรไฟล์ มาสเตอร์ และมีคลิป").
+     *
+     * ข้อมูลชุดเดียวกับการ์ดบนกระดาน + ข้อความแนะนำตัว + คลิปแนะนำ — ไม่มีกฎของบอท ไม่มีที่อยู่กระเป๋าเต็ม
+     */
+    public function show(int $id): JsonResponse
+    {
+        $master = $this->copy->enabled() ? AiCopyMaster::open()->find($id) : null;
+
+        if (! $master) {
+            return $this->failure(CopyTradeService::ERR_MASTER_NOT_FOUND, null, 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->settings() + [
+                'master' => $this->presentMaster($master, in_array($master->id, $this->copy->leaderboard()['promoted'], true)) + [
+                    'intro' => $master->intro,
+                    'featured' => $this->media->featured($master),
+                    'embed' => (bool) config('aibot.copy_trade.media.embed', false),
+                ],
+            ],
+        ]);
+    }
+
     /** ของกระเป๋านี้ — โปรไฟล์มาสเตอร์ · บอทที่ผ่านเกณฑ์ (คำชวนเปิดตัว) · มาสเตอร์ที่ตามอยู่ · ค่าบริการ */
     public function me(Request $request): JsonResponse
     {
         $wallet = $this->wallet($request);
 
         if (! $this->copy->enabled()) {
-            return response()->json(['success' => true, 'data' => $this->settings() + ['master' => null, 'invite' => false, 'candidates' => [], 'follows' => [], 'kyc_approved' => false]]);
+            return response()->json(['success' => true, 'data' => $this->settings() + ['master' => null, 'invite' => false, 'candidates' => [], 'follows' => [], 'kyc_approved' => false, 'fee_balance' => null]]);
         }
 
         $master = $this->copy->masterOf($wallet);
@@ -125,6 +159,8 @@ class AiCopyTradeController extends Controller
                 'invite' => (! $master || ! $master->isOpen()) && collect($candidates)->contains(fn (array $c) => $c['eligible']),
                 'candidates' => $candidates,
                 'kyc_approved' => $this->kycApproved($request),
+                // คลัง TPIX สำหรับค่าบริการ (null = ยังไม่เปิดเก็บ) — หน้าจอใช้เตือนก่อนกดตามและระหว่างตาม
+                'fee_balance' => $this->feeBalance($wallet),
                 'follows' => $follows->map(fn (AiCopyFollow $follow) => $this->presentFollow($follow->fresh(['master', 'bot'])) + $this->reviewState($wallet, $follow))->all(),
             ],
         ]);
@@ -206,6 +242,8 @@ class AiCopyTradeController extends Controller
 
         try {
             $follow = $this->copy->follow($wallet, $master, (array) ($validated['risk'] ?? []));
+        } catch (FeeBalanceLow $e) {
+            return $this->feeBalanceFailure($e->gate);
         } catch (RuntimeException $e) {
             return $this->serviceFailure($e);
         }
@@ -268,15 +306,37 @@ class AiCopyTradeController extends Controller
             // ตรวจแค่ว่าเป็นข้อความสั้น — การตัดสินว่า "เป็นลิงก์ที่รับ" อยู่ที่ MediaLink ที่เดียว
             'url' => ['required', 'string', 'max:300'],
             'title' => ['sometimes', 'nullable', 'string', 'max:120'],
+            // คลิปแนะนำบนหน้าโปรไฟล์ — ไม่ต้องรอปลดล็อก มีเพดานของตัวเอง
+            'featured' => ['sometimes', 'boolean'],
         ]);
 
         try {
-            $this->media->add($master, $validated['kind'], $validated['url'], $validated['title'] ?? null);
+            $this->media->add($master, $validated['kind'], $validated['url'], $validated['title'] ?? null, (bool) ($validated['featured'] ?? false));
         } catch (RuntimeException $e) {
             return $this->serviceFailure($e);
         }
 
         return response()->json(['success' => true, 'data' => $this->mediaState($master)], 201);
+    }
+
+    /** ตั้ง/ถอดคลิปแนะนำจากลิงก์ที่แปะไว้แล้ว */
+    public function featureMedia(Request $request, int $id): JsonResponse
+    {
+        $master = $this->copy->enabled() ? $this->copy->masterOf($this->wallet($request)) : null;
+
+        if (! $master || ! $master->isOpen()) {
+            return $this->failure(CopyTradeService::ERR_MASTER_NOT_FOUND, null, 404);
+        }
+
+        $validated = $request->validate(['featured' => ['required', 'boolean']]);
+
+        try {
+            $this->media->setFeatured($master, $id, (bool) $validated['featured']);
+        } catch (RuntimeException $e) {
+            return $this->serviceFailure($e);
+        }
+
+        return response()->json(['success' => true, 'data' => $this->mediaState($master)]);
     }
 
     public function removeMedia(Request $request, int $id): JsonResponse
@@ -302,6 +362,7 @@ class AiCopyTradeController extends Controller
     {
         return $this->media->access($master) + [
             'max_items' => (int) config('aibot.copy_trade.media.max_items', 10),
+            'featured_max' => $this->media->featuredMax(),
             'items' => $this->media->items($master, forOwner: true),
         ];
     }
@@ -414,9 +475,13 @@ class AiCopyTradeController extends Controller
                 'currency' => (string) config('aibot.copy_trade.fees.currency', 'TPIX'),
                 'rate_pct' => config('aibot.copy_trade.fees.rate_pct'),
                 'platform_share_pct' => config('aibot.copy_trade.fees.platform_share_pct'),
+                // ด่านคลัง TPIX ตอนกดตาม: ต้องมีพอจ่ายค่าบริการของกำไร reserve_profit_pct% ของทุนที่ตั้ง (ไม่ต่ำกว่าขั้นต่ำ)
+                'min_balance_tpix' => $this->feeCollector->minimumBalance(),
+                'reserve_profit_pct' => (float) config('aibot.copy_trade.fees.reserve_profit_pct', 5),
+                'tpix_usd_price' => $this->feeCollector->collecting() ? $this->feeCollector->tpixUsdPrice() : null,
             ],
             'requirements' => array_intersect_key((array) config('aibot.copy_trade.master', []), array_flip([
-                'requires_kyc', 'min_days', 'min_closed_trades', 'min_return_pct', 'max_drawdown_pct', 'max_name_length', 'max_bio_length',
+                'requires_kyc', 'min_days', 'min_closed_trades', 'min_return_pct', 'max_drawdown_pct', 'max_name_length', 'max_bio_length', 'max_intro_length',
             ])),
         ];
     }
@@ -431,6 +496,7 @@ class AiCopyTradeController extends Controller
             // ชื่อที่โชว์สาธารณะ — ตัวอักษร ตัวเลข เว้นวรรค และ . _ - เท่านั้น (ไม่มีแท็ก ไม่มีลิงก์)
             'display_name' => [$presence, 'string', 'min:3', 'max:'.(int) config('aibot.copy_trade.master.max_name_length', 40), 'regex:/^[\p{L}\p{M}\p{N} ._\-]+$/u'],
             'bio' => ['sometimes', 'nullable', 'string', 'max:'.(int) config('aibot.copy_trade.master.max_bio_length', 280)],
+            'intro' => ['sometimes', 'nullable', 'string', 'max:'.(int) config('aibot.copy_trade.master.max_intro_length', 1500)],
             'fee_rate_pct' => [$presence, 'numeric', 'min:'.$rate['min'], 'max:'.$rate['max']],
             'platform_share_pct' => [$presence, 'numeric', 'min:'.$share['min'], 'max:'.$share['max']],
         ];
@@ -491,9 +557,13 @@ class AiCopyTradeController extends Controller
         if ($own) {
             $data += [
                 'bot_id' => $master->ai_bot_config_id,
+                'intro' => $master->intro,
                 'media' => $this->mediaState($master),
                 'earnings' => [
                     'master_usd' => round((float) AiCopyFee::where('ai_copy_master_id', $master->id)->where('status', '!=', AiCopyFee::STATUS_VOID)->sum('master_usd'), 2),
+                    // TPIX ที่เข้าคลังของมาสเตอร์แล้วจริง (หักจากผู้ตามสำเร็จ) · ที่ยังรอผู้ตามเติมยอด
+                    'master_tpix_paid' => round((float) AiCopyFee::where('ai_copy_master_id', $master->id)->where('status', AiCopyFee::STATUS_SETTLED)->sum('master_tpix'), 4),
+                    'master_tpix_pending' => round((float) AiCopyFee::where('ai_copy_master_id', $master->id)->where('status', AiCopyFee::STATUS_ACCRUED)->sum('master_tpix'), 4),
                     'collect' => (bool) config('aibot.copy_trade.fees.collect', false),
                 ],
             ];
@@ -523,11 +593,66 @@ class AiCopyTradeController extends Controller
             'realized_pnl' => round($follow->realized_pnl, 2),
             'fees_usd' => round($follow->fees_usd, 2),
             'fees_tpix' => round((float) $follow->fees()->sum('fee_tpix'), 4),
-            // recorded = ลงบัญชีให้เห็นเฉยๆ ยังไม่ถูกเก็บ · accrued = ค้างเก็บ
+            // recorded = ลงบัญชีให้เห็นเฉยๆ ยังไม่ถูกเก็บ · accrued = ค้างเก็บ · settled = หักจากคลัง TPIX แล้ว
             'fees_collect' => (bool) config('aibot.copy_trade.fees.collect', false),
+            'fees_paid_tpix' => round((float) $follow->fees()->where('status', AiCopyFee::STATUS_SETTLED)->sum('fee_tpix'), 4),
+            'fees_owed_tpix' => round((float) $follow->fees()->where('status', AiCopyFee::STATUS_ACCRUED)->sum('fee_tpix'), 4),
+            'fees_owed_count' => $follow->fees()->where('status', AiCopyFee::STATUS_ACCRUED)->count(),
             'started_at' => $follow->started_at?->toIso8601String(),
             'stopped_at' => $follow->stopped_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * สถานะคลัง TPIX สำหรับค่าบริการของกระเป๋านี้ — null เมื่อยังไม่เปิดเก็บค่าบริการ.
+     *
+     * blocked = บอทผู้ตามของกระเป๋านี้หยุดเปิดไม้ใหม่อยู่ (ค้างจ่าย หรือยอดต่ำกว่าขั้นต่ำ)
+     */
+    private function feeBalance(string $wallet): ?array
+    {
+        if (! $this->feeCollector->collecting()) {
+            return null;
+        }
+
+        $gate = $this->feeCollector->gate($wallet);
+
+        return [
+            'balance_tpix' => $gate['balance'],
+            'minimum_tpix' => $this->feeCollector->minimumBalance(),
+            'owed_tpix' => $gate['owed']['tpix'],
+            'owed_usd' => $gate['owed']['usd'],
+            'owed_count' => $gate['owed']['count'],
+            'shortfall_tpix' => $gate['shortfall'],
+            'blocked' => ! $gate['ok'],
+        ];
+    }
+
+    /** คำเตือนตอนกดตามไม่ได้เพราะคลัง TPIX ไม่พอ — บอกตัวเลขให้ครบว่าต้องเติมอีกเท่าไหร่ */
+    private function feeBalanceFailure(array $gate): JsonResponse
+    {
+        $tpix = fn (float $value) => rtrim(rtrim(number_format($value, 4, '.', ''), '0'), '.');
+        $numbers = [
+            'need' => $tpix($gate['required']),
+            'have' => $tpix($gate['balance']),
+            'short' => $tpix($gate['shortfall']),
+            'owed' => $tpix($gate['owed']['tpix']),
+        ];
+
+        return response()->json([
+            'success' => false,
+            'error' => [
+                'code' => FeeCollector::ERR_BALANCE_LOW,
+                'message' => $gate['owed']['count'] > 0
+                    ? __('มีค่าบริการ Copy Trade ค้างจ่าย :owed TPIX — เติม TPIX ให้พอจ่ายก่อนแล้วกดตามอีกครั้ง (ต้องมีรวม :need TPIX ตอนนี้มี :have TPIX)', $numbers)
+                    : __('ยอด TPIX ที่เติมไว้ไม่พอสำหรับค่าบริการ Copy Trade — ต้องมีอย่างน้อย :need TPIX (ตอนนี้มี :have TPIX ขาดอีก :short TPIX) เติม TPIX ก่อนแล้วกดตามอีกครั้ง', $numbers),
+                'balance' => [
+                    'balance_tpix' => $gate['balance'],
+                    'required_tpix' => $gate['required'],
+                    'shortfall_tpix' => $gate['shortfall'],
+                    'owed_tpix' => $gate['owed']['tpix'],
+                ],
+            ],
+        ], 422);
     }
 
     private function wallet(Request $request): string

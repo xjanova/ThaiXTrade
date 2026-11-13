@@ -431,6 +431,7 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     Route::get('/ai-bot/market-view', [AiBotController::class, 'marketView']);
     // กระดานมาสเตอร์ของ Copy Trade — สาธารณะเหมือน catalog: มีแต่ผลงานเงินจริงที่ปิดแล้ว ไม่มีกฎ ไม่มีข้อมูลส่วนตัว
     Route::get('/ai-bot/copy/masters', [AiCopyTradeController::class, 'masters']);
+    Route::get('/ai-bot/copy/masters/{id}', [AiCopyTradeController::class, 'show'])->where('id', '[0-9]{1,15}');
     Route::get('/ai-bot/copy/masters/{id}/reviews', [AiCopyTradeController::class, 'reviewsOf'])->where('id', '[0-9]+');
     Route::get('/ai-bot/copy/masters/{id}/media', [AiCopyTradeController::class, 'mediaOf'])->where('id', '[0-9]+');
     // ความเสี่ยงของคู่เทรด + พาดหัวข่าวที่ทำให้บอทตัดสินใจ — เป็นข้อมูลตลาด ไม่ใช่ข้อมูลส่วนตัว
@@ -692,6 +693,7 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         Route::post('/copy/reviews/{id}/report', [AiCopyTradeController::class, 'reportReview'])->where('id', '[0-9]+');
         // ไลฟ์/คลิปของมาสเตอร์ — แปะได้เมื่อปลดล็อกตามระดับและยอด (MediaService) · ลบของตัวเองได้เสมอ
         Route::post('/copy/master/media', [AiCopyTradeController::class, 'addMedia']);
+        Route::put('/copy/master/media/{id}', [AiCopyTradeController::class, 'featureMedia'])->where('id', '[0-9]{1,15}');
         Route::delete('/copy/master/media/{id}', [AiCopyTradeController::class, 'removeMedia'])->where('id', '[0-9]+');
 
         // โหมดทดลอง — พอร์ตกระดาษที่ใช้ราคาจริง ให้ลองก่อนตัดสินใจเช่า

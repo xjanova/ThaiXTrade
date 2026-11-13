@@ -36,7 +36,8 @@ class SecurityHeaders
                 "font-src 'self' https://fonts.gstatic.com data:",
                 "img-src 'self' data: blob: https://*.tpix.online https://api.binance.com https://*.coingecko.com",
                 "connect-src 'self' https://*.tpix.online https://api.binance.com wss://stream.binance.com wss://rpc.tpix.online https://rpc.tpix.online wss://rpc1.tpix.online https://rpc1.tpix.online https://bsc-dataseed.binance.org wss://*.tpix.online",
-                "frame-src 'self' https://challenges.cloudflare.com",
+                // เครื่องเล่นคลิปของมาสเตอร์ Copy Trade — สามต้นทางนี้ตรงกับที่ MediaLink ประกอบ embed_url เท่านั้น
+                "frame-src 'self' https://challenges.cloudflare.com https://www.youtube-nocookie.com https://www.facebook.com https://www.tiktok.com",
                 "frame-ancestors 'none'",
                 "object-src 'none'",
                 "base-uri 'self'",

@@ -10,14 +10,19 @@
  *  - ช่อง "แนะนำ" ติดป้ายและบอกว่าเรียงตามส่วนแบ่งที่มาสเตอร์ให้แพลตฟอร์ม ไม่ใช่อันดับผลงาน
  *  - ก่อนกดตามต้องเห็นอัตราค่าบริการ เงื่อนไข high-water mark และคำเตือนว่าเป็นเงินจริง
  *  - ค่าบริการที่ยังไม่ถูกเก็บจริงต้องบอกว่า "ลงบัญชีไว้ให้เห็นเท่านั้น"
+ *  - เปิดเก็บค่าบริการแล้ว: ค่าบริการหักจากยอด TPIX ที่เติมไว้ — ยอดไม่พอต้องเห็นคำเตือนพร้อมตัวเลขก่อนกดตาม
+ *    (ปุ่มยืนยันถูกปิด) และระหว่างตามต้องเห็นว่าค้างเท่าไหร่ บอทหยุดเปิดไม้ใหม่เพราะอะไร
  *
  * กติกาทั้งหมด (ช่วงอัตรา · เกณฑ์ · ธง) มาจากเซิร์ฟเวอร์ — แผงนี้ไม่ฮาร์ดโค้ดตัวเลข และด่านจริงอยู่ที่ API
  *
  * Developed by Xman Studio
  */
 
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import AiCopyClip from '@/Components/AiTrade/AiCopyClip.vue';
+import TpixTopupModal from '@/Components/Trading/TpixTopupModal.vue';
 import { useTranslation } from '@/Composables/useTranslation';
+import { providerName, safeLink } from '@/utils/copyMedia';
 
 const props = defineProps({
     /** ตัวเรียก API (useAiBot().copyTrade) — ทุกเมธอดคืน { ok, data, error } */
@@ -49,6 +54,12 @@ const masters = computed(() => board.value?.masters ?? []);
 const promoted = computed(() => masters.value.filter((m) => m.promoted));
 const myMaster = computed(() => (mine.value?.master && mine.value.master.status !== 'closed' ? mine.value.master : null));
 const follows = computed(() => mine.value?.follows ?? []);
+/** คลัง TPIX สำหรับค่าบริการของกระเป๋านี้ (null = ยังไม่เปิดเก็บค่าบริการ หรือยังไม่เชื่อมกระเป๋า) */
+const feeBalance = computed(() => mine.value?.fee_balance ?? null);
+const hasActiveFollow = computed(() => follows.value.some((f) => f.status === 'active'));
+const showTopup = ref(false);
+/** มาสเตอร์ที่ถูกส่งมาจากหน้าโปรไฟล์ (?master=) — การ์ดของคนนี้ถูกเน้นและเลื่อนมาให้เห็น */
+const focusMaster = ref(null);
 const eligibleBots = computed(() => (mine.value?.candidates ?? []).filter((c) => c.eligible));
 /** บอทที่ใกล้ผ่านเกณฑ์ที่สุดที่ยังไม่ผ่าน — โชว์ว่ายังขาดอะไร (เฉพาะตอนยังไม่มีตัวที่ผ่าน) */
 const progressBot = computed(() => (eligibleBots.value.length ? null : (mine.value?.candidates ?? [])[0] ?? null));
@@ -65,6 +76,13 @@ function signed(value, digits = 2) {
     if (!Number.isFinite(number)) return '—';
 
     return `${number > 0 ? '+' : ''}${number.toFixed(digits)}`;
+}
+
+/** จำนวน TPIX สำหรับแสดง — ไม่เกิน 2 ตำแหน่ง ไม่มีศูนย์ต่อท้าย */
+function tpix(value) {
+    const number = Number(value);
+
+    return Number.isFinite(number) ? String(Math.round(number * 100) / 100) : '0';
 }
 
 async function load() {
@@ -90,9 +108,28 @@ async function load() {
     }
 }
 
-onMounted(load);
+onMounted(async () => {
+    await load();
+
+    // มาจากหน้าโปรไฟล์มาสเตอร์ — เลื่อนไปที่การ์ดของคนนั้น (การกดตามยังต้องกดเองและผ่านฟอร์มยืนยัน)
+    const id = Number(new URLSearchParams(window.location.search).get('master'));
+    if (id && masters.value.some((m) => m.id === id)) {
+        focusMaster.value = id;
+        await nextTick();
+        document.querySelector(`[data-testid="copy-master-${id}"]`)?.scrollIntoView?.({ block: 'center' });
+    }
+});
 // สลับกระเป๋า = ของคนก่อนต้องหายทันที แล้วโหลดของกระเป๋าใหม่
-watch(() => props.wallet, () => { mine.value = null; followTarget.value = null; showRegister.value = false; load(); });
+watch(() => props.wallet, () => {
+    mine.value = null;
+    followTarget.value = null;
+    showRegister.value = false;
+    showTopup.value = false;
+    // ร่างที่พิมพ์ค้างเป็นของกระเป๋าก่อนหน้า — ห้ามตามไปบันทึกลงโปรไฟล์ของกระเป๋าใหม่
+    introDraft.value = null;
+    featuredForm.value = { url: '', title: '' };
+    load();
+});
 
 /** เรียก API หนึ่งครั้ง กันกดซ้ำ แล้วโหลดใหม่ — คืน true เมื่อสำเร็จ */
 async function act(call, okMessage) {
@@ -123,9 +160,33 @@ function openFollow(master) {
     followRisk.value = Object.fromEntries(riskFields.map(({ key }) => [key, props.limits?.[key]?.default ?? 0]));
 }
 
+/**
+ * ยอด TPIX ที่ต้องมีก่อนกดตามมาสเตอร์คนนี้ด้วยทุนที่ตั้งอยู่ — สูตรเดียวกับด่านของเซิร์ฟเวอร์ (FeeCollector)
+ * ใช้เตือนและปิดปุ่มล่วงหน้าเท่านั้น ด่านจริงอยู่ที่ API
+ */
+const followNeed = computed(() => {
+    if (!fees.value.collect || !followTarget.value) return null;
+
+    const price = Number(fees.value.tpix_usd_price);
+    const cap = Number(followRisk.value.max_position_usd) || 0;
+    const reserve = price > 0
+        ? cap * (Number(fees.value.reserve_profit_pct) || 0) / 100 * (Number(followTarget.value.fee_rate_pct) || 0) / 100 / price
+        : 0;
+    const owed = Number(feeBalance.value?.owed_tpix ?? 0);
+    const required = Math.max(Number(fees.value.min_balance_tpix ?? 0), reserve) + owed;
+    const balance = Number(feeBalance.value?.balance_tpix ?? 0);
+
+    return {
+        required,
+        balance,
+        short: Math.max(0, required - balance),
+        ok: balance + 1e-6 >= required && !(Number(feeBalance.value?.owed_count ?? 0) > 0),
+    };
+});
+
 async function confirmFollow() {
     const master = followTarget.value;
-    if (!master) return;
+    if (!master || (followNeed.value && !followNeed.value.ok)) return;
 
     const ok = await act(() => props.api.follow({
         master_id: master.id,
@@ -168,6 +229,37 @@ async function submitRegister() {
 
 function saveRates() {
     act(() => props.api.updateMaster({ ...rateForm.value }), t('aiTrade.copy.savedOk'));
+}
+
+// ── หน้าโปรไฟล์: คำแนะนำตัว + คลิปแนะนำ ─────────────────────────────────────
+
+const introDraft = ref(null);      // null = ยังไม่ได้แตะ ใช้ค่าจากเซิร์ฟเวอร์
+const introText = computed({
+    get: () => introDraft.value ?? myMaster.value?.intro ?? '',
+    set: (value) => { introDraft.value = value; },
+});
+const featuredForm = ref({ url: '', title: '' });
+const featuredItems = computed(() => (myMaster.value?.media?.items ?? []).filter((item) => item.featured));
+const libraryItems = computed(() => (myMaster.value?.media?.items ?? []).filter((item) => !item.featured));
+const featuredFull = computed(() => featuredItems.value.length >= Number(myMaster.value?.media?.featured_max ?? 0));
+
+async function saveIntro() {
+    const ok = await act(() => props.api.updateMaster({ intro: introText.value.trim() || null }), t('aiTrade.copy.savedOk'));
+
+    if (ok) introDraft.value = null;
+}
+
+async function addFeatured() {
+    const ok = await act(
+        () => props.api.addMedia({ kind: 'clip', url: featuredForm.value.url.trim(), title: featuredForm.value.title, featured: true }),
+        t('aiTrade.copy.featuredAdded'),
+    );
+
+    if (ok) featuredForm.value = { url: '', title: '' };
+}
+
+function toggleFeatured(item) {
+    act(() => props.api.featureMedia(item.id, !item.featured));
 }
 
 function toggleAccepting() {
@@ -247,26 +339,14 @@ function draftFor(follow) {
 
 // ── ไลฟ์ / คลิป ──────────────────────────────────────────────────────────────
 
-/*
- * ต้นทางที่ยอมให้เป็นลิงก์/กรอบวิดีโอ — ตรวจซ้ำที่หน้าเว็บแม้เซิร์ฟเวอร์จะประกอบลิงก์เองอยู่แล้ว
- * (ลิงก์ที่ไม่ขึ้นต้นด้วยต้นทางพวกนี้ไม่ถูกวาดเป็น href หรือ src เลย — javascript: ไม่มีทางหลุดมาถึง DOM)
- */
-const MEDIA_LINK_ORIGINS = ['https://www.youtube.com/', 'https://www.facebook.com/', 'https://www.tiktok.com/'];
-const MEDIA_EMBED_ORIGINS = ['https://www.youtube-nocookie.com/embed/', 'https://www.facebook.com/plugins/video.php?', 'https://www.tiktok.com/embed/v2/'];
-const PROVIDER_NAMES = { youtube: 'YouTube', facebook: 'Facebook', tiktok: 'TikTok' };
-
-const safeLink = (url) => (typeof url === 'string' && MEDIA_LINK_ORIGINS.some((origin) => url.startsWith(origin)) ? url : null);
-const safeEmbed = (url) => (typeof url === 'string' && MEDIA_EMBED_ORIGINS.some((origin) => url.startsWith(origin)) ? url : null);
+// ต้นทางที่ยอมให้เป็นลิงก์/กรอบวิดีโอถูกตรวจซ้ำที่หน้าเว็บ (utils/copyMedia · AiCopyClip) แม้เซิร์ฟเวอร์จะประกอบลิงก์เอง
 
 const openMedia = ref(null);        // รหัสมาสเตอร์ที่กำลังเปิดดูไลฟ์/คลิป
 const mediaList = ref([]);
-const mediaEmbed = ref(false);      // เซิร์ฟเวอร์อนุญาตให้ฝังเครื่องเล่นในหน้าไหม (ต้องผ่อน CSP ก่อน)
-const playing = ref(null);          // รหัสรายการที่กดเล่นในหน้า
+const mediaEmbed = ref(false);      // เซิร์ฟเวอร์อนุญาตให้ฝังเครื่องเล่นในหน้าไหม
 const mediaForm = ref({ kind: 'clip', url: '', title: '' });
 
 async function toggleMedia(master) {
-    playing.value = null;
-
     if (openMedia.value === master.id) {
         openMedia.value = null;
         return;
@@ -307,7 +387,8 @@ async function submitReview(follow) {
 </script>
 
 <template>
-    <section class="glass-dark rounded-2xl p-5 space-y-4" data-testid="copy-panel">
+    <!-- id = ปลายทางของลิงก์ #copy-trade จากหน้าโปรไฟล์มาสเตอร์ -->
+    <section id="copy-trade" class="glass-dark rounded-2xl p-5 space-y-4 scroll-mt-24" data-testid="copy-panel">
         <div>
             <h2 class="text-base font-bold text-white">{{ t('aiTrade.copy.title') }}</h2>
             <p class="text-xs text-dark-400 leading-relaxed">{{ t('aiTrade.copy.intro') }}</p>
@@ -325,6 +406,28 @@ async function submitReview(follow) {
             <p v-if="!liveReady" class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 leading-relaxed" data-testid="copy-needs-live">
                 {{ t('aiTrade.copy.needsLive') }}
             </p>
+
+            <!-- คลัง TPIX สำหรับค่าบริการ — ยอด · ที่ค้าง · คำเตือนเมื่อบอทหยุดเปิดไม้ใหม่ -->
+            <div
+                v-if="feeBalance"
+                :class="['rounded-xl border p-3 space-y-1', feeBalance.owed_count || (feeBalance.blocked && hasActiveFollow) ? 'border-trading-red/40 bg-trading-red/10' : 'border-white/10 bg-white/5']"
+                data-testid="copy-fee-balance"
+            >
+                <p class="text-xs text-white">
+                    {{ t('aiTrade.copy.feeBalanceTitle') }}:
+                    <span class="font-mono font-bold">{{ tpix(feeBalance.balance_tpix) }} {{ fees.currency ?? 'TPIX' }}</span>
+                    <button type="button" class="ml-2 underline text-primary-300 hover:text-primary-200" data-testid="copy-fee-topup" @click="showTopup = true">
+                        {{ t('aiTrade.copy.feeTopup') }}
+                    </button>
+                </p>
+                <p v-if="feeBalance.owed_count" class="text-[11px] text-trading-red leading-relaxed" data-testid="copy-fee-owed">
+                    {{ t('aiTrade.copy.feeOwed', { owed: tpix(feeBalance.owed_tpix), short: tpix(feeBalance.shortfall_tpix) }) }}
+                </p>
+                <p v-else-if="feeBalance.blocked && hasActiveFollow" class="text-[11px] text-trading-red leading-relaxed" data-testid="copy-fee-low">
+                    {{ t('aiTrade.copy.feeLow', { min: tpix(feeBalance.minimum_tpix), short: tpix(feeBalance.shortfall_tpix) }) }}
+                </p>
+                <p v-else class="text-[11px] text-dark-400 leading-relaxed">{{ t('aiTrade.copy.feeBalanceNote', { min: tpix(feeBalance.minimum_tpix) }) }}</p>
+            </div>
 
             <!-- คำชวนเปิดตัวเป็นมาสเตอร์ — ขึ้นเมื่อมีบอทที่ผลเงินจริงผ่านเกณฑ์ -->
             <div v-if="mine?.invite && !showRegister" class="rounded-xl border border-primary-500/40 bg-primary-500/10 p-3 space-y-2" data-testid="copy-invite">
@@ -392,7 +495,11 @@ async function submitReview(follow) {
                 </div>
                 <p class="text-[11px] text-dark-300">
                     {{ t('aiTrade.copy.myEarnings') }}: <span class="font-mono text-white">${{ Number(myMaster.earnings?.master_usd ?? 0).toFixed(2) }}</span>
-                    <span class="text-dark-500"> — {{ myMaster.earnings?.collect ? t('aiTrade.copy.feesAccrued') : t('aiTrade.copy.feesRecorded') }}</span>
+                    <span class="text-dark-500" data-testid="copy-my-earnings-note">
+                        — {{ myMaster.earnings?.collect
+                            ? t('aiTrade.copy.earningsPaid', { paid: tpix(myMaster.earnings.master_tpix_paid), pending: tpix(myMaster.earnings.master_tpix_pending) })
+                            : t('aiTrade.copy.feesRecorded') }}
+                    </span>
                 </p>
                 <div class="grid gap-2 sm:grid-cols-3 items-end">
                     <label class="block">
@@ -406,10 +513,44 @@ async function submitReview(follow) {
                     <button type="button" class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50" :disabled="busy" data-testid="copy-rate-save" @click="saveRates">{{ t('aiTrade.copy.editRate') }}</button>
                 </div>
                 <p class="text-[10px] text-dark-500 leading-relaxed">{{ t('aiTrade.copy.editRateNote') }}</p>
+                <!-- หน้าโปรไฟล์ของฉัน: คำแนะนำตัว + คลิปแนะนำ (มาสเตอร์ทุกคนตั้งได้ ไม่ต้องรอปลดล็อก) -->
+                <div class="rounded-lg bg-dark-900/40 p-2.5 space-y-2" data-testid="copy-my-profile">
+                    <p class="text-xs font-bold text-white">
+                        {{ t('aiTrade.copy.profileMine') }}
+                        <a :href="`/ai-trade/master/${myMaster.id}`" class="ml-2 font-normal underline text-primary-300 hover:text-primary-200" data-testid="copy-my-profile-link">{{ t('aiTrade.copy.profileOpenMine') }}</a>
+                    </p>
+                    <label class="block">
+                        <span class="block text-[10px] text-dark-400 mb-1">{{ t('aiTrade.copy.introLabel') }}</span>
+                        <textarea v-model="introText" rows="4" class="trading-input text-xs" :maxlength="board.requirements?.max_intro_length ?? 1500" data-testid="copy-intro-input" />
+                    </label>
+                    <button type="button" class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50" :disabled="busy || introDraft === null" data-testid="copy-intro-save" @click="saveIntro">
+                        {{ t('aiTrade.copy.introSave') }}
+                    </button>
+
+                    <template v-if="myMaster.media">
+                        <p class="text-xs font-bold text-white pt-1">
+                            {{ t('aiTrade.copy.featuredTitle') }}
+                            <span class="text-[10px] text-dark-500 font-mono font-normal ml-1" data-testid="copy-featured-count">{{ featuredItems.length }}/{{ myMaster.media.featured_max }}</span>
+                        </p>
+                        <p class="text-[10px] text-dark-500 leading-relaxed">{{ t('aiTrade.copy.featuredNote', { max: myMaster.media.featured_max }) }}</p>
+                        <form v-if="!myMaster.media.revoked && !featuredFull" class="grid gap-2 sm:grid-cols-4 items-end" data-testid="copy-featured-form" @submit.prevent="addFeatured">
+                            <label class="block sm:col-span-2">
+                                <span class="block text-[10px] text-dark-400 mb-1">{{ t('aiTrade.copy.mediaUrl') }}</span>
+                                <input v-model="featuredForm.url" type="url" maxlength="300" class="trading-input text-xs py-1.5" placeholder="https://" data-testid="copy-featured-url">
+                            </label>
+                            <label class="block">
+                                <span class="block text-[10px] text-dark-400 mb-1">{{ t('aiTrade.copy.mediaTitle') }}</span>
+                                <input v-model="featuredForm.title" type="text" maxlength="120" class="trading-input text-xs py-1.5" data-testid="copy-featured-title">
+                            </label>
+                            <button type="submit" class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50" :disabled="busy || !featuredForm.url.trim()" data-testid="copy-featured-add">{{ t('aiTrade.copy.featuredAdd') }}</button>
+                        </form>
+                    </template>
+                </div>
+
                 <div v-if="myMaster.media" class="rounded-lg bg-dark-900/40 p-2.5 space-y-2" data-testid="copy-my-media">
                     <p class="text-xs font-bold text-white">
                         {{ t('aiTrade.copy.mediaMine') }}
-                        <span class="text-[10px] text-dark-500 font-mono font-normal ml-1">{{ t('aiTrade.copy.mediaCount', { used: myMaster.media.items.length, max: myMaster.media.max_items }) }}</span>
+                        <span class="text-[10px] text-dark-500 font-mono font-normal ml-1">{{ t('aiTrade.copy.mediaCount', { used: libraryItems.length, max: myMaster.media.max_items }) }}</span>
                     </p>
                     <p v-if="myMaster.media.revoked" class="text-[11px] text-amber-300 leading-relaxed" data-testid="copy-media-revoked">{{ t('aiTrade.copy.mediaRevoked') }}</p>
                     <p v-else-if="!myMaster.media.unlocked" class="text-[11px] text-dark-400 leading-relaxed" data-testid="copy-media-locked">{{ mediaLockedText(myMaster.media) }}</p>
@@ -435,8 +576,19 @@ async function submitReview(follow) {
                         <li v-for="item in myMaster.media.items" :key="item.id" class="text-[11px] text-dark-200" :data-testid="`copy-my-media-item-${item.id}`">
                             <span class="px-1 rounded bg-dark-700 text-[9px]">{{ item.kind === 'live' ? t('aiTrade.copy.mediaLive') : t('aiTrade.copy.mediaClip') }}</span>
                             <span class="ml-1">{{ item.title }}</span>
-                            <span class="text-dark-500 ml-1">{{ PROVIDER_NAMES[item.provider] ?? item.provider }}</span>
+                            <span class="text-dark-500 ml-1">{{ providerName(item.provider) }}</span>
+                            <span v-if="item.featured" class="ml-1 px-1 rounded bg-primary-500/15 text-primary-200 text-[9px]">{{ t('aiTrade.copy.featuredBadge') }}</span>
                             <span v-if="item.status === 'hidden'" class="text-amber-300 ml-1">{{ t('aiTrade.copy.mediaHidden') }}</span>
+                            <button
+                                v-if="item.kind === 'clip' && (item.featured || (!featuredFull && !myMaster.media.revoked))"
+                                type="button"
+                                class="ml-2 text-primary-300 hover:text-primary-200"
+                                :disabled="busy"
+                                :data-testid="`copy-media-feature-${item.id}`"
+                                @click="toggleFeatured(item)"
+                            >
+                                {{ item.featured ? t('aiTrade.copy.featuredOff') : t('aiTrade.copy.featuredOn') }}
+                            </button>
                             <button type="button" class="ml-2 text-dark-500 hover:text-trading-red" :disabled="busy" :data-testid="`copy-media-remove-${item.id}`" @click="removeMedia(item)">{{ t('aiTrade.copy.mediaRemove') }}</button>
                         </li>
                     </ul>
@@ -469,7 +621,12 @@ async function submitReview(follow) {
                 <p v-if="!masters.length" class="text-xs text-dark-400" data-testid="copy-empty">{{ t('aiTrade.copy.noMasters') }}</p>
 
                 <ul v-else class="space-y-2">
-                    <li v-for="(m, index) in masters" :key="m.id" class="rounded-xl border border-white/10 bg-white/5 p-3" :data-testid="`copy-master-${m.id}`">
+                    <li
+                        v-for="(m, index) in masters"
+                        :key="m.id"
+                        :class="['rounded-xl border bg-white/5 p-3', focusMaster === m.id ? 'border-primary-500/60 ring-1 ring-primary-500/40' : 'border-white/10']"
+                        :data-testid="`copy-master-${m.id}`"
+                    >
                         <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                             <span class="text-[10px] text-dark-500 font-mono">#{{ index + 1 }}</span>
                             <span class="text-sm font-bold text-white">{{ m.display_name }}</span>
@@ -510,6 +667,9 @@ async function submitReview(follow) {
                             >
                                 {{ t('aiTrade.copy.follow') }}
                             </button>
+                            <a :href="`/ai-trade/master/${m.id}`" class="ml-3 text-[11px] text-primary-300 hover:text-primary-200" :data-testid="`copy-profile-link-${m.id}`">
+                                {{ t('aiTrade.copy.viewProfile') }}
+                            </a>
                             <button
                                 v-if="m.rating?.count"
                                 type="button"
@@ -533,33 +693,7 @@ async function submitReview(follow) {
                         <!-- ไลฟ์/คลิป — ลิงก์ออกไปช่องของมาสเตอร์ (ผ่านการตรวจต้นทางแล้วเท่านั้น) ชื่อเรื่องแสดงแบบ escape -->
                         <div v-if="openMedia === m.id" class="mt-2 rounded-lg bg-dark-900/40 p-2.5 space-y-1.5" :data-testid="`copy-media-${m.id}`">
                             <p class="text-[10px] text-dark-500 leading-relaxed">{{ t('aiTrade.copy.mediaExternalNote') }}</p>
-                            <div v-for="item in mediaList" :key="item.id" class="text-[11px]" :data-testid="`copy-media-item-${item.id}`">
-                                <span class="px-1 rounded bg-dark-700 text-dark-200 text-[9px]">{{ item.kind === 'live' ? t('aiTrade.copy.mediaLive') : t('aiTrade.copy.mediaClip') }}</span>
-                                <span class="text-white ml-1">{{ item.title }}</span>
-                                <a :href="safeLink(item.url)" target="_blank" rel="noopener noreferrer nofollow" class="ml-2 text-primary-300 hover:text-primary-200 underline">
-                                    {{ t('aiTrade.copy.mediaOpen', { provider: PROVIDER_NAMES[item.provider] ?? item.provider }) }}
-                                </a>
-                                <button
-                                    v-if="mediaEmbed && safeEmbed(item.embed_url) && playing !== item.id"
-                                    type="button"
-                                    class="ml-2 text-primary-300 hover:text-primary-200"
-                                    :data-testid="`copy-media-play-${item.id}`"
-                                    @click="playing = item.id"
-                                >
-                                    {{ t('aiTrade.copy.mediaPlay') }}
-                                </button>
-                                <iframe
-                                    v-if="mediaEmbed && playing === item.id && safeEmbed(item.embed_url)"
-                                    :src="safeEmbed(item.embed_url)"
-                                    :title="item.title"
-                                    class="mt-1.5 w-full aspect-video rounded-lg border border-white/10"
-                                    sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"
-                                    referrerpolicy="strict-origin-when-cross-origin"
-                                    loading="lazy"
-                                    allowfullscreen
-                                    :data-testid="`copy-media-frame-${item.id}`"
-                                />
-                            </div>
+                            <AiCopyClip v-for="item in mediaList" :key="item.id" :item="item" :embed="mediaEmbed" />
                         </div>
 
                         <!-- รีวิว — ข้อความแสดงแบบ escape เสมอ (interpolation ธรรมดา ห้ามใช้ v-html กับข้อความจากผู้ใช้) -->
@@ -589,9 +723,22 @@ async function submitReview(follow) {
                                     <input v-model.number="followRisk[field.key]" type="number" class="trading-input text-xs py-1.5 font-mono" :min="limits[field.key]?.min" :max="limits[field.key]?.max" :data-testid="`copy-follow-${field.key}`">
                                 </label>
                             </div>
+                            <!-- ค่าบริการหักจากยอด TPIX ที่เติมไว้ — ยอดไม่พอ = เตือนพร้อมตัวเลข และกดยืนยันไม่ได้ -->
+                            <p
+                                v-if="followNeed"
+                                :class="['text-[11px] leading-relaxed', followNeed.ok ? 'text-dark-300' : 'text-trading-red font-bold']"
+                                data-testid="copy-follow-balance"
+                            >
+                                {{ followNeed.ok
+                                    ? t('aiTrade.copy.followBalanceOk', { need: tpix(followNeed.required), have: tpix(followNeed.balance) })
+                                    : t('aiTrade.copy.followBalanceLow', { need: tpix(followNeed.required), have: tpix(followNeed.balance), short: tpix(followNeed.short) }) }}
+                                <button v-if="!followNeed.ok" type="button" class="underline ml-1 font-normal" data-testid="copy-follow-topup" @click="showTopup = true">
+                                    {{ t('aiTrade.copy.feeTopup') }}
+                                </button>
+                            </p>
                             <p class="text-[11px] text-amber-300 leading-relaxed" data-testid="copy-follow-warning">{{ t('aiTrade.copy.followRealMoney') }}</p>
                             <div class="flex gap-2">
-                                <button type="submit" class="btn-brand px-4 py-1.5 text-xs disabled:opacity-50" :disabled="busy" data-testid="copy-follow-confirm">{{ t('aiTrade.copy.followConfirm') }}</button>
+                                <button type="submit" class="btn-brand px-4 py-1.5 text-xs disabled:opacity-50 disabled:cursor-not-allowed" :disabled="busy || (followNeed !== null && !followNeed.ok)" data-testid="copy-follow-confirm">{{ t('aiTrade.copy.followConfirm') }}</button>
                                 <button type="button" class="btn-secondary px-4 py-1.5 text-xs" @click="followTarget = null">{{ t('aiTrade.copy.cancel') }}</button>
                             </div>
                         </form>
@@ -615,7 +762,10 @@ async function submitReview(follow) {
                             {{ t('aiTrade.copy.followPnl') }}: <span :class="['font-mono', Number(f.realized_pnl) < 0 ? 'text-trading-red' : 'text-white']">${{ signed(f.realized_pnl) }}</span>
                             · {{ t('aiTrade.copy.followFees') }}: <span class="font-mono text-white">${{ Number(f.fees_usd).toFixed(2) }}</span>
                             <span v-if="Number(f.fees_tpix) > 0" class="font-mono text-dark-400"> (≈ {{ f.fees_tpix }} {{ fees.currency ?? 'TPIX' }})</span>
-                            <span class="text-dark-500"> — {{ f.fees_collect ? t('aiTrade.copy.feesAccrued') : t('aiTrade.copy.feesRecorded') }}</span>
+                            <span class="text-dark-500"> — {{ f.fees_collect ? t('aiTrade.copy.feesCharged', { paid: tpix(f.fees_paid_tpix) }) : t('aiTrade.copy.feesRecorded') }}</span>
+                        </p>
+                        <p v-if="f.fees_collect && Number(f.fees_owed_count) > 0" class="text-[11px] text-trading-red leading-relaxed" :data-testid="`copy-follow-owed-${f.id}`">
+                            {{ t('aiTrade.copy.followOwed', { owed: tpix(f.fees_owed_tpix) }) }}
                         </p>
                         <p v-if="f.rate_changed" class="text-[11px] text-amber-300 leading-relaxed" :data-testid="`copy-rate-changed-${f.id}`">
                             {{ t('aiTrade.copy.rateChanged', { rate: f.master?.fee_rate_pct, mine: f.fee_rate_pct }) }}
@@ -652,5 +802,8 @@ async function submitReview(follow) {
                 </ul>
             </div>
         </template>
+
+        <!-- เติม TPIX เข้าคลังของเว็บ (คลังเดียวกับค่าบริการวางไม้) — เติมแล้วโหลดยอดใหม่ -->
+        <TpixTopupModal v-if="showTopup" :show="showTopup" @close="showTopup = false" @credited="load" />
     </section>
 </template>
