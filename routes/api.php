@@ -7,7 +7,6 @@
 
 use App\Http\Controllers\Api\AiBotController;
 use App\Http\Controllers\Api\AiBotWalletController;
-use App\Http\Controllers\Api\AIController;
 use App\Http\Controllers\Api\AppUpdateController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\BannerController as ApiBannerController;
@@ -434,9 +433,17 @@ Route::prefix('v1')->middleware(['throttle:60,1'])->group(function () {
     // เจ้าของสั่งว่าต้อง "ชี้แจงรายละเอียดให้ครบ" ก่อนผู้ใช้ตัดสินใจ
     Route::get('/trading-fee/tiers', [TradingFeeController::class, 'tiers']);
 
-    // AI Chatbot — ถามตอบอัจฉริยะ (rate limited)
+    /*
+     * AI Chatbot — ถามตอบอัจฉริยะ · ถังของตัวเอง 30 ข้อความ/นาที ต่อ IP (ต่อบัญชีถ้าเข้าสู่ระบบ)
+     *
+     * ⚠️ ต้องมีชื่อถัง (อาร์กิวเมนต์ที่สาม) และถอด throttle:60,1 ของทั้ง API ออก — ออดิท 2026-11-13
+     *    เดิม throttle:30,1 แบบไม่มีชื่อใช้คีย์เดียวกับ throttle:60,1 (โดเมน|IP): ข้อความหนึ่งครั้งถูกนับ
+     *    สองรอบ และนับรวมกับ API สาธารณะทุกตัวจาก IP นั้น หน้าเทรดที่ถามราคาถี่ๆ ใช้ไป 30 ครั้ง
+     *    ผู้ใช้ก็ได้ 429 ตั้งแต่ข้อความแรก ทั้งที่ยังไม่เคยคุยกับบอทเลย (เหตุผลเดียวกับกลุ่ม trading-fee)
+     */
     Route::post('/chatbot', [ChatbotController::class, 'chat'])
-        ->middleware('throttle:30,1');
+        ->withoutMiddleware('throttle:60,1')
+        ->middleware('throttle:30,1,chatbot');
 
     // Stripe Webhook — รับ event จาก Stripe (ไม่ต้อง auth, ไม่ rate limit)
     // Stripe retries webhooks → ต้องไม่โดน throttle:60,1 ของ group นี้
@@ -717,13 +724,14 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
         });
     });
 
-    // AI Assistant (stricter rate limit: 10 requests per minute)
-    Route::prefix('ai')->middleware(['throttle:10,1'])->group(function () {
-        Route::post('/analyze', [AIController::class, 'analyze']);
-        Route::post('/predict', [AIController::class, 'predict']);
-        Route::post('/suggest', [AIController::class, 'suggest']);
-        Route::get('/insights/{symbol}', [AIController::class, 'insights']);
-    });
+    /*
+     * ⚠️ /ai/analyze · /ai/predict · /ai/suggest · /ai/insights/{symbol} ถูกถอดออก — ออดิท 2026-11-13
+     *    ทั้งสี่เส้นไม่เคยส่ง wallet_address และ VerifyWalletOwnership ปล่อยคำขอที่ไม่ระบุกระเป๋าผ่าน
+     *    ใครก็เรียกโมเดลด้วยคีย์ของเราได้โดยไม่ต้องเชื่อมกระเป๋า (ไม่มีแคช · /suggest รับข้อความอิสระ 1000 ตัว)
+     *    ไม่มีหน้าเว็บหรือแอปไหนเรียก — ผู้ช่วย AI ของเว็บใช้ POST /chatbot · บอทใช้ /ai-bot/advice
+     *    จะเปิดเส้นที่เรียกโมเดลใหม่ในกลุ่มนี้ ต้องบังคับให้มีกระเป๋าในตัวควบคุมเอง (ด่านไม่บังคับให้)
+     *    และใช้ throttle แบบมีชื่อ — ดู AiHttpRoutesTest
+     */
 });
 
 // WebSocket Authentication - use Laravel's built-in broadcasting auth

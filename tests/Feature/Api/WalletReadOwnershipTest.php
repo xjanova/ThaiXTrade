@@ -95,7 +95,6 @@ class WalletReadOwnershipTest extends TestCase
         'api/v1/ai-bot/trades' => '/api/v1/ai-bot/trades?wallet_address={wallet}',
         'api/v1/ai-bot/wallet' => '/api/v1/ai-bot/wallet?wallet_address={wallet}',
         'api/v1/trading-fee/balance' => '/api/v1/trading-fee/balance?wallet_address={wallet}',
-        'api/v1/ai/insights/{symbol}' => '/api/v1/ai/insights/BTC?wallet_address={wallet}',
     ];
 
     private User $owner;
