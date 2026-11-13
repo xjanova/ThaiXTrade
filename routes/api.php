@@ -660,6 +660,14 @@ Route::prefix('v1')->middleware(['throttle:trading', VerifyWalletOwnership::clas
             ->middleware('throttle:ai-bot-poll');
         Route::delete('/bots/{id}', [AiBotController::class, 'destroy'])->where('id', '[0-9]+');
 
+        /*
+         * ทดสอบกฎของโหมด "วางกลยุทธ์เอง" กับแท่งเทียนย้อนหลัง — งานคำนวณหนักกว่า endpoint อื่น
+         * จึงมีงบของตัวเอง (ai-bot-backtest) ไม่ไปกินงบของหน้า และไม่ให้งบของหน้ามาเปิดทางให้ยิงรัว
+         */
+        Route::post('/backtest', [AiBotController::class, 'backtest'])
+            ->withoutMiddleware('throttle:ai-bot')
+            ->middleware('throttle:ai-bot-backtest');
+
         // โหมดทดลอง — พอร์ตกระดาษที่ใช้ราคาจริง ให้ลองก่อนตัดสินใจเช่า
         // สถิติย้อนหลังของกลยุทธ์ + คำแนะนำจากที่ปรึกษา AI (ตามแพลน)
         /*

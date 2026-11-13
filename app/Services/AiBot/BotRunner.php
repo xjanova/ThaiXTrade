@@ -82,6 +82,30 @@ class BotRunner
         'RSI :rsi เข้าเขตซื้อมากเกินไป — ขายทำกำไร' => [],
         'RSI :rsi ต่ำ แต่ราคาอยู่ใต้เส้นเทรนด์ใหญ่ (EMA 200) ถึง :pct% (ยอมได้ :tolerance%) — ไม่รับมีดตก' => [],
         'RSI :rsi เข้าเขตขายมากเกินไป — เข้าซื้อสวน' => [],
+        // วางกลยุทธ์เอง (CustomStrategy + RuleEvaluator) — รายการเงื่อนไขคั่นด้วย " · " แปลทีละข้อ
+        'เงื่อนไขเข้าเป็นจริง: :reasons' => ['reasons'],
+        'เงื่อนไขออกเป็นจริง: :reasons' => ['reasons'],
+        'ยังไม่เข้าไม้ — รอ: :reasons' => ['reasons'],
+        'พักหลังปิดไม้ อีก :bars แท่ง' => [],
+        'ราคาย่อจากจุดสูงสุด :drop% ถึง trailing stop ที่ตั้งไว้ (:limit%)' => [],
+        'ถือครบ :bars แท่งตามที่ตั้งไว้ — ปิดไม้ (time stop)' => [],
+        'EMA :fast ตัดขึ้นเหนือ EMA :slow' => [],
+        'EMA :fast ตัดลงใต้ EMA :slow' => [],
+        'EMA :fast อยู่เหนือ EMA :slow' => [],
+        'EMA :fast อยู่ใต้ EMA :slow' => [],
+        'RSI(:period) ต่ำกว่า :level (ตอนนี้ :value)' => [],
+        'RSI(:period) สูงกว่า :level (ตอนนี้ :value)' => [],
+        'ราคาปิดทะลุจุดสูงสุด :period แท่ง' => [],
+        'ราคาปิดหลุดจุดต่ำสุด :period แท่ง' => [],
+        'ATR(:period) สูงกว่า :pct% ของราคา (ตอนนี้ :value%)' => [],
+        'ATR(:period) ต่ำกว่า :pct% ของราคา (ตอนนี้ :value%)' => [],
+        'วอลุ่มสูงกว่า :ratio เท่าของค่าเฉลี่ย :period แท่ง (ตอนนี้ :value เท่า)' => [],
+        'วอลุ่มต่ำกว่า :ratio เท่าของค่าเฉลี่ย :period แท่ง (ตอนนี้ :value เท่า)' => [],
+        'ราคาเปลี่ยนใน :bars แท่งมากกว่า :pct% (ตอนนี้ :value%)' => [],
+        'ราคาเปลี่ยนใน :bars แท่งน้อยกว่า :pct% (ตอนนี้ :value%)' => [],
+        'ราคาอยู่เหนือเส้นเทรนด์ใหญ่ EMA :period' => [],
+        'ราคาอยู่ใต้เส้นเทรนด์ใหญ่ EMA :period' => [],
+        'ครบรอบซื้อทุก :bars แท่ง' => [],
         // AiViewGate (เหตุผลจาก AI ที่ซ้อนอยู่ในรายการของ BotRunner)
         'AI ไม่แนะนำเหรียญนี้ แต่ประวัติ avoid ที่ความมั่นใจระดับนี้ถูกแค่ :pct% — ไม่ห้ามเข้าไม้' => [],
         'AI ไม่แนะนำเหรียญนี้รอบนี้: :why' => ['why'],
@@ -754,6 +778,33 @@ class BotRunner
             $params['_bars_since_entry'] = $lastBuy
                 ? max(0, (int) floor($lastBuy->created_at->diffInMinutes(now()) / $minutesPerBar))
                 : PHP_INT_MAX;
+        }
+
+        if ($bot->strategy === 'custom') {
+            /*
+             * วางกลยุทธ์เอง: บล็อก "ซื้อตามรอบเวลา" กับ "พักหลังปิดไม้" นับเป็นแท่ง — engine เป็นคนรู้
+             *
+             * นับจากแท่งปิดล่าสุด ณ ตอนที่ไม้เกิด ไม่ใช่จากนาฬิกา: ไม้เกิดหลังแท่งปิดไม่กี่นาทีเสมอ
+             * ถ้าปัดเศษจากเวลาจริง แท่งถัดไปจะนับได้ 0 (ยังไม่ครบ 1 แท่งเต็ม) ขณะที่ backtest นับได้ 1
+             * — บอทจริงจะช้ากว่าผลทดสอบย้อนหลังหนึ่งแท่งทุกครั้ง ทั้งที่ใช้กฎชุดเดียวกัน
+             */
+            $stepMs = $minutesPerBar * 60_000;
+            $lastClosed = (int) ($candles[count($candles) - 1]['time'] ?? 0);
+            $barsSince = function (string $side) use ($bot, $stepMs, $lastClosed): int {
+                $trade = $bot->trades()->where('mode', $bot->mode)->where('side', $side)->latest('created_at')->first();
+
+                if (! $trade || $lastClosed <= 0) {
+                    return PHP_INT_MAX;
+                }
+
+                // แท่งปิดล่าสุดตอนที่ไม้นั้นเกิด = แท่งก่อนหน้าแท่งที่กำลังวิ่งอยู่ ณ เวลานั้น
+                $closedThen = intdiv($trade->created_at->getTimestamp() * 1000, $stepMs) * $stepMs - $stepMs;
+
+                return max(0, intdiv($lastClosed - $closedThen, $stepMs));
+            };
+
+            $params['_bars_since_entry'] = $barsSince('buy');
+            $params['_bars_since_exit'] = $barsSince('sell');
         }
 
         if ($bot->strategy === 'scalping') {

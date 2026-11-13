@@ -31,6 +31,25 @@ class AiBotProbe extends Command
 
     protected $description = 'ยิงกลยุทธ์ AI TRADE ใส่สภาพตลาดจำลอง แล้วรายงานว่าตัดสินใจอะไร';
 
+    /**
+     * ค่าที่ป้อนให้กลยุทธ์ก่อนล้างค่า — ว่าง = ค่าปริยายจริงจาก config.
+     *
+     * ยกเว้นโหมดวางกลยุทธ์เอง: ค่าปริยายของมันคือ "ยังไม่มีกฎ" ซึ่งถือทุกฉากอย่างถูกต้อง
+     * (บอทที่ไม่มีเงื่อนไขเข้าต้องไม่เปิดไม้) จึงป้อนกฎตัวอย่างที่เข้าตอน EMA ตัดขึ้นและออกตอนตัดลง
+     * เพื่อพิสูจน์สิ่งที่คำสั่งนี้มีไว้พิสูจน์ — ตัวประเมินกฎลงมือเป็นทั้งฝั่งซื้อและฝั่งขาย และผลคงที่
+     */
+    private function probeInput(string $code): array
+    {
+        if ($code !== 'custom') {
+            return [];
+        }
+
+        return ['rules' => [
+            'entry' => ['match' => 'all', 'blocks' => [['type' => 'ema_cross', 'when' => 'crosses_above', 'fast' => 12, 'slow' => 26]]],
+            'exit' => ['match' => 'any', 'blocks' => [['type' => 'ema_cross', 'when' => 'crosses_below', 'fast' => 12, 'slow' => 26]]],
+        ]];
+    }
+
     public function handle(StrategyRegistry $registry, AiBotService $bots): int
     {
         $only = $this->argument('strategy');
@@ -65,7 +84,7 @@ class AiBotProbe extends Command
             $this->components->info($code.' — '.($spec['description_th'] ?? ''));
 
             // ใช้ค่าปริยายจริงจาก config ไม่ใช่ค่าที่เราคิดเอง
-            $params = $bots->sanitizeParams($code, []);
+            $params = $bots->sanitizeParams($code, $this->probeInput($code));
             $position = $withPosition ? ['qty' => 1.0, 'entry' => 100.0] : null;
 
             $rows = [];

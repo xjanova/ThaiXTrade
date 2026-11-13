@@ -862,6 +862,30 @@ export function useAiBot() {
         axios.post(`/api/v1/ai-bot/bots/${id}/mode`, { wallet_address: address, mode })
     );
 
+    /**
+     * ทดสอบกฎของโหมด "วางกลยุทธ์เอง" กับราคาย้อนหลัง — { ok, data } หรือ { ok: false, error }.
+     *
+     * ไม่ผ่าน mutate(): ไม่ได้เขียนข้อมูลอะไร จึงไม่ควรล็อกปุ่มอื่น (isWorking) และไม่ต้องโหลดสถานะใหม่
+     * ข้อผิดพลาดไม่ถูกเก็บลง error ร่วม — เป็นเรื่องของแผงทดสอบ ไม่ใช่ของทั้งหน้า
+     */
+    async function runBacktest(payload) {
+        const address = currentAddress();
+        if (!address) return { ok: false, error: { code: 'NO_WALLET', message: t('aiTrade.connectPrompt') } };
+
+        try {
+            const { data } = await axios.post('/api/v1/ai-bot/backtest', { ...payload, wallet_address: address });
+
+            // สลับกระเป๋าระหว่างรอ — ผลนี้คิดจากแพลนของกระเป๋าเดิม
+            if (!isCurrentWallet(address)) {
+                return { ok: false, error: { code: 'WALLET_CHANGED', message: t('aiTrade.errWalletChanged') } };
+            }
+
+            return { ok: true, data: data?.data ?? null };
+        } catch (err) {
+            return { ok: false, error: readError(err) };
+        }
+    }
+
     // ── โหมดทดลอง ────────────────────────────────────────────────────────────
 
     /** ล้างพอร์ตทดลองกลับไปตั้งต้น (จำกัดจำนวนครั้งต่อวันที่ฝั่งเซิร์ฟเวอร์) */
@@ -1287,7 +1311,7 @@ export function useAiBot() {
         runsInCloud, browserBots,
         // actions
         loadCatalog, loadStatus, subscribe, cancel, claimWelcome, requestTopup, confirmTopup,
-        createBot, updateBot, setBotState, setBotMode, deleteBot,
+        createBot, updateBot, setBotState, setBotMode, deleteBot, runBacktest,
         loadDemo, resetDemo, loadRisk, askAdvice, loadMarketView,
         loadTrades,
         loadBotWallet, createBotWallet, refreshBotWallet, withdrawBotWallet, cancelBotWalletWithdraw,

@@ -344,7 +344,9 @@ class StrategiesTest extends TestCase
     {
         foreach ($this->registry->all() as $code => $strategy) {
             $this->assertSame(
-                $code === 'dca',
+                // custom (วางกลยุทธ์เอง) ตอบ true เพราะผู้ใช้ "เปิดเองได้" ด้วย add_to_position — ค่าปริยายปิด
+                // และคลาสเป็นคนไม่สั่งซื้อซ้ำเอง (ดู CustomStrategyTest::ไม่ซื้อเพิ่มขณะถือของถ้าผู้ใช้ไม่ได้เปิด)
+                in_array($code, ['dca', 'custom'], true),
                 $strategy->allowsPyramiding(),
                 "{$code} ประกาศความสามารถเติมไม้ไม่ตรงกับที่ออกแบบ"
             );
