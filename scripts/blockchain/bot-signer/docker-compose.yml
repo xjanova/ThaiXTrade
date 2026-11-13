@@ -1,0 +1,37 @@
+# TPIX bot signer — รันบนเครื่องที่ "ไม่ใช่" เครื่องเว็บ
+# ขั้นตอนเต็มและเหตุผล: docs/BOT_WALLET_SIGNER.md
+#
+#   cp .env.example .env   # แล้วใส่ค่า (สิทธิ์ไฟล์ 600)
+#   docker compose up -d --build
+name: tpix-bot-signer
+
+services:
+  bot-signer:
+    build:
+      context: ..
+      dockerfile: bot-signer/Dockerfile
+    container_name: tpix-bot-signer
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # ผูกกับ IP ของลิงก์ส่วนตัวถึงเครื่องเว็บเท่านั้น (เช่น WireGuard) — ห้ามใช้ 0.0.0.0
+      # พอร์ตที่ docker เปิดข้าม ufw: ถ้าผูก IP สาธารณะ ใครก็ต่อเข้ามาได้
+      - "${SIGNER_PUBLISH:-127.0.0.1:8787}:8787/tcp"
+    volumes:
+      - ./state:/state
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

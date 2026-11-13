@@ -7,6 +7,7 @@ use App\Models\AiBotWalletTransfer;
 use App\Services\AiBot\Live\LiveBroker;
 use App\Services\AiBot\Live\LivePairs;
 use App\Services\AiBot\Wallet\BotWalletKeyring;
+use App\Services\AiBot\Wallet\BotWalletRemoteSigner;
 use App\Services\AiBot\Wallet\BotWalletService;
 use App\Services\AiBot\Wallet\BotWalletSigner;
 use App\Services\MarketDataService;
@@ -50,6 +51,9 @@ class AiBotWalletTransfers extends Command
     /** เชนไม่รู้จัก tx นานเกินนี้ (วินาที) ถึงเริ่มถามต่อ/ส่ง raw เดิมซ้ำ — กันยิง RPC ทุกรอบตั้งแต่วินาทีแรก */
     public const REBROADCAST_AFTER_SECONDS = 60;
 
+    /** รหัสจาก BotWalletRemoteSigner ที่แปลว่า "ยังไม่ได้คำตอบจากตัวเซ็น" — ลองใหม่ได้ ไม่ใช่การปฏิเสธ */
+    private const SIGNER_TRANSIENT_CODES = ['signer_unreachable', 'signer_bad_reply', 'signer_not_configured'];
+
     protected $signature = 'aibot:wallet-transfers {--limit=10 : จำนวนกระเป๋าสูงสุดที่ส่งต่อรอบ}';
 
     protected $description = 'เซ็นและส่งรายการถอนของกระเป๋าบอทที่เข้าคิวไว้ แล้วตามผลบนเชน';
@@ -60,11 +64,14 @@ class AiBotWalletTransfers extends Command
 
     private BotWalletSigner $signer;
 
+    /** ตัวเซ็นแยกเครื่อง — กระเป๋ารุ่น remote เซ็นผ่านตัวนี้ กุญแจไม่เคยมาอยู่บนเครื่องเว็บ */
+    private BotWalletRemoteSigner $remote;
+
     private LiveBroker $live;
 
     private LivePairs $pairs;
 
-    public function handle(BotWalletService $wallets, BotWalletKeyring $keyring, BotWalletSigner $signer, LiveBroker $live, LivePairs $pairs): int
+    public function handle(BotWalletService $wallets, BotWalletKeyring $keyring, BotWalletSigner $signer, LiveBroker $live, LivePairs $pairs, BotWalletRemoteSigner $remote): int
     {
         if (! $wallets->enabled()) {
             $this->info('กระเป๋าบอทยังไม่เปิดใช้ (AIBOT_BOT_WALLET_ENABLED=false)');
@@ -81,6 +88,7 @@ class AiBotWalletTransfers extends Command
         $this->wallets = $wallets;
         $this->keyring = $keyring;
         $this->signer = $signer;
+        $this->remote = $remote;
         $this->live = $live;
         $this->pairs = $pairs;
 
@@ -146,6 +154,8 @@ class AiBotWalletTransfers extends Command
                 (string) $transfer->amount_wei,
                 $transfer->token_address,
             ),
+            // ตัวเซ็นแยกเครื่องไม่รับปลายทาง — ส่งกลับกระเป๋าเจ้าของที่ถอดกุญแจได้เสมอ
+            fn (string $sealed) => $this->remote->signWithdraw($wallet, $sealed, (string) $transfer->amount_wei, $transfer->token_address),
             fn (string $code) => $code === 'estimate_failed' ? AiBotWalletTransfer::FAIL_INSUFFICIENT : AiBotWalletTransfer::FAIL_SIGN,
         );
     }
@@ -363,6 +373,7 @@ class AiBotWalletTransfers extends Command
         $this->signAndSend(
             $order,
             fn (string $privateKey) => $this->signer->signSwap($privateKey, $wallet->address, $tokenIn, $tokenOut, $amountIn, $minOut, $deadline, $route),
+            fn (string $sealed) => $this->remote->signSwap($wallet, $sealed, $tokenIn, $tokenOut, $amountIn, $minOut, $deadline, $route),
             fn (string $code) => $code === 'estimate_failed' ? AiBotWalletTransfer::FAIL_SIMULATION : AiBotWalletTransfer::FAIL_ORDER_SIGN,
             [
                 'route' => $route,
@@ -420,6 +431,8 @@ class AiBotWalletTransfers extends Command
         $this->signAndSend(
             $approve,
             fn (string $privateKey) => $this->signer->signApprove($privateKey, $wallet->address, (string) $approve->token_address, $router, (string) $approve->amount_wei),
+            // ส่งแค่ชนิด router — ที่อยู่จริงมาจากค่าตั้งของตัวเซ็นเอง
+            fn (string $sealed) => $this->remote->signApprove($wallet, $sealed, (string) $approve->token_address, (string) $approve->metaValue('router'), (string) $approve->amount_wei),
             fn (string $code) => AiBotWalletTransfer::FAIL_ORDER_SIGN,
         );
     }
@@ -427,11 +440,12 @@ class AiBotWalletTransfers extends Command
     /**
      * หยิบรายการ → ถอดกุญแจ → เซ็น → บันทึก hash + raw → ส่ง (ลำดับเดียวกันทุกชนิดรายการ ห้ามสลับ).
      *
-     * @param  callable(string): array  $sign  รับกุญแจ คืนผลของตัวเซ็น
+     * @param  callable(string): array  $sign  รับกุญแจ คืนผลของตัวเซ็น (กระเป๋ารุ่น local — นอก production เท่านั้น)
+     * @param  callable(string): array  $remoteSign  รับ ciphertext ของกุญแจ คืนผลของตัวเซ็นแยกเครื่อง (กระเป๋ารุ่น remote)
      * @param  callable(string): string  $failureCode  รหัสจากตัวเซ็น → รหัสเหตุผลที่ล้มของรายการ
      * @param  array  $meta  ข้อมูลที่บันทึกพร้อม hash (เส้นทาง · ใบเสนอราคา)
      */
-    private function signAndSend(AiBotWalletTransfer $transfer, callable $sign, callable $failureCode, array $meta = []): void
+    private function signAndSend(AiBotWalletTransfer $transfer, callable $sign, callable $remoteSign, callable $failureCode, array $meta = []): void
     {
         $wallet = $transfer->wallet;
         $signer = $this->signer;
@@ -447,7 +461,13 @@ class AiBotWalletTransfers extends Command
         }
 
         try {
-            $privateKey = $this->keyring->open($wallet);
+            if ($this->keyring->isRemote($wallet)) {
+                // กุญแจรุ่นนี้อยู่กับตัวเซ็นแยกเครื่อง — ส่ง ciphertext + เจตนาไปให้มันตัดสินและเซ็นเอง
+                // เครื่องนี้ไม่มีคีย์ห่อ จึงไม่มีจังหวะไหนที่กุญแจส่วนตัวอยู่ในหน่วยความจำของเครื่องเว็บ
+                $sealed = $this->keyring->sealedForSigner($wallet);
+            } else {
+                $privateKey = $this->keyring->open($wallet);
+            }
         } catch (\Throwable $e) {
             // ข้อความจากตัวถอดกุญแจ (เช่น "The MAC is invalid") ไปอยู่ใน log เท่านั้น ไม่ถึงผู้ใช้
             $this->markFailed($transfer, AiBotWalletTransfer::STATUS_SIGNING, AiBotWalletTransfer::FAIL_KEY_UNREADABLE, $e->getMessage());
@@ -455,8 +475,33 @@ class AiBotWalletTransfers extends Command
             return;
         }
 
-        $signed = $sign($privateKey);
-        unset($privateKey);
+        if (isset($sealed)) {
+            $signed = $remoteSign($sealed);
+            unset($sealed);
+
+            /*
+             * ติดต่อตัวเซ็นแยกเครื่องไม่ได้ ≠ รายการนี้ผิด — ยังไม่มีธุรกรรมที่เซ็นแล้วกลับมาถึงเครื่องนี้
+             * (ตัวเซ็นไม่ส่งขึ้นเชนเอง) จึงคืนเข้าคิวให้รอบหน้าลองใหม่ แทนที่จะปิดรายการเป็นล้มเหลว
+             * ไม่งั้นตัวเซ็นสะดุดหนึ่งนาที = คำขอถอนทุกใบในรอบนั้นล้ม และไม้ที่ต้องปิดไม่ได้ปิด
+             * คำสั่งเทรดที่ค้างจนเกินอายุยังถูกปิดโดย closeStaleOrders() ตามเดิม
+             */
+            if (! ($signed['ok'] ?? false) && in_array((string) ($signed['code'] ?? ''), self::SIGNER_TRANSIENT_CODES, true)) {
+                $this->transition($transfer, AiBotWalletTransfer::STATUS_SIGNING, [
+                    'status' => AiBotWalletTransfer::STATUS_QUEUED,
+                    'signing_at' => null,
+                ]);
+                Log::warning('bot-wallet: ติดต่อตัวเซ็นแยกเครื่องไม่ได้ — คืนรายการเข้าคิว', [
+                    'transfer_id' => $transfer->id,
+                    'code' => $signed['code'] ?? null,
+                ]);
+                $this->warn("  #{$transfer->id} ติดต่อตัวเซ็นไม่ได้ — คืนเข้าคิว รอบหน้าลองใหม่");
+
+                return;
+            }
+        } else {
+            $signed = $sign($privateKey);
+            unset($privateKey);
+        }
 
         if (! ($signed['ok'] ?? false) || empty($signed['txHash']) || empty($signed['raw'])) {
             // ยังไม่มีอะไรออกจากเครื่อง — ล้มได้อย่างปลอดภัย เงินยังอยู่ในกระเป๋าบอท

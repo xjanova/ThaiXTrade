@@ -1,0 +1,16 @@
+{
+    "name": "tpix-bot-signer",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Isolated signer for TPIX TRADE bot wallets. Runs on a host that is NOT the web host.",
+    "main": "server.cjs",
+    "scripts": {
+        "start": "node server.cjs"
+    },
+    "engines": {
+        "node": ">=20"
+    },
+    "dependencies": {
+        "ethers": "6.17.0"
+    }
+}
