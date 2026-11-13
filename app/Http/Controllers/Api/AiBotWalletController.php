@@ -134,7 +134,9 @@ class AiBotWalletController extends Controller
 
     private function transfersOf(string $owner): array
     {
+        // ประวัติฝาก/ถอนเท่านั้น — คำสั่งเทรดของบอท (swap/approve) อยู่ในหน้าพอร์ตเงินจริง ไม่ใช่รายการโอน
         return AiBotWalletTransfer::where('owner_address', $owner)
+            ->whereIn('direction', [AiBotWalletTransfer::DIRECTION_WITHDRAW, AiBotWalletTransfer::DIRECTION_DEPOSIT])
             ->latest('id')
             ->limit(30)
             ->get()

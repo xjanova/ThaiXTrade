@@ -364,7 +364,18 @@ class AiBotService
          *
          * ได้ล็อกช้า = อีกคำขอสร้างไปแล้ว จึงเช็คซ้ำอีกรอบก่อนสร้างจริง
          */
-        $lock = Cache::lock("aibot:free-sub:{$wallet}", 10);
+        /*
+         * ⚠️ ล็อกเดียวกับ subscribe() / cancel() — ไม่ใช่ล็อกของตัวเอง
+         *
+         * เดิมใช้ "aibot:free-sub" แยกจาก "aibot:subscribe": กระเป๋าที่ไม่มีการเช่าค้างอยู่
+         * (ครั้งแรก หรือแพลนเสียเงินเพิ่งหมดอายุ) กดเช่าพร้อมกับที่หน้าเว็บถามสถานะเป็นระยะ
+         * → สองทางต่างเห็นว่า "ไม่มีการเช่า" ได้แถวแพลนฟรี 1 ปี + แถวแพลนเสียเงิน 30 วันพร้อมกัน
+         * activeSubscription() เลือกใบที่หมดอายุช้าสุด = แพลนฟรี — ลูกค้าจ่ายแล้วไม่ได้ของ
+         * และยกเลิกก็ได้คืน 0 (ปิดใบฟรีแทน)
+         *
+         * ไม่ได้ล็อก = กำลังเช่า/ยกเลิกอยู่ — คืนสิ่งที่มีตอนนี้ (อาจเป็น null) ไม่สร้างแถวแทรก
+         */
+        $lock = Cache::lock("aibot:subscribe:{$wallet}", 10);
 
         if (! $lock->get()) {
             return $this->activeSubscription($wallet);
@@ -384,7 +395,7 @@ class AiBotService
     /** สร้างแถวแพลนฟรี — เรียกจาก ensureFreeSubscription หลังถือล็อกแล้วเท่านั้น */
     private function createFreeSubscription(string $wallet, AiBotPlan $plan): AiBotSubscription
     {
-        return AiBotSubscription::create([
+        $subscription = AiBotSubscription::create([
             'wallet_address' => $wallet,
             'ai_bot_plan_id' => $plan->id,
             'status' => 'active',
@@ -393,6 +404,18 @@ class AiBotService
             'started_at' => now(),
             'expires_at' => now()->addYear(),
         ]);
+
+        /*
+         * ตกมาแพลนนี้ = แพลนเดิมหมดอายุหรือถูกยกเลิก → กรอบความเสี่ยงของบอทต้องกลับมาอยู่ใต้เพดานของแพลนนี้
+         *
+         * เดิมปรับเพดานเฉพาะตอน "เปลี่ยนแพลนด้วยการเช่า" — บอทที่ตั้งทุนต่อไม้ไว้ตอนเป็น VIP
+         * ยังเก็บค่านั้นไว้หลังแพลนหมดอายุ แล้วเดินต่อบนแพลนฟรีด้วยขนาดไม้ของ VIP
+         * (BotRunner คิดงบจาก risk ที่บันทึกไว้) ช่องเพดานทุนของแพลนจึงไม่ได้กันอะไรเลย
+         * กระเป๋าใหม่ไม่มีบอท = ไม่มีอะไรให้ปรับ
+         */
+        $this->reapplyPlanLimits($wallet, $plan);
+
+        return $subscription;
     }
 
     public function activeSubscription(string $wallet): ?AiBotSubscription

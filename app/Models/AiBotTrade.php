@@ -20,6 +20,8 @@ class AiBotTrade extends Model
         'ai_bot_config_id', 'wallet_address', 'pair', 'mode', 'side',
         'price', 'quantity', 'gross_value', 'fee', 'slippage_cost',
         'realized_pnl', 'strategy', 'reason', 'signal_meta', 'risk_level',
+        // ไม้เงินจริง: ธุรกรรมบนเชนของไม้นี้ (unique — ลงบัญชีได้ครั้งเดียว) · ไม้ทดลองเป็น null
+        'tx_hash',
     ];
 
     protected function casts(): array

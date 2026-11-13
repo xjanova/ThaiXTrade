@@ -11,10 +11,13 @@ use App\Models\AiBotPlan;
 use App\Models\AiBotPosition;
 use App\Models\AiBotSubscription;
 use App\Models\AiBotTrade;
+use App\Models\AiBotWalletTransfer;
 use App\Models\AiMarketView;
 use App\Services\AiBot\Advisor\AdvisorFactory;
 use App\Services\AiBot\BotRunner;
 use App\Services\AiBot\CreditTopupService;
+use App\Services\AiBot\Live\LiveBroker;
+use App\Services\AiBot\Live\LivePairs;
 use App\Services\AiBot\MarketRiskService;
 use App\Services\AiBot\PaperBroker;
 use App\Services\AiBot\StrategyAnalytics;
@@ -28,6 +31,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 
 /**
@@ -92,6 +96,8 @@ class AiBotController extends Controller
         private readonly PaperBroker $broker,
         private readonly StrategyAvailability $availability,
         private readonly WorkerHealth $health,
+        private readonly LiveBroker $live,
+        private readonly LivePairs $livePairs,
     ) {}
 
     // =========================================================================
@@ -158,6 +164,11 @@ class AiBotController extends Controller
                  */
                 'features' => [
                     'live_trading' => (bool) config('aibot.live_enabled', false),
+                    /*
+                     * บอทส่งคำสั่งเงินจริงเองจากกระเป๋าบอทแล้วหรือยัง — false = โหมดจริงยังเป็นแค่
+                     * "สัญญาณรอยืนยัน" หน้าจอต้องไม่บอกว่าบอทเทรดให้เอง
+                     */
+                    'live_execution' => $this->live->operational(),
                     /*
                      * เติมเครดิตได้จริงสำหรับคนทั่วไป = รางรับเงินพร้อม (ธงเปิด + ตั้งกระเป๋ารับเงินแล้ว)
                      * และเปิดขายแล้ว — เครดิตใช้ได้แค่เช่าแพลน เติมตอนยังเช่าไม่ได้คือจ่ายแล้วใช้ไม่ได้
@@ -289,6 +300,8 @@ class AiBotController extends Controller
                 'gross_value' => (float) $t->gross_value,
                 'fee' => (float) $t->fee,
                 'realized_pnl' => $t->realized_pnl !== null ? (float) $t->realized_pnl : null,
+                // ไม้เงินจริง: ธุรกรรมบนเชนของไม้นี้ (ไม้ทดลองเป็น null)
+                'tx_hash' => $t->tx_hash,
                 'reason' => BotRunner::localizeReason($t->reason),
                 'created_at' => $t->created_at?->toIso8601String(),
             ])
@@ -494,7 +507,11 @@ class AiBotController extends Controller
     {
         $validated = $request->validate([
             'plan_code' => ['required', 'string', 'max:40'],
-            'days' => ['required', 'integer', 'min:1', 'max:365'],
+            /*
+             * เฉพาะจำนวนวันที่ขายจริง — เดิมรับ 1–365 แล้วชั้นบริการปัดค่าที่ไม่อยู่ในรายการเป็น
+             * "จำนวนวันน้อยสุด" เงียบ ๆ: ขอ 14 วัน ถูกตัดเงินและได้แพลน 1 วัน โดยไม่มีอะไรบอก
+             */
+            'days' => ['required', 'integer', Rule::in(array_map('intval', (array) config('aibot.credits.rental_days', [1, 7, 30, 90])))],
             /*
              * หนึ่ง key ต่อการกดหนึ่งครั้ง (client ใช้ key เดิมตอน retry จนกว่าจะสำเร็จ)
              * ไม่บังคับ เพราะแอพมือถือรุ่นที่ออกไปแล้วยังไม่ส่ง — ทางนั้นเซิร์ฟเวอร์กันเองแบบหยาบกว่า
@@ -619,6 +636,11 @@ class AiBotController extends Controller
             return $this->serviceFailure($e, 403);
         }
 
+        // ถือเหรียญเงินจริงของคู่เดิมอยู่ = ห้ามย้ายคู่ — ไม้เดิมจะค้างอยู่บนคู่ที่บอทไม่ได้ดูแล้ว
+        if (strtoupper($validated['pair']) !== strtoupper((string) $bot->pair) && $this->live->hasExposure($bot)) {
+            return $this->failure('LIVE_POSITION_OPEN', __('บอทตัวนี้ยังถือเหรียญหรือมีคำสั่งเงินจริงค้างอยู่ — ปิดไม้ก่อนเปลี่ยนคู่เหรียญ'));
+        }
+
         [$params, $riskInput] = $this->applyTemplate($validated, $request);
 
         $bot->fill([
@@ -737,6 +759,14 @@ class AiBotController extends Controller
 
         if (! $bot) {
             return $this->failure('BOT_NOT_FOUND', __('ไม่พบบอทตัวนี้'), 404);
+        }
+
+        /*
+         * บอทที่ยังมีเงินจริงค้างอยู่ลบไม่ได้ — ลบแล้วบัญชีไม้หายตามไป (cascade) แต่เหรียญยังอยู่
+         * ในกระเป๋าบอทโดยไม่มีบอทตัวไหนขายคืนให้ และผู้ใช้ถอนได้แค่ USDT/BNB
+         */
+        if ($this->live->hasExposure($bot)) {
+            return $this->failure('LIVE_POSITION_OPEN', __('บอทตัวนี้ยังถือเหรียญหรือมีคำสั่งเงินจริงค้างอยู่ — ปิดไม้ให้เรียบร้อยก่อนลบ'));
         }
 
         $bot->delete();
@@ -1243,6 +1273,11 @@ class AiBotController extends Controller
 
         $validated = $request->validate(['mode' => ['required', 'string', 'in:demo,live']]);
 
+        // ออกจากโหมดจริงทั้งที่ยังถือเหรียญ = ไม้นั้นไม่มีใครดูแลต่อ (บอทจะคิดจากพอร์ตทดลองแทน)
+        if ($validated['mode'] !== $bot->mode && $this->live->hasExposure($bot)) {
+            return $this->failure('LIVE_POSITION_OPEN', __('บอทตัวนี้ยังถือเหรียญหรือมีคำสั่งเงินจริงค้างอยู่ — ปิดไม้ก่อนสลับโหมด'));
+        }
+
         if ($validated['mode'] === 'live') {
             // ยังไม่เปิดโหมดจริงทั้งระบบ — ให้ทุกคนอยู่โหมดทดลองไปก่อน
             if (! config('aibot.live_enabled', false)) {
@@ -1274,12 +1309,129 @@ class AiBotController extends Controller
                     return $this->failure('BOT_WALLET_EMPTY', __('กระเป๋าบอทยังไม่มี USDT — โอนทุนของบอทเข้ากระเป๋าบอทก่อนเปิดโหมดจริง'));
                 }
             }
+
+            // บอทส่งคำสั่งเองแล้ว = คู่ต้องอยู่ในรายการที่เทรดเงินจริงได้ ไม่งั้นเปิดโหมดจริงได้แต่ไม่มีวันลงมือ
+            if ($this->live->operational() && ! $this->live->supports($bot->pair)) {
+                return $this->failure('LIVE_PAIR_UNSUPPORTED', __('คู่เหรียญของบอทตัวนี้ยังเทรดเงินจริงไม่ได้ — เปลี่ยนเป็นคู่ในรายการของโหมดเงินจริงก่อน'));
+            }
         }
 
         // ของที่ถืออยู่ในโหมดเดิมต้องไม่ตามข้ามโหมดไป — คนละบัญชีคนละความหมาย
         $bot->update(['mode' => $validated['mode']]);
 
         return response()->json(['success' => true, 'data' => $this->presentBot($bot->fresh())]);
+    }
+
+    /**
+     * เจ้าของสั่งปิดไม้ของบอทเอง (ขายทั้งหมดที่บอทตัวนี้ถือ).
+     *
+     * ไม่ต้องมีการเช่าที่ยังไม่หมดอายุ และไม่สนว่าบอทกำลังเดินหรือถูกพัก — เงินเป็นของผู้ใช้
+     * แพลนหมดอายุแล้วบอทหยุดคิด แต่เจ้าของต้องเอาเงินออกจากไม้ได้เสมอ
+     *
+     * โหมดเงินจริง = เข้าคิวคำสั่งขาย (ผลจริงมาจากเชน ดูได้ที่ /ai-bot/live) · โหมดทดลอง = ปิดทันที
+     */
+    public function closePosition(Request $request, int $id, MarketDataService $market): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+        $bot = $this->findBot($wallet, $id);
+
+        if (! $bot) {
+            return $this->failure('BOT_NOT_FOUND', __('ไม่พบบอทตัวนี้'), 404);
+        }
+
+        $price = (float) ($market->getTokenPrice($bot->pair)['price'] ?? 0);
+
+        if ($price <= 0) {
+            return $this->failure('PRICE_UNAVAILABLE', __('ดึงราคาตลาดของคู่นี้ไม่ได้ตอนนี้ — ลองใหม่อีกครั้ง'), 503);
+        }
+
+        $context = ['reason' => 'เจ้าของสั่งปิดไม้เอง', 'risk_level' => 'calm'];
+
+        if ($bot->mode === 'live') {
+            if (! $this->live->operational()) {
+                return $this->failure('LIVE_EXECUTION_OFF', __('ระบบยังไม่เปิดให้บอทส่งคำสั่งเงินจริง'));
+            }
+
+            $result = $this->live->sell($bot, $price, $context, manual: true);
+        } else {
+            $result = $this->broker->sell($bot, $price, $context);
+        }
+
+        if (! ($result['ok'] ?? false)) {
+            return $this->failure('CLOSE_FAILED', __($result['reason'] ?? 'ปิดไม้ไม่สำเร็จ'));
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'bot' => $this->presentBot($bot->fresh()),
+                // โหมดจริง: คำสั่งเข้าคิวแล้ว ยังไม่ได้ขาย — หน้าจอต้องบอกว่า "กำลังส่งคำสั่ง" ไม่ใช่ "ขายแล้ว"
+                'queued' => (bool) ($result['queued'] ?? false),
+                'order' => isset($result['order']) ? $this->live->present($result['order']) : null,
+            ],
+        ]);
+    }
+
+    /**
+     * พอร์ตเงินจริงของกระเป๋านี้: ไม้ที่บอทถืออยู่ + คำสั่งที่ส่งขึ้นเชน (ทั้งที่ค้างและที่จบแล้ว).
+     *
+     * มูลค่าตีด้วยราคาตลาดล่าสุด — ราคาที่ขายได้จริงบน DEX ต่ำกว่านี้เล็กน้อย (ค่าธรรมเนียมพูล + ค่าแก๊ส)
+     */
+    public function live(Request $request, MarketDataService $market): JsonResponse
+    {
+        $wallet = $this->wallet($request);
+        $bots = AiBotConfig::forWallet($wallet)->get()->keyBy('id');
+
+        $positions = AiBotPosition::whereIn('ai_bot_config_id', $bots->keys())
+            ->where('mode', 'live')
+            ->where('quantity', '>', 0)
+            ->get();
+
+        $prices = $positions->pluck('pair')->unique()
+            ->mapWithKeys(fn (string $pair) => [$pair => $market->getTokenPrice($pair)['price'] ?? null]);
+
+        $orders = AiBotWalletTransfer::swaps()
+            ->where('owner_address', $wallet)
+            ->latest('id')
+            ->limit(30)
+            ->get();
+
+        $realized = (float) AiBotTrade::where('wallet_address', $wallet)->where('mode', 'live')->sum('realized_pnl');
+        $fees = (float) AiBotTrade::where('wallet_address', $wallet)->where('mode', 'live')->sum('fee');
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'execution' => $this->live->operational(),
+                'entries_paused' => (bool) config('aibot.live.entries_paused', false),
+                'pairs' => $this->livePairs->supported(),
+                'limits' => [
+                    'min_order_usd' => (float) config('aibot.live.min_order_usd', 10),
+                    'max_order_usd' => (float) config('aibot.live.max_order_usd', 500),
+                    'slippage_bps' => (int) config('aibot.live.slippage_bps', 50),
+                    'entry_max_deviation_bps' => (int) config('aibot.live.entry_max_deviation_bps', 120),
+                ],
+                'positions' => $positions->map(function (AiBotPosition $p) use ($bots, $prices) {
+                    $price = $prices[$p->pair] ?? null;
+
+                    return [
+                        'bot_id' => $p->ai_bot_config_id,
+                        'bot_name' => $bots[$p->ai_bot_config_id]->name ?? null,
+                        'pair' => $p->pair,
+                        'quantity' => (float) $p->quantity,
+                        'entry_price' => (float) $p->entry_price,
+                        'cost_basis' => (float) $p->cost_basis,
+                        'price' => $price !== null ? (float) $price : null,
+                        'value' => $price !== null ? round((float) $p->quantity * (float) $price, 8) : null,
+                        'unrealized_pnl' => $price !== null ? $p->unrealizedPnl((float) $price) : null,
+                        'opened_at' => $p->opened_at?->toIso8601String(),
+                    ];
+                })->values()->all(),
+                'orders' => $orders->map(fn (AiBotWalletTransfer $o) => $this->live->present($o))->all(),
+                'realized_pnl' => round($realized, 8),
+                'fees_paid' => round($fees, 8),
+            ],
+        ]);
     }
 
     /**
@@ -1557,6 +1709,9 @@ class AiBotController extends Controller
             // เขียนโดย BotRunner (cron ไม่มีภาษาผู้ใช้) เป็นภาษาไทยเสมอ — แปลตอนแสดงผล
             'last_reason' => BotRunner::localizeReason($bot->last_reason),
             'position' => $this->openPosition($bot),
+            // โหมดเงินจริง: คำสั่งที่ส่งขึ้นเชนแล้วยังไม่รู้ผล (null = ไม่มี) · คู่นี้เทรดเงินจริงได้ไหม
+            'pending_order' => $bot->mode === 'live' && ($pending = $this->live->pendingOrder($bot)) ? $this->live->present($pending) : null,
+            'live_supported' => $this->live->supports($bot->pair),
             'created_at' => $bot->created_at->toIso8601String(),
         ];
     }
