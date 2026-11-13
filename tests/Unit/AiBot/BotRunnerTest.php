@@ -1199,7 +1199,8 @@ class BotRunnerTest extends TestCase
             'mode' => 'demo', 'side' => 'sell', 'price' => 100, 'quantity' => 1, 'gross_value' => 100,
             'fee' => 0.1, 'slippage_cost' => 0.08, 'realized_pnl' => -1, 'strategy' => 'custom', 'reason' => 'ทดสอบ',
         ]);
-        $sell->created_at = Carbon::createFromTimestampMs($lastClosed - 2 * $step + 5 * 60_000);
+        // createFromTimestampMs คืนเวลา UTC — ต้องแปลงเป็นโซนของแอปก่อนเก็บ ไม่งั้นเวลาที่อ่านกลับมาเลื่อนไปตามโซน (CI ใช้ Asia/Bangkok)
+        $sell->created_at = Carbon::createFromTimestampMs($lastClosed - 2 * $step + 5 * 60_000)->setTimezone(config('app.timezone'));
         $sell->save();
 
         $waiting = $this->runner->tick($bot->fresh());
