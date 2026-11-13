@@ -16,6 +16,9 @@ import AiDemoPanel from '@/Components/Trading/AiDemoPanel.vue';
 import AiBotWalletPanel from '@/Components/Trading/AiBotWalletPanel.vue';
 import AiLivePortfolio from '@/Components/Trading/AiLivePortfolio.vue';
 import AiPlanPrice from '@/Components/AiTrade/AiPlanPrice.vue';
+import AiRuleBuilder from '@/Components/AiTrade/AiRuleBuilder.vue';
+import AiRuleBacktest from '@/Components/AiTrade/AiRuleBacktest.vue';
+import AiCopyTradePanel from '@/Components/AiTrade/AiCopyTradePanel.vue';
 import AiRiskPanel from '@/Components/Trading/AiRiskPanel.vue';
 import AiMarketViewPanel from '@/Components/Trading/AiMarketViewPanel.vue';
 import AiTradeTopupModal from '@/Components/AiTrade/AiTradeTopupModal.vue';
@@ -24,6 +27,7 @@ import { useWalletStore } from '@/Stores/walletStore';
 import { useTranslation } from '@/Composables/useTranslation';
 import { showToast } from '@/Composables/useToasts';
 import { playClickSound, playErrorSound, playNotificationSound } from '@/Composables/useSounds';
+import { cloneValue, problemMessage, rulesPayload, rulesProblems, sameRules } from '@/utils/aiRules';
 
 const walletStore = useWalletStore();
 const bot = useAiBot();
@@ -121,9 +125,45 @@ const paramSpecs = computed(() => {
  * ซ่อนไว้ก่อนเพื่อไม่ให้ฟอร์มมี 10 ช่องตั้งแต่แรก ผู้ใช้ที่อยากละเอียดกดเปิดเอง
  * (ค่าปริยายของช่องขั้นสูงคือชุดที่ผ่านการทดสอบแล้ว — ไม่กดเปิดก็ได้ของดี)
  */
-const basicSpecs = computed(() => paramSpecs.value.filter((spec) => (spec.group ?? 'basic') !== 'advanced'));
-const advancedSpecs = computed(() => paramSpecs.value.filter((spec) => (spec.group ?? 'basic') === 'advanced'));
+/*
+ * ช่องชนิด rules (กฎเข้า/ออกของโหมด "วางกลยุทธ์เอง") ไม่ใช่ตัวเลข/ตัวเลือก/สวิตช์ — วาดด้วยตัวสร้างกฎ
+ * ต้องแยกออกจากตารางช่องธรรมดา ไม่งั้นจะตกไปสาขาสุดท้ายแล้วกลายเป็นช่องติ๊กถูกอันเดียว
+ */
+const rulesSpec = computed(() => paramSpecs.value.find((spec) => spec.type === 'rules') ?? null);
+const flatSpecs = computed(() => paramSpecs.value.filter((spec) => spec.type !== 'rules'));
+const basicSpecs = computed(() => flatSpecs.value.filter((spec) => (spec.group ?? 'basic') !== 'advanced'));
+const advancedSpecs = computed(() => flatSpecs.value.filter((spec) => (spec.group ?? 'basic') === 'advanced'));
 const showAdvanced = ref(false);
+
+const rulesSchema = computed(() => bot.catalog.value?.custom_rules ?? null);
+
+/** ปัญหาแรกของกฎในฟอร์ม เป็นข้อความ (ว่าง = กฎใช้ได้ หรือกลยุทธ์นี้ไม่มีกฎ) — ใช้กันบันทึกและกันทดสอบ */
+const rulesProblemText = computed(() => {
+    if (!rulesSpec.value) return '';
+
+    const first = rulesProblems(form.value.params[rulesSpec.value.key], rulesSchema.value)[0];
+
+    return first ? problemMessage(first, rulesSchema.value, t, locale.value) : '';
+});
+
+/** พารามิเตอร์ที่ส่งให้เซิร์ฟเวอร์ — กฎถูกจัดเป็นรูปมาตรฐาน (ตัดธง invalid ที่ติดมากับบอทเดิม) */
+function paramsPayload() {
+    const params = { ...form.value.params };
+
+    if (rulesSpec.value) {
+        params[rulesSpec.value.key] = rulesPayload(params[rulesSpec.value.key], rulesSchema.value);
+    }
+
+    return params;
+}
+
+/** คำขอทดสอบย้อนหลังของฟอร์มตอนนี้ — แผงทดสอบใช้เทียบด้วยว่าผลล่าสุดยังเป็นของชุดนี้อยู่ไหม */
+const backtestRequest = computed(() => ({
+    pair: form.value.pair,
+    timeframe: form.value.timeframe,
+    params: paramsPayload(),
+    risk: { ...(form.value.risk || {}) },
+}));
 
 /** เทมเพลตของกลยุทธ์ที่เลือก (conservative / balanced / aggressive) — ทีมงานตั้งค่าและ backtest ไว้ */
 const templates = computed(() => selectedStrategy.value?.templates ?? []);
@@ -134,9 +174,16 @@ const templates = computed(() => selectedStrategy.value?.templates ?? []);
  * ผู้ใช้กดเทมเพลตแล้วแก้ช่องหนึ่ง ป้ายต้องหลุดทันที ไม่งั้นจะเข้าใจผิดว่ายังใช้ชุด
  * ของทีมงานอยู่ทั้งที่แก้ไปแล้ว การเทียบค่าจริงทำให้ไม่มีสถานะให้ลืมรีเซ็ต
  */
+/** ค่าในฟอร์มตรงกับค่าของเทมเพลตไหม — กฎ (ออบเจกต์) เทียบทั้งก้อน ไม่งั้นทุกชุดกลายเป็น "[object Object]" เท่ากันหมด */
+function sameParam(current, value) {
+    return value !== null && typeof value === 'object'
+        ? sameRules(current, value, rulesSchema.value)
+        : String(current) === String(value);
+}
+
 const activeTemplate = computed(() => templates.value.find((tpl) =>
     (!tpl.timeframe || tpl.timeframe === form.value.timeframe)
-    && Object.entries(tpl.params ?? {}).every(([key, value]) => String(form.value.params[key]) === String(value))
+    && Object.entries(tpl.params ?? {}).every(([key, value]) => sameParam(form.value.params[key], value))
     && Object.entries(tpl.risk ?? {}).every(([key, value]) => Number(form.value.risk[key]) === Number(value)),
 )?.code ?? null);
 
@@ -156,7 +203,8 @@ function applyTemplate(tpl) {
 
     const params = {};
     paramSpecs.value.forEach((spec) => {
-        params[spec.key] = tpl.params?.[spec.key] ?? form.value.params[spec.key] ?? spec.default;
+        // สำเนาลึก — กฎของเทมเพลตเป็นของแคตตาล็อกที่ใช้ร่วมกัน แก้ในฟอร์มแล้วต้องไม่ไปแก้ต้นฉบับ
+        params[spec.key] = cloneValue(tpl.params?.[spec.key] ?? form.value.params[spec.key] ?? spec.default);
     });
     form.value.params = params;
     form.value.risk = { ...form.value.risk, ...(tpl.risk ?? {}) };
@@ -481,7 +529,8 @@ function openBuilder(existing = null) {
             pair: existing.pair,
             strategy: existing.strategy,
             timeframe: existing.timeframe,
-            params: { ...existing.params },
+            // สำเนาลึก — กฎเป็นออบเจกต์ซ้อน แก้ในฟอร์มแล้วกดยกเลิกต้องไม่เปลี่ยนบอทที่โชว์อยู่ในรายการ
+            params: cloneValue(existing.params),
             risk: { ...existing.risk },
         };
     } else {
@@ -520,6 +569,12 @@ async function saveBot() {
      *    = แก้ตัวเลขในฟอร์มกี่ครั้งก็ไม่ติด โดยไม่มีอะไรบอก (แอปมือถือส่งถูกอยู่แล้ว)
      * ผู้ใช้แก้ตัวเลขนี้ → ทิ้งค่าที่ขอเก่า · ไม่ได้แก้ → คงไว้ (ค่าที่ขอต้องรอดข้ามการอัปเกรดแพลน)
      */
+    // กฎที่ยังผิดไม่ส่งไปให้เซิร์ฟเวอร์ปฏิเสธ — บอกตรงนี้เลยว่าต้องแก้อะไร (เซิร์ฟเวอร์ยังตรวจซ้ำเสมอ)
+    if (rulesProblemText.value) {
+        flash('error', t('aiTrade.rules.fixBeforeSave', { problem: rulesProblemText.value }));
+        return;
+    }
+
     const risk = { ...(form.value.risk || {}) };
     const before = editingId.value ? bot.bots.value.find(b => b.id === editingId.value)?.risk : null;
     if (!before || Number(risk.max_position_usd) !== Number(before.max_position_usd)) {
@@ -527,7 +582,7 @@ async function saveBot() {
     }
 
     // ส่งรหัสเทมเพลตไปด้วย (ถ้ายังตรงอยู่) — เซิร์ฟเวอร์ใช้เป็นฐาน ค่าในฟอร์มทับอีกที
-    const payload = { ...form.value, risk, name: form.value.name.trim(), template: activeTemplate.value };
+    const payload = { ...form.value, params: paramsPayload(), risk, name: form.value.name.trim(), template: activeTemplate.value };
     const result = editingId.value
         ? await bot.updateBot(editingId.value, payload)
         : await bot.createBot(payload);
@@ -1270,9 +1325,10 @@ bot.keepBrowserBotsRunning();
 
                     <!-- เทมเพลต — ชุดตั้งค่าที่ทีมงาน backtest ไว้ กดแล้วแก้ต่อได้ -->
                     <div v-if="templates.length">
+                        <!-- โหมดวางกลยุทธ์เอง: เป็น "ตัวอย่างโครงกฎ" ไม่ใช่ชุดที่ทีมงาน backtest ไว้ — ห้ามใช้ป้ายเดียวกัน -->
                         <p class="text-[11px] text-dark-400 mb-2">
-                            {{ t('aiTrade.templates') }}
-                            <span class="text-dark-500">— {{ t('aiTrade.templateHint') }}</span>
+                            {{ rulesSpec ? t('aiTrade.rules.examples') : t('aiTrade.templates') }}
+                            <span class="text-dark-500">— {{ rulesSpec ? t('aiTrade.rules.examplesHint') : t('aiTrade.templateHint') }}</span>
                         </p>
                         <div class="grid gap-2 sm:grid-cols-3">
                             <button
@@ -1292,6 +1348,16 @@ bot.keepBrowserBotsRunning();
                         </div>
                         <p v-if="!activeTemplate" class="mt-1.5 text-[10px] text-dark-500">{{ t('aiTrade.customSettings') }}</p>
                     </div>
+
+                    <!-- วางกลยุทธ์เอง: ตัวสร้างกฎเข้า/ออก (กลยุทธ์อื่นไม่มีช่องชนิด rules จึงไม่วาด) -->
+                    <AiRuleBuilder
+                        v-if="rulesSpec"
+                        v-model="form.params[rulesSpec.key]"
+                        :schema="rulesSchema"
+                        :timeframe="form.timeframe"
+                    />
+
+                    <p v-if="rulesSpec" class="text-[11px] text-dark-400 -mb-2">{{ t('aiTrade.rules.settingsTitle') }}</p>
 
                     <!-- Timeframe + พารามิเตอร์พื้นฐานของกลยุทธ์ -->
                     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1390,6 +1456,15 @@ bot.keepBrowserBotsRunning();
                         </div>
                     </div>
 
+                    <!-- วางกลยุทธ์เอง: ทดสอบกฎกับราคาย้อนหลังก่อนสร้าง/บันทึก -->
+                    <AiRuleBacktest
+                        v-if="rulesSpec"
+                        :request="backtestRequest"
+                        :schema="rulesSchema"
+                        :runner="bot.runBacktest"
+                        :blocked-reason="rulesProblemText"
+                    />
+
                     <div class="flex gap-2">
                         <button
                             type="button"
@@ -1403,6 +1478,15 @@ bot.keepBrowserBotsRunning();
                     </div>
                 </section>
             </template>
+
+            <!-- Master / Copy Trade — กระดานเป็นสาธารณะ จึงอยู่นอกบล็อกที่ต้องเชื่อมกระเป๋า -->
+            <AiCopyTradePanel
+                v-if="bot.copyTrade"
+                :api="bot.copyTrade"
+                :wallet="walletStore.address || ''"
+                :limits="limits"
+                @notify="({ type, text }) => flash(type, text)"
+            />
 
             <!-- ที่ปรึกษา AI — อ่านสถิติของบอทแล้วให้ความเห็น สั่งเทรดเองไม่ได้ -->
             <!-- มุมมองที่มีผลต่อการเทรดจริง วางก่อนคำแนะนำที่อ่านประกอบเฉยๆ -->

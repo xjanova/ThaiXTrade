@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Services\AiBot\Backtest\BacktestData;
 use App\Services\AiBot\Backtest\BacktestEngine;
-use App\Services\AiBot\Backtest\KlineArchive;
-use App\Services\AiBot\MacroTrend;
+use App\Services\AiBot\Backtest\BacktestVerdict;
 use App\Services\AiBot\Timeframe;
 use App\Services\AiBotService;
 use Illuminate\Console\Command;
@@ -68,7 +68,7 @@ class AiBotBacktest extends Command
         }
     }
 
-    public function handle(BacktestEngine $engine, KlineArchive $archive, AiBotService $bots): int
+    public function handle(BacktestEngine $engine, BacktestData $data, AiBotService $bots): int
     {
         // อินสแตนซ์คำสั่งถูกใช้ซ้ำได้ในโปรเซสเดียว (Artisan::call หลายครั้ง) — คำเตือนต้องไม่ค้างข้ามรอบ
         $this->warnings = [];
@@ -100,21 +100,18 @@ class AiBotBacktest extends Command
             return self::FAILURE;
         }
 
-        // ดึงเผื่อช่วงอุ่นเครื่อง (หน้าต่างสูงสุด 500 แท่ง) ให้ช่วงที่ขอถูกทดสอบเต็ม
-        $stepMs = Timeframe::milliseconds($timeframe);
-        $toMs = now()->getTimestamp() * 1000;
-        $fromMs = $toMs - $days * 86_400_000;
-        $warmupMs = 500 * $stepMs;
-
+        // ช่วงที่ทดสอบ + ช่วงอุ่นเครื่อง + แท่งรายวันของตัวกรองตลาดใหญ่ — ตัวเตรียมข้อมูลเดียวกับ
+        // การทดสอบย้อนหลังจากหน้าเว็บ (BacktestData) ผลสองทางจึงเทียบกันได้ตรงๆ
         try {
-            $candles = $archive->range($pair, $timeframe, $fromMs - $warmupMs, $toMs, (bool) $this->option('offline'));
+            $loaded = $data->load($pair, $timeframe, $days, (bool) $this->option('offline'));
         } catch (\Throwable $e) {
             $this->error('ดึงข้อมูลไม่สำเร็จ: '.$e->getMessage());
 
             return self::FAILURE;
         }
 
-        $startIndex = $this->firstIndexAtOrAfter($candles, $fromMs);
+        $candles = $loaded['candles'];
+        $startIndex = $loaded['start_index'];
 
         if ($candles === [] || count($candles) - $startIndex < 30) {
             $this->error('แท่งเทียนไม่พอ — ได้ '.count($candles).' แท่ง (ลอง --days น้อยลง หรือเอา --offline ออก)');
@@ -122,15 +119,14 @@ class AiBotBacktest extends Command
             return self::FAILURE;
         }
 
-        $options = ['risk_gate' => ! $this->option('no-risk-gate'), 'start_index' => $startIndex];
+        $options = [
+            'risk_gate' => ! $this->option('no-risk-gate'),
+            'start_index' => $startIndex,
+            'macro_daily' => $loaded['macro_daily'],
+        ];
 
         /*
-         * แท่งรายวันของ BTC สำหรับตัวกรองแนวโน้มใหญ่ (กติกาเดียวกับ BotRunner ขั้น 4.2)
-         * เผื่อย้อนหลัง MacroTrend::WINDOW วันให้ EMA อุ่นเครื่องเต็มตั้งแต่แท่งแรกของช่วงที่ทดสอบ
-         * ดึงไม่ได้ = รันต่อแบบไม่กรอง พร้อมเตือน (บอทจริงก็ถอยแบบเดียวกัน)
-         */
-        /*
-         * --no-macro = "ผู้ใช้ปิดสวิตช์ macro_filter" ไม่ใช่ "ไม่มีข้อมูลแนวโน้ม" — ยังโหลดแท่งรายวัน
+         * --no-macro = "ผู้ใช้ปิดสวิตช์ macro_filter" ไม่ใช่ "ไม่มีข้อมูลแนวโน้ม" — แท่งรายวันยังถูกโหลด
          * ให้ DCA pause_in_downtrend ใช้ต่อเหมือนบอทจริงที่ปิดสวิตช์ (รีวิว 2026-09-23: เดิมไม่โหลด
          * เลย ผลเทียบของ DCA จึงปิดการพักขาลงไปด้วยโดยไม่ตั้งใจ)
          */
@@ -138,36 +134,10 @@ class AiBotBacktest extends Command
             $params['macro_filter'] = false;
         }
 
-        try {
-            $options['macro_daily'] = $archive->range(
-                (string) config('aibot.macro.symbol', 'BTC/USDT'),
-                '1d',
-                $fromMs - $warmupMs - MacroTrend::WINDOW * 86_400_000,
-                $toMs,
-                (bool) $this->option('offline'),
-            );
-        } catch (\Throwable $e) {
-            $options['macro_daily'] = [];
-            $this->caution('ดึงแท่งรายวันของตัวกรองแนวโน้มใหญ่ไม่ได้: '.$e->getMessage());
+        foreach ($loaded['warnings'] as $warning) {
+            $this->caution($warning);
         }
 
-        $needDailyFrom = $fromMs - MacroTrend::WINDOW * 86_400_000;
-        $firstDaily = $options['macro_daily'][0]['time'] ?? null;
-
-        if (($options['macro_daily'] ?? []) === []) {
-            // --offline กับคลังที่ไม่มีแท่งรายวัน BTC ได้ [] เงียบๆ — ต้องบอกว่าผลนี้ "ไม่ได้กรอง"
-            $this->caution('ไม่มีแท่งรายวันของ BTC — ผลนี้ไม่ได้ใช้ตัวกรองแนวโน้มใหญ่ (ต่างจากบอทจริง)');
-        } elseif ($firstDaily !== null && (int) $firstDaily > $needDailyFrom + 86_400_000) {
-            /*
-             * มีข้อมูลแต่สั้นกว่าหน้าต่าง — ช่วงแรกของผลใช้ EMA จากหน้าต่างสั้นกว่าบอทจริง
-             * (รีวิว 2026-09-23: หน้าต่าง 499 วัน + --offline + --days ยาว = เพี้ยนเงียบๆ)
-             */
-            $this->caution(sprintf(
-                'แท่งรายวันของ BTC ในคลังเริ่ม %s (ต้องมีตั้งแต่ %s) — ช่วงแรกของผลนี้ใช้หน้าต่าง EMA สั้นกว่าบอทจริง',
-                gmdate('Y-m-d', intdiv((int) $firstDaily, 1000)),
-                gmdate('Y-m-d', intdiv($needDailyFrom, 1000)),
-            ));
-        }
         $sweeps = $this->sweeps();
 
         if ($sweeps === null) {
@@ -332,23 +302,17 @@ class AiBotBacktest extends Command
         return $s['edge_bps'] > $s['cost_bps'] ? 'ชนะต้นทุน' : 'แพ้ต้นทุน';
     }
 
+    /** ข้อความคำตัดสิน — เกณฑ์อยู่ที่ BacktestVerdict (ตัวเดียวกับหน้าตัวสร้างกฎบนเว็บ) */
     private function verdict(array $s): string
     {
-        if ($s['closed'] < 10) {
-            return '🟡 ยังสรุปไม่ได้ — ปิดไม้แค่ '.$s['closed'].' ไม้ (ต้องมีอย่างน้อย ~30 ถึงจะแยกฝีมือจากความบังเอิญ)';
-        }
-
-        if (($s['edge_bps'] ?? -INF) <= $s['cost_bps']) {
-            return '❌ edge/ไม้ ('.$s['edge_bps'].' bps) ไม่ชนะต้นทุน ('.$s['cost_bps'].' bps) — แพ้โดยโครงสร้าง ไม่ใช่โชคร้าย';
-        }
-
-        if (($s['expectancy'] ?? 0) <= 0) {
-            return '❌ ชนะต้นทุนต่อไม้ แต่ expectancy ติดลบ — ไม้แพ้ใหญ่กว่าไม้ชนะมากเกินไป (ดู stop)';
-        }
-
         $vsHold = $s['buy_hold_pct'] === null ? '' : ' · ต่อทุนที่ให้ใช้ '.($s['capital_return_pct'] ?? '—').'% เทียบถือเฉยๆ '.$s['buy_hold_pct'].'%';
 
-        return '✅ ชนะต้นทุนและ expectancy บวก'.$vsHold.' — ยืนยันด้วย --walk-forward และ forward test ก่อนเปิดขาย';
+        return match (BacktestVerdict::level($s)) {
+            BacktestVerdict::INSUFFICIENT => '🟡 ยังสรุปไม่ได้ — ปิดไม้แค่ '.$s['closed'].' ไม้ (ต้องมีอย่างน้อย ~30 ถึงจะแยกฝีมือจากความบังเอิญ)',
+            BacktestVerdict::LOSING => '❌ edge/ไม้ ('.$s['edge_bps'].' bps) ไม่ชนะต้นทุน ('.$s['cost_bps'].' bps) — แพ้โดยโครงสร้าง ไม่ใช่โชคร้าย',
+            BacktestVerdict::NEGATIVE_EXPECTANCY => '❌ ชนะต้นทุนต่อไม้ แต่ expectancy ติดลบ — ไม้แพ้ใหญ่กว่าไม้ชนะมากเกินไป (ดู stop)',
+            default => '✅ ชนะต้นทุนและ expectancy บวก'.$vsHold.' — ยืนยันด้วย --walk-forward และ forward test ก่อนเปิดขาย',
+        };
     }
 
     private function money(float $v): string
@@ -413,16 +377,5 @@ class AiBotBacktest extends Command
         }
 
         return $combos;
-    }
-
-    private function firstIndexAtOrAfter(array $candles, int $ms): int
-    {
-        foreach ($candles as $i => $candle) {
-            if ((int) $candle['time'] >= $ms) {
-                return $i;
-            }
-        }
-
-        return count($candles);
     }
 }

@@ -73,6 +73,21 @@ class StrategyAvailability
             ];
         }
 
+        /*
+         * กลยุทธ์ที่ "ระบบสร้างให้" (ธง managed) — เลือกจากฟอร์มบอทเองไม่ได้
+         *
+         * บอทก๊อปปี้เทรดต้องผูกกับมาสเตอร์ผ่าน POST /ai-bot/copy/follow สร้างจากฟอร์มธรรมดาจะได้บอทที่
+         * ไม่มีใครให้ตาม · บอทที่มีอยู่แล้วยังเดินและแก้ชื่อ/ความเสี่ยงได้ (BotRunner ไม่ได้ถามเมธอดนี้)
+         */
+        if ($spec && ($spec['managed'] ?? false)) {
+            return [
+                'available' => false,
+                'reason' => __((string) ($spec['managed_reason'] ?? 'กลยุทธ์นี้ถูกสร้างให้โดยระบบ เลือกเองไม่ได้')),
+                'reason_en' => (string) ($spec['managed_reason_en'] ?? 'This strategy is created by the system and cannot be picked directly.'),
+                'coming_soon' => false,
+            ];
+        }
+
         // ทำเสร็จแล้วก็ยังต้องมีราคาสองฝั่งให้เทียบ — DEX พร้อมเป็นเงื่อนไขเพิ่ม ไม่ใช่ตัวเปิด
         if ($code === 'arbitrage' && ! $this->dexDeployed()) {
             return [

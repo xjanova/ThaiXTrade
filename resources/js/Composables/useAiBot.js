@@ -862,6 +862,95 @@ export function useAiBot() {
         axios.post(`/api/v1/ai-bot/bots/${id}/mode`, { wallet_address: address, mode })
     );
 
+    /**
+     * ทดสอบกฎของโหมด "วางกลยุทธ์เอง" กับราคาย้อนหลัง — { ok, data } หรือ { ok: false, error }.
+     *
+     * ไม่ผ่าน mutate(): ไม่ได้เขียนข้อมูลอะไร จึงไม่ควรล็อกปุ่มอื่น (isWorking) และไม่ต้องโหลดสถานะใหม่
+     * ข้อผิดพลาดไม่ถูกเก็บลง error ร่วม — เป็นเรื่องของแผงทดสอบ ไม่ใช่ของทั้งหน้า
+     */
+    async function runBacktest(payload) {
+        const address = currentAddress();
+        if (!address) return { ok: false, error: { code: 'NO_WALLET', message: t('aiTrade.connectPrompt') } };
+
+        try {
+            const { data } = await axios.post('/api/v1/ai-bot/backtest', { ...payload, wallet_address: address });
+
+            // สลับกระเป๋าระหว่างรอ — ผลนี้คิดจากแพลนของกระเป๋าเดิม
+            if (!isCurrentWallet(address)) {
+                return { ok: false, error: { code: 'WALLET_CHANGED', message: t('aiTrade.errWalletChanged') } };
+            }
+
+            return { ok: true, data: data?.data ?? null };
+        } catch (err) {
+            return { ok: false, error: readError(err) };
+        }
+    }
+
+    // ── Copy Trade ───────────────────────────────────────────────────────────
+
+    /**
+     * คำขอของ Copy Trade — { ok, data } หรือ { ok: false, error } เสมอ ไม่ throw.
+     *
+     * ไม่ผ่าน mutate(): แผง Copy Trade มีสถานะของตัวเอง ไม่ควรล็อกปุ่มของทั้งหน้า (isWorking)
+     * @param {boolean} needsWallet  false = กระดานสาธารณะ (ดูได้ก่อนเชื่อมกระเป๋า)
+     */
+    async function copyRequest(method, path, body = {}, needsWallet = true) {
+        const address = currentAddress();
+        if (needsWallet && !address) return { ok: false, error: { code: 'NO_WALLET', message: t('aiTrade.connectPrompt') } };
+
+        try {
+            const url = `/api/v1/ai-bot/copy${path}`;
+            let response;
+            if (method === 'get') {
+                response = await axios.get(url, needsWallet ? { params: { wallet_address: address } } : undefined);
+            } else if (method === 'delete') {
+                // axios.delete รับ body ทาง config.data ไม่ใช่อาร์กิวเมนต์ที่สอง
+                response = await axios.delete(url, { data: { ...body, wallet_address: address } });
+            } else {
+                response = await axios[method](url, { ...body, wallet_address: address });
+            }
+            const { data } = response;
+
+            // สลับกระเป๋าระหว่างรอ — ผลนี้เป็นของกระเป๋าเดิม
+            if (needsWallet && !isCurrentWallet(address)) {
+                return { ok: false, error: { code: 'WALLET_CHANGED', message: t('aiTrade.errWalletChanged') } };
+            }
+
+            return { ok: true, data: data?.data ?? null };
+        } catch (err) {
+            return { ok: false, error: readError(err) };
+        }
+    }
+
+    /** ตัวเรียก API ของแผง Copy Trade — ส่งให้ AiCopyTradePanel ทั้งก้อน */
+    const copyTrade = {
+        loadMasters: () => copyRequest('get', '/masters', {}, false),
+        loadMine: () => copyRequest('get', '/me'),
+        registerMaster: (payload) => copyRequest('post', '/master', payload),
+        updateMaster: (payload) => copyRequest('put', '/master', payload),
+        closeMaster: () => copyRequest('post', '/master/close'),
+        // เริ่มตามสร้างบอทผู้ตามใหม่ — โหลดสถานะใหม่ให้รายการบอทของหน้าเห็นทันที
+        follow: async (payload) => {
+            const result = await copyRequest('post', '/follow', payload);
+            if (result.ok) await loadStatus({ force: true });
+            return result;
+        },
+        stopFollow: async (id) => {
+            const result = await copyRequest('post', `/follow/${id}/stop`);
+            if (result.ok) await loadStatus({ force: true });
+            return result;
+        },
+        acceptRate: (id) => copyRequest('post', `/follow/${id}/accept`),
+        // ดาวรีวิว — รายการรีวิวเป็นสาธารณะ · ให้ดาว/รายงานต้องเชื่อมกระเป๋า
+        loadReviews: (masterId) => copyRequest('get', `/masters/${masterId}/reviews`, {}, false),
+        review: (masterId, payload) => copyRequest('post', `/masters/${masterId}/review`, payload),
+        reportReview: (id, reason = null) => copyRequest('post', `/reviews/${id}/report`, { reason }),
+        // ไลฟ์/คลิป — รายการเป็นสาธารณะ · แปะ/ลบเป็นของมาสเตอร์เจ้าของโปรไฟล์
+        loadMedia: (masterId) => copyRequest('get', `/masters/${masterId}/media`, {}, false),
+        addMedia: (payload) => copyRequest('post', '/master/media', payload),
+        removeMedia: (id) => copyRequest('delete', `/master/media/${id}`),
+    };
+
     // ── โหมดทดลอง ────────────────────────────────────────────────────────────
 
     /** ล้างพอร์ตทดลองกลับไปตั้งต้น (จำกัดจำนวนครั้งต่อวันที่ฝั่งเซิร์ฟเวอร์) */
@@ -1287,7 +1376,7 @@ export function useAiBot() {
         runsInCloud, browserBots,
         // actions
         loadCatalog, loadStatus, subscribe, cancel, claimWelcome, requestTopup, confirmTopup,
-        createBot, updateBot, setBotState, setBotMode, deleteBot,
+        createBot, updateBot, setBotState, setBotMode, deleteBot, runBacktest, copyTrade,
         loadDemo, resetDemo, loadRisk, askAdvice, loadMarketView,
         loadTrades,
         loadBotWallet, createBotWallet, refreshBotWallet, withdrawBotWallet, cancelBotWalletWithdraw,

@@ -658,6 +658,361 @@ return [
                 ['code' => 'aggressive', 'name' => 'Active', 'name_th' => 'ลุย', 'tagline_th' => 'ความมั่นใจ ≥ 58% บนแท่ง 1 ชม. ไม้ใหญ่ขึ้น ผิดบ่อยขึ้น — ⚠️ 2 ปี 5 เหรียญหลัก (เปิดตัวกรองตลาดใหญ่) ขาดทุน −6.4% (ปีขาขึ้น +5.9% · ปีขาลง −12.4%) — ไม่ชนะต้นทุนเข้า-ออก', 'tagline_en' => 'Confidence ≥ 58% on 1h, bigger size, more mistakes — ⚠️ 2y on BTC/ETH/SOL/BNB/XRP with the market-trend filter: −6.4% on capital (up-year +5.9%, down-year −12.4%) — does not beat trading costs', 'timeframe' => '1h', 'params' => ['confidence_min' => 58, 'mode' => 'aggressive'], 'risk' => ['max_position_usd' => 100, 'stop_loss_pct' => 6, 'take_profit_pct' => 15, 'max_daily_loss_usd' => 80]],
             ],
         ],
+        [
+            /*
+             * วางกลยุทธ์เอง — ผู้ใช้ประกอบเงื่อนไขเข้า/ออกจากบล็อกสำเร็จรูป (เจ้าของสั่ง 2026-11-13:
+             * "มีแบบที่ผู้ใช้วางกลยุทธ์เองทั้งหมด ตั้งค่าเองได้ละเอียดเลยด้วยสิ")
+             *
+             * กฎเก็บเป็นข้อมูลโครงสร้างในช่อง `rules` (ชนิด rules) — รายการบล็อกที่ใช้ได้ ช่วงตัวเลข
+             * และจำนวนบล็อกสูงสุดอยู่ที่ `custom_rules` ด้านล่าง ไม่มีนิพจน์อิสระ ไม่มีโค้ดของผู้ใช้
+             * ตัวประเมินกฎ (App\Services\AiBot\Custom\RuleEvaluator) ตัวเดียวกันเดินทั้งบอทจริงและ backtest
+             *
+             * ⚠️ ระดับแพลนเป็นค่าชั่วคราว รอเจ้าของตัดสิน — แก้ที่ AIBOT_CUSTOM_TIER ใน .env (free/basic/pro/vip)
+             * ⚠️ ไม่มีแท่ง 1m/5m: ต้นทุนเข้า-ออก 0.36% สูงกว่าการขยับของแท่งสั้น (วัดจริงกับสแกลป์ 608 ไม้)
+             * ⚠️ เทมเพลตของตัวนี้เป็น "ตัวอย่างโครงกฎ" ไม่ใช่ชุดที่ทีมงานรับรองผล — ห้ามใส่ตัวเลขกำไรที่ไม่ได้วัด
+             *    และตั้งใจไม่มีรหัส balanced: API ที่ไม่ส่งกฎมาต้องถูกปฏิเสธ ไม่ใช่ได้กฎตัวอย่างไปเงียบๆ
+             */
+            'code' => 'custom',
+            'name' => 'Build Your Own',
+            'name_th' => 'วางกลยุทธ์เอง',
+            'description' => 'Compose your own entry and exit rules from indicator blocks. The bot only executes the rules you set — test them on history before you start.',
+            'description_th' => 'ประกอบเงื่อนไขเข้าและออกเองจากบล็อกอินดิเคเตอร์ บอทลงมือตามกฎที่คุณตั้งเท่านั้น — ทดสอบย้อนหลังก่อนเริ่มได้',
+            'risk' => 'high',
+            'tier' => env('AIBOT_CUSTOM_TIER', 'pro'),
+            'icon' => 'sliders',
+            'timeframes' => ['15m', '1h', '4h', '1d'],
+            'params' => [
+                // กฎเข้า/ออก — ตรวจและล้างค่าโดย App\Services\AiBot\Custom\RuleSet (ไม่ใช่ตัวเลข/ตัวเลือกธรรมดา)
+                ['key' => 'rules', 'label' => 'กฎเข้า/ออก', 'label_en' => 'Entry / exit rules', 'type' => 'rules', 'default' => null],
+                ['key' => 'order_size_usd', 'label' => 'ขนาดต่อไม้ (USD)', 'label_en' => 'Order size (USD)', 'type' => 'number', 'default' => 100, 'min' => 5, 'max' => 100000, 'step' => 5],
+                // เปิด = เงื่อนไขเข้าเป็นจริงอีกครั้งตอนถือของอยู่ จะซื้อเพิ่ม (ไม่เกินทุนสูงสุดต่อไม้) — ใช้คู่กับบล็อกรอบเวลาเพื่อทยอยสะสม
+                ['key' => 'add_to_position', 'label' => 'ซื้อเพิ่มได้ขณะถือของ (ทยอยสะสม)', 'label_en' => 'Add to an open position (accumulate)', 'type' => 'bool', 'default' => false],
+                ['key' => 'trailing_stop_pct', 'label' => 'Trailing stop — ขายเมื่อย่อจากจุดสูงสุด (%) · 0 = ปิด', 'label_en' => 'Trailing stop — sell on a drop from the peak (%) · 0 = off', 'type' => 'number', 'default' => 0, 'min' => 0, 'max' => 50, 'step' => 0.5],
+                ['key' => 'max_hold_bars', 'label' => 'Time stop — ถือสูงสุด (แท่ง) · 0 = ไม่จำกัด', 'label_en' => 'Time stop — max hold (bars) · 0 = unlimited', 'type' => 'number', 'default' => 0, 'min' => 0, 'max' => 2000, 'step' => 1],
+                ['key' => 'time_stop_mode', 'label' => 'Time stop ทำงานเมื่อ', 'label_en' => 'Time stop applies', 'type' => 'select', 'default' => 'no_profit', 'options' => ['no_profit', 'always'],
+                    'option_labels' => [
+                        'no_profit' => ['th' => 'ครบเวลาแล้วยังไม่กำไรเท่านั้น', 'en' => 'Only when still not in profit'],
+                        'always' => ['th' => 'ครบเวลาแล้วปิดเสมอ', 'en' => 'Always once the time is up'],
+                    ]],
+                // กันเข้าไม้ซ้ำทันทีหลังโดนตัดขาดทุน ตอนที่เงื่อนไขเข้ายังเป็นจริงอยู่ (เช่น RSI ยังต่ำ)
+                ['key' => 'cooldown_bars', 'label' => 'พักหลังปิดไม้ (แท่ง)', 'label_en' => 'Cooldown after closing (bars)', 'type' => 'number', 'default' => 0, 'min' => 0, 'max' => 500, 'step' => 1, 'group' => 'advanced'],
+            ],
+            'default_timeframe' => '4h',
+            'templates' => [
+                ['code' => 'trend_follow', 'name' => 'Example: trend + volume', 'name_th' => 'ตัวอย่าง: ตามเทรนด์ + วอลุ่ม', 'tagline_th' => 'ตัวอย่างโครงกฎ — เข้าเมื่อ EMA 12 ตัดขึ้น EMA 26 เหนือเส้นเทรนด์ใหญ่และวอลุ่มยืนยัน ออกเมื่อตัดลง · ยังไม่มีผลวัดของทีมงาน กดทดสอบย้อนหลังก่อนใช้', 'tagline_en' => 'Example rule set — enter when EMA 12 crosses above EMA 26 above the long trend with volume, exit on the cross down · no team-measured result, backtest it before use', 'timeframe' => '4h',
+                    'params' => [
+                        'rules' => [
+                            'entry' => ['match' => 'all', 'blocks' => [
+                                ['type' => 'ema_cross', 'when' => 'crosses_above', 'fast' => 12, 'slow' => 26],
+                                ['type' => 'trend', 'side' => 'above', 'period' => 200],
+                                ['type' => 'volume_ratio', 'op' => 'above', 'ratio' => 1.0, 'period' => 20],
+                            ]],
+                            'exit' => ['match' => 'any', 'blocks' => [
+                                ['type' => 'ema_cross', 'when' => 'crosses_below', 'fast' => 12, 'slow' => 26],
+                            ]],
+                        ],
+                        'order_size_usd' => 100, 'add_to_position' => false, 'trailing_stop_pct' => 0, 'max_hold_bars' => 48, 'time_stop_mode' => 'no_profit', 'cooldown_bars' => 0, 'ai_gate' => false,
+                    ],
+                    'risk' => ['max_position_usd' => 100, 'stop_loss_pct' => 5, 'take_profit_pct' => 12, 'max_daily_loss_usd' => 50]],
+                ['code' => 'dip_buy', 'name' => 'Example: buy the dip in an uptrend', 'name_th' => 'ตัวอย่าง: ซื้อย่อในขาขึ้น', 'tagline_th' => 'ตัวอย่างโครงกฎ — เข้าเมื่อ RSI ต่ำกว่า 30 ขณะราคายังเหนือเส้นเทรนด์ใหญ่ ออกเมื่อ RSI เกิน 60 พัก 6 แท่งหลังปิดไม้ · ยังไม่มีผลวัดของทีมงาน กดทดสอบย้อนหลังก่อนใช้', 'tagline_en' => 'Example rule set — enter when RSI is below 30 while price is above the long trend, exit when RSI passes 60, 6-bar cooldown · no team-measured result, backtest it before use', 'timeframe' => '1h',
+                    'params' => [
+                        'rules' => [
+                            'entry' => ['match' => 'all', 'blocks' => [
+                                ['type' => 'rsi', 'op' => 'below', 'period' => 14, 'level' => 30.0],
+                                ['type' => 'trend', 'side' => 'above', 'period' => 200],
+                            ]],
+                            'exit' => ['match' => 'any', 'blocks' => [
+                                ['type' => 'rsi', 'op' => 'above', 'period' => 14, 'level' => 60.0],
+                            ]],
+                        ],
+                        'order_size_usd' => 100, 'add_to_position' => false, 'trailing_stop_pct' => 0, 'max_hold_bars' => 72, 'time_stop_mode' => 'no_profit', 'cooldown_bars' => 6, 'ai_gate' => false,
+                    ],
+                    'risk' => ['max_position_usd' => 100, 'stop_loss_pct' => 5, 'take_profit_pct' => 10, 'max_daily_loss_usd' => 50]],
+                ['code' => 'steady_dca', 'name' => 'Example: scheduled accumulation', 'name_th' => 'ตัวอย่าง: ทยอยสะสมตามรอบ', 'tagline_th' => 'ตัวอย่างโครงกฎ — ซื้อ $25 ทุก 6 แท่ง (≈ 24 ชม. บนแท่ง 4 ชม.) สะสมได้ถึงทุนสูงสุด ขายที่ +20% ตัดที่ −10% · ยังไม่มีผลวัดของทีมงาน กดทดสอบย้อนหลังก่อนใช้', 'tagline_en' => 'Example rule set — buys $25 every 6 bars (≈ 24h on 4h candles) up to the position cap, sells at +20% / cuts at −10% · no team-measured result, backtest it before use', 'timeframe' => '4h',
+                    'params' => [
+                        'rules' => [
+                            'entry' => ['match' => 'all', 'blocks' => [
+                                ['type' => 'interval', 'bars' => 6],
+                            ]],
+                            'exit' => ['match' => 'any', 'blocks' => []],
+                        ],
+                        'order_size_usd' => 25, 'add_to_position' => true, 'trailing_stop_pct' => 0, 'max_hold_bars' => 0, 'time_stop_mode' => 'no_profit', 'cooldown_bars' => 0, 'ai_gate' => false,
+                    ],
+                    'risk' => ['max_position_usd' => 200, 'stop_loss_pct' => 10, 'take_profit_pct' => 20, 'max_daily_loss_usd' => 50]],
+            ],
+        ],
+        [
+            /*
+             * ก๊อปปี้เทรด — บอทผู้ตามที่ถือของตามมาสเตอร์ (ดู copy_trade ด้านล่าง · CopyStrategy)
+             *
+             * managed = สร้างผ่าน POST /ai-bot/copy/follow เท่านั้น: บอทแบบนี้ต้องผูกกับมาสเตอร์ (ai_copy_follows)
+             * สร้างจากฟอร์มบอทธรรมดาจะได้บอทที่ไม่มีใครให้ตาม StrategyAvailability จึงตอบว่าเลือกเองไม่ได้
+             * ไม่มีช่องตั้งค่าของตัวเอง — ผู้ตามตั้งแค่กรอบความเสี่ยง กฎเป็นของมาสเตอร์และผู้ตามไม่เห็น
+             */
+            'code' => 'copy',
+            'name' => 'Copy Trade',
+            'name_th' => 'ก๊อปปี้เทรด',
+            'description' => 'Mirrors a master trader\'s entries and exits with your own capital and your own risk limits.',
+            'description_th' => 'เข้าและออกตามไม้ของมาสเตอร์ที่คุณเลือก ด้วยทุนและกรอบความเสี่ยงของคุณเอง',
+            'risk' => 'high',
+            'tier' => env('AIBOT_COPY_TIER', 'free'),
+            'icon' => 'users',
+            'timeframes' => ['15m', '1h', '4h', '1d'],
+            'managed' => true,
+            'managed_reason' => 'เลือกมาสเตอร์จากหน้า Copy Trade — บอทก๊อปปี้เทรดถูกสร้างให้ตอนกดตามมาสเตอร์',
+            'managed_reason_en' => 'Pick a master on the Copy Trade board — a copy-trade bot is created when you follow one.',
+            'params' => [],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Master / Copy Trade (เจ้าของสั่ง 2026-11-13)
+    |--------------------------------------------------------------------------
+    | ผู้ใช้ที่ผลเงินจริงดีเปิดตัวเป็นมาสเตอร์ ตั้งค่าบริการเอง ผู้ตามก๊อปปี้ไม้ด้วยทุนของตัวเอง
+    |
+    | เจ้าของตัดสินแล้ว: ผลงานนับเฉพาะเงินจริง (โหมดทดลองไม่นับ ไม่โชว์) · ค่าบริการเป็น TPIX ·
+    | มาสเตอร์ต้องผ่าน KYC · มาสเตอร์ที่แบ่งให้แพลตฟอร์มมากกว่าถูกนำเสนอมากกว่า
+    |
+    | enabled        ปิด = ทุก endpoint ของ Copy Trade ตอบว่ายังไม่เปิด (ค่าปริยายปิด — เปิดด้วย AIBOT_COPY_TRADE_ENABLED)
+    | fees.collect   ปิด = ค่าบริการถูก "ลงบัญชีให้เห็น" เท่านั้น (recorded) · เปิด = ลงเป็นค้างเก็บ (accrued)
+    |                ⚠️ ยังไม่มีโค้ดเก็บ TPIX จากผู้ตามหรือจ่ายให้มาสเตอร์ — เปิดธงนี้ไม่ได้ทำให้เหรียญเปลี่ยนมือ
+    | fees.rate_pct            ค่าบริการที่มาสเตอร์ตั้งได้ = % ของกำไรที่ปิดแล้วของผู้ตาม (high-water mark)
+    | fees.platform_share_pct  ส่วนของแพลตฟอร์ม = % ของค่าบริการ · มาสเตอร์เลือกได้ตั้งแต่ขั้นต่ำถึงเพดาน
+    | master.*       เกณฑ์เปิดตัวเป็นมาสเตอร์ — คิดจากไม้เงินจริงที่ปิดแล้วของบอทตัวเดียว
+    | follow.max_entry_drift_pct  ราคาวิ่งเกินจุดเข้าของมาสเตอร์ได้ไม่เกินนี้ ผู้ตามถึงจะเข้าตาม
+    | promotion.slots  จำนวนช่องของแถบ "แนะนำ" — เรียงตามส่วนแบ่งแพลตฟอร์ม เฉพาะมาสเตอร์ที่ยังผ่านเกณฑ์
+    |                  (กระดานหลักเรียงตามผลงานล้วน ส่วนแบ่งไม่มีผลกับอันดับ)
+    */
+    'copy_trade' => [
+        'enabled' => (bool) env('AIBOT_COPY_TRADE_ENABLED', false),
+        'stats_minutes' => 15,
+        'fees' => [
+            'collect' => (bool) env('AIBOT_COPY_FEES_COLLECT', false),
+            'currency' => 'TPIX',
+            'rate_pct' => ['min' => 5, 'max' => 30, 'default' => 20],
+            'platform_share_pct' => ['min' => 20, 'max' => 50, 'default' => 20],
+        ],
+        'master' => [
+            'requires_kyc' => true,
+            'kyc_level' => 'basic',
+            'min_days' => 30,
+            'min_closed_trades' => 20,
+            'min_return_pct' => 10,
+            'max_drawdown_pct' => 25,
+            'max_name_length' => 40,
+            'max_bio_length' => 280,
+        ],
+        'follow' => [
+            'max_entry_drift_pct' => 1.0,
+            'min_add_usd' => 10,
+        ],
+        'promotion' => [
+            'slots' => 3,
+            // ต้องมีระดับอย่างน้อยเท่านี้ก่อน ส่วนแบ่งแพลตฟอร์มถึงจะมีผลกับช่องแนะนำ (ผลงานต้องมาก่อนการจ่าย)
+            'min_tier' => 2,
+        ],
+
+        /*
+         * ระดับ (rank) ของมาสเตอร์ — คะแนน 0–100 จากไม้เงินจริงที่ปิดแล้ว (ดู RankService)
+         *
+         * ตรรกะอ้างเลขระดับกับ key เท่านั้น ชื่อและตราเปลี่ยนที่นี่ได้โดยไม่แตะโค้ด
+         * ⚠️ ชื่อด้านล่างเป็นค่าชั่วคราว — เจ้าของสั่งให้ใช้ ChatGPT คิดชื่อและตราแล้วเลือกเอง (ยังไม่ได้เลือก)
+         *
+         * weights          น้ำหนักของแต่ละส่วน รวมกัน = 100 (ไม่มีส่วนแบ่งแพลตฟอร์ม/ดาวรีวิว — ระดับซื้อไม่ได้)
+         * return_full_pct  ผลตอบแทนเท่านี้ขึ้นไปได้คะแนนส่วน return เต็ม
+         * demote_margin    ต่ำกว่าเกณฑ์ของระดับปัจจุบันไม่เกินนี้ยังไม่นับว่ากำลังจะลดระดับ
+         * grace_days       ต้องต่ำกว่าเกณฑ์ (เกิน margin) ต่อเนื่องกี่วันถึงจะลดระดับจริง
+         */
+        'rank' => [
+            'tiers' => [
+                1 => ['key' => 'tier_1', 'min_score' => 0, 'name_th' => 'ระดับ 1', 'name_en' => 'Tier 1'],
+                2 => ['key' => 'tier_2', 'min_score' => 40, 'name_th' => 'ระดับ 2', 'name_en' => 'Tier 2'],
+                3 => ['key' => 'tier_3', 'min_score' => 55, 'name_th' => 'ระดับ 3', 'name_en' => 'Tier 3'],
+                4 => ['key' => 'tier_4', 'min_score' => 70, 'name_th' => 'ระดับ 4', 'name_en' => 'Tier 4'],
+                5 => ['key' => 'tier_5', 'min_score' => 85, 'name_th' => 'ระดับ 5', 'name_en' => 'Tier 5'],
+            ],
+            'weights' => ['return' => 40, 'drawdown' => 20, 'consistency' => 20, 'sample' => 10, 'followers' => 10],
+            'return_full_pct' => 40,
+            'sample_full_trades' => 100,
+            'consistency_weeks' => 12,
+            'demote_margin' => 5,
+            'grace_days' => 7,
+        ],
+
+        /*
+         * ดาวรีวิว — เฉพาะผู้ตามที่ก๊อปปี้ด้วยเงินจริงครบระยะนี้และปิดไม้ที่ก๊อปปี้ไปแล้ว (ดู ReviewService)
+         */
+        'reviews' => [
+            'min_follow_days' => 14,
+            'max_comment_length' => 500,
+        ],
+
+        /*
+         * ไลฟ์/คลิปของมาสเตอร์ — แปะลิงก์จากช่องของตัวเอง เราไม่โฮสต์วิดีโอ (ดู MediaService · MediaLink)
+         *
+         * ปลดล็อกเมื่อครบทั้งสองข้อ: ระดับถึง min_tier และทำยอดให้แพลตฟอร์มถึง min_platform_revenue_usd
+         * (ส่วนของแพลตฟอร์มในบัญชีค่าบริการ) · ทีมงานถอนสิทธิ์รายคนได้ด้วย aibot:copy-media
+         * ผู้ให้บริการที่รับฝังอยู่ในโค้ด (MediaLink::PROVIDERS) ไม่ใช่ค่าตั้ง — เพิ่มโฮสต์ต้องเขียนตัวตรวจรหัสวิดีโอของมันด้วย
+         *
+         * embed  false = โชว์เป็นลิงก์เปิดแท็บใหม่ · true = ฝังเครื่องเล่นของผู้ให้บริการในหน้า
+         *        ⚠️ เปิด true ต้องเพิ่มโดเมนเครื่องเล่น (youtube-nocookie.com · facebook.com · tiktok.com) ใน frame-src
+         *           ของ CSP ทั้งสองที่ก่อน (app/Http/Middleware/SecurityHeaders.php และ public_html/.htaccess)
+         *           ไม่งั้นเบราว์เซอร์บล็อกกรอบวิดีโอ — เป็นการผ่อนนโยบายความปลอดภัยทั้งเว็บ จึงให้เจ้าของตัดสิน
+         */
+        'media' => [
+            'min_tier' => 3,
+            'min_platform_revenue_usd' => 50,
+            'max_items' => 10,
+            'embed' => (bool) env('AIBOT_COPY_MEDIA_EMBED', false),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | บล็อกเงื่อนไขของโหมด "วางกลยุทธ์เอง" (กลยุทธ์ custom)
+    |--------------------------------------------------------------------------
+    | รายการนี้คือ "รายการอนุญาต" ทั้งหมด — ชนิดที่ไม่อยู่ในนี้ ช่องที่ไม่อยู่ในนี้ หรือค่าที่อยู่นอกช่วง
+    | ถูกปฏิเสธตอนสร้าง/แก้บอทและตอน backtest (App\Services\AiBot\Custom\RuleSet::validate)
+    | หน้าเว็บวาดตัวสร้างกฎจากรายการเดียวกันนี้ผ่าน /api/v1/ai-bot/catalog (custom_rules)
+    |
+    | ชนิดของช่อง: int (จำนวนเต็ม หน่วยเป็น "แท่ง" เสมอ — หน้าเว็บแปลงเป็นเวลาตามกรอบเวลาที่เลือกให้ผู้ใช้เห็น
+    |              ถ้าวันหนึ่งมีช่องจำนวนเต็มที่ไม่ใช่จำนวนแท่ง ต้องแก้ AiRuleBuilder.barsAsTime ด้วย)
+    |              · number (ทศนิยม) · select (ต้องมี options + option_labels)
+    | use: ฝั่งที่ใช้บล็อกนี้ได้ (entry = เงื่อนไขเข้า · exit = เงื่อนไขออก)
+    |
+    | ทุกบล็อกต้องมีโค้ดประเมินใน RuleEvaluator และทุกช่องต้องถูกอ่านจริง — SettingsEffectTest ไล่ตรวจให้
+    | คณิตศาสตร์ของอินดิเคเตอร์ใช้ของเดิมทั้งหมด (Indicators / MarketRegime) ไม่เขียนสูตรใหม่
+    |
+    | max_bots_per_tier: จำกัดจำนวนบอทแบบวางกลยุทธ์เองต่อแพลน (null = ไม่จำกัดเพิ่ม นับรวมในโควตาบอทปกติ)
+    |   ⚠️ ค่าชั่วคราว รอเจ้าของตัดสิน — ตัวอย่าง: ['free' => 1, 'basic' => 1, 'pro' => 3, 'vip' => null]
+    */
+    'custom_rules' => [
+        'max_blocks' => ['entry' => 6, 'exit' => 6],
+        'match' => ['all', 'any'],
+        'max_bots_per_tier' => ['free' => null, 'basic' => null, 'pro' => null, 'vip' => null],
+
+        /*
+         * ทดสอบย้อนหลังจากหน้าตัวสร้างกฎ — งานคำนวณบนคำขอเว็บ จึงต้องมีเพดาน
+         * max_bars = จำนวนแท่งสูงสุดต่อการทดสอบ (วันที่ขอได้ = max_bars × นาทีต่อแท่ง ÷ 1440 ไม่เกิน max_days)
+         *            9,000 แท่ง = 15m 93 วัน · 1h 375 วัน · 4h/1d 730 วัน — วัดบนเครื่องพัฒนา ~1.5 วินาทีต่อ 8,400 แท่ง
+         */
+        'backtest' => [
+            'max_bars' => (int) env('AIBOT_CUSTOM_BACKTEST_MAX_BARS', 9000),
+            'max_days' => 730,
+            'default_days' => 180,
+            'cache_minutes' => 10,
+        ],
+
+        'blocks' => [
+            [
+                'type' => 'ema_cross',
+                'label' => 'เส้น EMA เร็ว/ช้า', 'label_en' => 'EMA fast / slow',
+                'hint' => 'เทียบเส้นค่าเฉลี่ย EMA สองเส้นจากราคาปิด — "ตัด" เป็นจริงเฉพาะแท่งที่ตัดกัน ส่วน "อยู่เหนือ/ใต้" เป็นจริงตลอดช่วง',
+                'hint_en' => 'Compares two EMAs of the close — a "cross" is true only on the bar it happens, "is above/below" stays true throughout.',
+                'use' => ['entry', 'exit'],
+                'fields' => [
+                    ['key' => 'when', 'label' => 'เมื่อ', 'label_en' => 'When', 'type' => 'select', 'default' => 'crosses_above', 'options' => ['crosses_above', 'crosses_below', 'is_above', 'is_below'],
+                        'option_labels' => [
+                            'crosses_above' => ['th' => 'EMA เร็วตัดขึ้นเหนือ EMA ช้า', 'en' => 'Fast EMA crosses above slow EMA'],
+                            'crosses_below' => ['th' => 'EMA เร็วตัดลงใต้ EMA ช้า', 'en' => 'Fast EMA crosses below slow EMA'],
+                            'is_above' => ['th' => 'EMA เร็วอยู่เหนือ EMA ช้า', 'en' => 'Fast EMA is above slow EMA'],
+                            'is_below' => ['th' => 'EMA เร็วอยู่ใต้ EMA ช้า', 'en' => 'Fast EMA is below slow EMA'],
+                        ]],
+                    ['key' => 'fast', 'label' => 'EMA เร็ว (แท่ง)', 'label_en' => 'Fast EMA (bars)', 'type' => 'int', 'default' => 12, 'min' => 2, 'max' => 100],
+                    ['key' => 'slow', 'label' => 'EMA ช้า (แท่ง)', 'label_en' => 'Slow EMA (bars)', 'type' => 'int', 'default' => 26, 'min' => 3, 'max' => 200],
+                ],
+            ],
+            [
+                'type' => 'rsi',
+                'label' => 'RSI', 'label_en' => 'RSI',
+                'hint' => 'ดัชนีกำลังสัมพัทธ์ของราคาปิด — ค่าต่ำ = ถูกขายมาก ค่าสูง = ถูกซื้อมาก',
+                'hint_en' => 'Relative Strength Index of the close — low means oversold, high means overbought.',
+                'use' => ['entry', 'exit'],
+                'fields' => [
+                    ['key' => 'op', 'label' => 'เมื่อ RSI', 'label_en' => 'When RSI is', 'type' => 'select', 'default' => 'below', 'options' => ['below', 'above'],
+                        'option_labels' => ['below' => ['th' => 'ต่ำกว่า', 'en' => 'below'], 'above' => ['th' => 'สูงกว่า', 'en' => 'above']]],
+                    ['key' => 'period', 'label' => 'คาบ RSI (แท่ง)', 'label_en' => 'RSI period (bars)', 'type' => 'int', 'default' => 14, 'min' => 2, 'max' => 100],
+                    ['key' => 'level', 'label' => 'ระดับ', 'label_en' => 'Level', 'type' => 'number', 'default' => 30, 'min' => 1, 'max' => 99, 'step' => 1],
+                ],
+            ],
+            [
+                'type' => 'channel_breakout',
+                'label' => 'ทะลุกรอบราคา N แท่ง', 'label_en' => 'Channel breakout over N bars',
+                'hint' => 'ราคาปิดทะลุจุดสูงสุด (หรือหลุดจุดต่ำสุด) ของ N แท่งก่อนหน้า — ตั้งขนาดขั้นต่ำเป็นเท่าของ ATR เพื่อกรองการทะลุนิดเดียว',
+                'hint_en' => 'The close breaks the highest high (or lowest low) of the previous N bars — set a minimum size in ATRs to skip marginal breaks.',
+                'use' => ['entry', 'exit'],
+                'fields' => [
+                    ['key' => 'side', 'label' => 'เมื่อราคาปิด', 'label_en' => 'When the close', 'type' => 'select', 'default' => 'above_high', 'options' => ['above_high', 'below_low'],
+                        'option_labels' => ['above_high' => ['th' => 'ทะลุจุดสูงสุดของกรอบ', 'en' => 'breaks above the channel high'], 'below_low' => ['th' => 'หลุดจุดต่ำสุดของกรอบ', 'en' => 'breaks below the channel low']]],
+                    ['key' => 'period', 'label' => 'กรอบ (แท่ง)', 'label_en' => 'Channel (bars)', 'type' => 'int', 'default' => 20, 'min' => 5, 'max' => 200],
+                    ['key' => 'min_atr', 'label' => 'ทะลุอย่างน้อย (เท่าของ ATR) · 0 = ไม่กรอง', 'label_en' => 'Minimum size (× ATR) · 0 = no filter', 'type' => 'number', 'default' => 0, 'min' => 0, 'max' => 3, 'step' => 0.05],
+                ],
+            ],
+            [
+                'type' => 'atr',
+                'label' => 'ตัวกรองความผันผวน (ATR)', 'label_en' => 'Volatility filter (ATR)',
+                'hint' => 'ATR ต่อราคา = การขยับเฉลี่ยต่อแท่งเป็น % — ต่ำเกินไปไม่คุ้มต้นทุนเข้า-ออก 0.36%',
+                'hint_en' => 'ATR over price = the average move per bar in % — too low does not cover the 0.36% round-trip cost.',
+                'use' => ['entry', 'exit'],
+                'fields' => [
+                    ['key' => 'op', 'label' => 'เมื่อ ATR', 'label_en' => 'When ATR is', 'type' => 'select', 'default' => 'above', 'options' => ['above', 'below'],
+                        'option_labels' => ['above' => ['th' => 'สูงกว่า', 'en' => 'above'], 'below' => ['th' => 'ต่ำกว่า', 'en' => 'below']]],
+                    ['key' => 'period', 'label' => 'คาบ ATR (แท่ง)', 'label_en' => 'ATR period (bars)', 'type' => 'int', 'default' => 14, 'min' => 5, 'max' => 100],
+                    ['key' => 'pct', 'label' => '% ของราคา', 'label_en' => '% of price', 'type' => 'number', 'default' => 0.3, 'min' => 0.01, 'max' => 20, 'step' => 0.05],
+                ],
+            ],
+            [
+                'type' => 'volume_ratio',
+                'label' => 'ตัวกรองวอลุ่ม', 'label_en' => 'Volume filter',
+                'hint' => 'วอลุ่มของแท่งล่าสุดเทียบกับค่าเฉลี่ย N แท่ง — 1.5 = มากกว่าปกติ 50%',
+                'hint_en' => 'The latest bar\'s volume against its N-bar average — 1.5 means 50% above normal.',
+                'use' => ['entry', 'exit'],
+                'fields' => [
+                    ['key' => 'op', 'label' => 'เมื่อวอลุ่ม', 'label_en' => 'When volume is', 'type' => 'select', 'default' => 'above', 'options' => ['above', 'below'],
+                        'option_labels' => ['above' => ['th' => 'สูงกว่า', 'en' => 'above'], 'below' => ['th' => 'ต่ำกว่า', 'en' => 'below']]],
+                    ['key' => 'ratio', 'label' => 'เท่าของค่าเฉลี่ย', 'label_en' => '× the average', 'type' => 'number', 'default' => 1, 'min' => 0.1, 'max' => 10, 'step' => 0.05],
+                    ['key' => 'period', 'label' => 'ค่าเฉลี่ย (แท่ง)', 'label_en' => 'Average (bars)', 'type' => 'int', 'default' => 20, 'min' => 5, 'max' => 100],
+                ],
+            ],
+            [
+                'type' => 'price_change',
+                'label' => 'ราคาเปลี่ยนใน N แท่ง', 'label_en' => 'Price change over N bars',
+                'hint' => 'ราคาปิดล่าสุดเทียบกับ N แท่งก่อน เป็น % — ค่าติดลบ = ราคาลง',
+                'hint_en' => 'The latest close against the close N bars ago, in % — negative means price fell.',
+                'use' => ['entry', 'exit'],
+                'fields' => [
+                    ['key' => 'op', 'label' => 'เมื่อราคาเปลี่ยน', 'label_en' => 'When the change is', 'type' => 'select', 'default' => 'above', 'options' => ['above', 'below'],
+                        'option_labels' => ['above' => ['th' => 'มากกว่า', 'en' => 'more than'], 'below' => ['th' => 'น้อยกว่า', 'en' => 'less than']]],
+                    ['key' => 'bars', 'label' => 'ย้อนหลัง (แท่ง)', 'label_en' => 'Lookback (bars)', 'type' => 'int', 'default' => 10, 'min' => 1, 'max' => 200],
+                    ['key' => 'pct', 'label' => '%', 'label_en' => '%', 'type' => 'number', 'default' => 3, 'min' => -50, 'max' => 50, 'step' => 0.5],
+                ],
+            ],
+            [
+                // เส้นเดียวกับ "ซื้อเฉพาะเหนือเส้นเทรนด์ใหญ่ (EMA 200)" ของ momentum/breakout (MarketRegime) —
+                // เป็น EMA ยาวบนแท่งของบอทเอง · ตัวกรองข้ามตลาดจริง (BTC รายวัน) คือสวิตช์ร่วม macro_filter
+                'type' => 'trend',
+                'label' => 'ยืนยันด้วยเส้นเทรนด์ใหญ่', 'label_en' => 'Long-trend confirmation',
+                'hint' => 'ราคาปิดเทียบเส้น EMA ยาวบนแท่งของบอท (EMA 200 บนแท่ง 1 ชม. ≈ เทรนด์ราว 8 วัน) — ภาพตลาดใหญ่ (BTC รายวัน) ตั้งแยกที่ "เปิดไม้เฉพาะตอนตลาดใหญ่เป็นขาขึ้น"',
+                'hint_en' => 'The close against a long EMA on the bot\'s own candles (EMA 200 on 1h ≈ an 8-day trend) — the market-wide view (BTC daily) is the separate "only open trades while the market trend is up" switch.',
+                'use' => ['entry', 'exit'],
+                'fields' => [
+                    ['key' => 'side', 'label' => 'เมื่อราคา', 'label_en' => 'When price is', 'type' => 'select', 'default' => 'above', 'options' => ['above', 'below'],
+                        'option_labels' => ['above' => ['th' => 'อยู่เหนือเส้นเทรนด์', 'en' => 'above the trend line'], 'below' => ['th' => 'อยู่ใต้เส้นเทรนด์', 'en' => 'below the trend line']]],
+                    ['key' => 'period', 'label' => 'EMA (แท่ง)', 'label_en' => 'EMA (bars)', 'type' => 'int', 'default' => 200, 'min' => 50, 'max' => 300],
+                ],
+            ],
+            [
+                'type' => 'interval',
+                'label' => 'ซื้อตามรอบเวลา (แบบ DCA)', 'label_en' => 'Fixed-interval buy (DCA style)',
+                'hint' => 'เป็นจริงเมื่อผ่านไปครบ N แท่งนับจากการซื้อครั้งล่าสุด (ครั้งแรกเป็นจริงทันที) — เปิด "ซื้อเพิ่มได้ขณะถือของ" เพื่อทยอยสะสม',
+                'hint_en' => 'True once N bars have passed since the last buy (immediately the first time) — turn on "add to an open position" to accumulate.',
+                'use' => ['entry'],
+                'fields' => [
+                    ['key' => 'bars', 'label' => 'ทุกกี่แท่ง', 'label_en' => 'Every (bars)', 'type' => 'int', 'default' => 24, 'min' => 1, 'max' => 2000],
+                ],
+            ],
+        ],
     ],
 
     /*

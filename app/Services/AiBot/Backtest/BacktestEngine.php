@@ -90,6 +90,7 @@ class BacktestEngine
         $start = max((int) ($options['start_index'] ?? 0), min($window, $total) - 1);
 
         $lastBuyIndex = null;
+        $lastSellIndex = null;      // ปิดไม้ครั้งล่าสุด — "พักหลังปิดไม้" ของโหมดวางกลยุทธ์เอง
         $lastTradeIndex = null;
         $pausedDay = null;          // เพดานขาดทุนรายวันชน → พักถึงวันถัดไป (เหมือน BotRunner พักบอท)
         $dailyPnl = [];             // realized ต่อวัน สำหรับเพดานขาดทุน
@@ -125,7 +126,7 @@ class BacktestEngine
                 if ($gate['force_exit'] && $broker->position) {
                     $reason = 'ตลาดเข้าภาวะตื่นตระหนก — เทออกทั้งหมด: '.implode(' · ', array_slice($gate['reasons'], 0, 2));
                     $this->sell($broker, $i, $time, $price, $reason, $dailyPnl, $day);
-                    $lastTradeIndex = $i;
+                    $lastTradeIndex = $lastSellIndex = $i;
                     $decisionCounts['sell']++;
                     $equity[] = ['time' => $time, 'equity' => $broker->equity($price), 'price' => $price];
 
@@ -148,7 +149,7 @@ class BacktestEngine
 
                 if ($guard !== null) {
                     $this->sell($broker, $i, $time, $price, $guard['reason'], $dailyPnl, $day);
-                    $lastTradeIndex = $i;
+                    $lastTradeIndex = $lastSellIndex = $i;
                     $decisionCounts['sell']++;
 
                     if ($guard['pause']) {
@@ -194,6 +195,12 @@ class BacktestEngine
             if ($strategyCode === 'dca') {
                 $runParams['_interval_bars'] = max(1, (int) round(((float) ($clean['interval_hours'] ?? 24)) * 60 / $minutesPerBar));
                 $runParams['_bars_since_entry'] = $lastBuyIndex === null ? PHP_INT_MAX : $i - $lastBuyIndex;
+            }
+
+            // วางกลยุทธ์เอง: รอบซื้อและการพักหลังปิดไม้นับเป็นแท่ง (เหมือน BotRunner::paramsFor)
+            if ($strategyCode === 'custom') {
+                $runParams['_bars_since_entry'] = $lastBuyIndex === null ? PHP_INT_MAX : $i - $lastBuyIndex;
+                $runParams['_bars_since_exit'] = $lastSellIndex === null ? PHP_INT_MAX : $i - $lastSellIndex;
             }
 
             if ($strategyCode === 'scalping') {
@@ -248,7 +255,7 @@ class BacktestEngine
                 }
             } elseif ($signal->action === Signal::SELL && $broker->position) {
                 $this->sell($broker, $i, $time, $price, $signal->reason, $dailyPnl, $day);
-                $lastTradeIndex = $i;
+                $lastTradeIndex = $lastSellIndex = $i;
                 $decisionCounts['sell']++;
             }
 

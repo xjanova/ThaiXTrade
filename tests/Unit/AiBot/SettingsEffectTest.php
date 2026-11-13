@@ -86,6 +86,72 @@ class SettingsEffectTest extends TestCase
         }
     }
 
+    /**
+     * บล็อกเงื่อนไขของโหมด "วางกลยุทธ์เอง" เป็นช่องตั้งค่าเหมือนกัน — แค่อยู่ในกฎแทนที่จะอยู่ในฟอร์มแบน.
+     *
+     * บล็อกที่อยู่ในรายการแต่ตัวประเมินไม่รู้จัก = เงื่อนไขที่ไม่มีวันเป็นจริง (หรือแย่กว่า: ถูกมองข้าม)
+     * ช่องที่ตัวประเมินไม่อ่าน = ผู้ใช้ปรับแล้วบอททำเหมือนเดิม · ตัวเลือกที่โค้ดไม่เอ่ยถึง = ตกไปสาขาปริยายเงียบๆ
+     */
+    #[Test]
+    public function every_rule_block_field_and_option_is_read_by_the_rule_evaluator(): void
+    {
+        $evaluator = File::get(app_path('Services/AiBot/Custom/RuleEvaluator.php'));
+        $blocks = (array) config('aibot.custom_rules.blocks');
+
+        $this->assertNotEmpty($blocks);
+
+        foreach ($blocks as $block) {
+            $type = preg_quote($block['type'], '/');
+
+            $this->assertMatchesRegularExpression(
+                "/['\"]{$type}['\"]\\s*=>\\s*self::/",
+                $evaluator,
+                "บล็อก {$block['type']} อยู่ในรายการ แต่ตัวประเมินกฎไม่มีสาขาของมัน",
+            );
+
+            foreach ($block['fields'] as $field) {
+                $key = preg_quote($field['key'], '/');
+
+                $this->assertMatchesRegularExpression(
+                    "/\\\$block\\[\\s*['\"]{$key}['\"]\\s*\\]/",
+                    $evaluator,
+                    "ช่อง {$field['key']} ของบล็อก {$block['type']} ไม่มีโค้ดอ่านค่า = ป้ายหลอก",
+                );
+
+                foreach ($field['options'] ?? [] as $option) {
+                    $this->assertNotEmpty($field['option_labels'][$option]['th'] ?? null, "{$block['type']}.{$field['key']}: {$option} ไม่มีป้ายไทย");
+                    $this->assertNotEmpty($field['option_labels'][$option]['en'] ?? null, "{$block['type']}.{$field['key']}: {$option} ไม่มีป้ายอังกฤษ");
+                }
+
+                // ช่องสองตัวเลือกเทียบกับตัวเดียวแล้วอีกตัวเป็น "ไม่ใช่" ได้ — แต่ต้องมีอย่างน้อยหนึ่งตัวถูกเอ่ยถึง
+                // และช่องที่มีเกินสองตัวเลือกต้องถูกเอ่ยถึงอย่างน้อยทุกตัวยกเว้นตัวสุดท้าย (สาขา default)
+                $options = $field['options'] ?? [];
+                $named = array_filter($options, fn (string $o) => str_contains($evaluator, "'{$o}'"));
+
+                if ($options !== []) {
+                    $this->assertGreaterThanOrEqual(count($options) - 1, count($named), "{$block['type']}.{$field['key']}: มีตัวเลือกที่ตัวประเมินไม่ได้แยกสาขา");
+                }
+
+                foreach (['label', 'label_en'] as $label) {
+                    $this->assertNotEmpty($field[$label] ?? null, "{$block['type']}.{$field['key']} ไม่มี {$label}");
+                }
+
+                if ($field['type'] !== 'select') {
+                    $this->assertGreaterThanOrEqual($field['min'], $field['default'], "{$block['type']}.{$field['key']}");
+                    $this->assertLessThanOrEqual($field['max'], $field['default'], "{$block['type']}.{$field['key']}");
+                } else {
+                    $this->assertContains($field['default'], $field['options'], "{$block['type']}.{$field['key']}");
+                }
+            }
+
+            foreach (['label', 'label_en', 'hint', 'hint_en'] as $text) {
+                $this->assertNotEmpty($block[$text] ?? null, "บล็อก {$block['type']} ไม่มี {$text}");
+            }
+
+            $this->assertNotEmpty(array_intersect($block['use'], ['entry', 'exit']), "บล็อก {$block['type']} ไม่ได้บอกว่าใช้ฝั่งไหน");
+        }
+    }
+
     #[Test]
     public function every_template_only_uses_settings_the_form_declares(): void
     {

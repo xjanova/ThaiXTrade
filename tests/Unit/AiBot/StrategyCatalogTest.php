@@ -79,7 +79,8 @@ class StrategyCatalogTest extends TestCase
             $code = $spec['code'];
             $templates = $spec['templates'] ?? [];
 
-            if (($spec['retired'] ?? false) || $code === 'arbitrage') {
+            // managed (ก๊อปปี้เทรด) ไม่มีฟอร์มให้ตั้งค่า — บอทถูกสร้างตอนกดตามมาสเตอร์ จึงไม่มีเทมเพลต
+            if (($spec['retired'] ?? false) || ($spec['managed'] ?? false) || $code === 'arbitrage') {
                 continue;
             }
 

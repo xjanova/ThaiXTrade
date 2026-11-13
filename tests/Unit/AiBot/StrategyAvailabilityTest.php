@@ -140,8 +140,10 @@ class StrategyAvailabilityTest extends TestCase
         $this->assertNotContains('arbitrage', $codes);
         $this->assertContains('grid', $codes);
 
-        // หายไปสองตัว: อาร์บิทราจ (เร็วๆ นี้) + สแกลป์ (ถอดออกจากการขาย)
+        // หายไปสามกลุ่ม: อาร์บิทราจ (เร็วๆ นี้) + สแกลป์ (ถอดออกจากการขาย) + ก๊อปปี้เทรด (managed — สร้างตอนกดตามมาสเตอร์เท่านั้น)
         $retired = collect(config('aibot.strategies'))->where('retired', true)->count();
-        $this->assertCount(count(config('aibot.strategies')) - 1 - $retired, $codes);
+        $managed = collect(config('aibot.strategies'))->where('managed', true)->count();
+        $this->assertNotContains('copy', $codes);
+        $this->assertCount(count(config('aibot.strategies')) - 1 - $retired - $managed, $codes);
     }
 }
