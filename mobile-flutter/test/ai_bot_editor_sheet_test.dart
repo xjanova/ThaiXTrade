@@ -309,7 +309,7 @@ void main() {
     expect(find.textContaining('กลยุทธ์นี้สร้างได้บนเว็บ'), findsWidgets);
   });
 
-  testWidgets('แก้บอท custom ที่สร้างบนเว็บ: เปลี่ยนชื่อได้ ชุดกฎกลับไปเท่าเดิม และบอกว่าช่องไหนแก้ไม่ได้',
+  testWidgets('แก้บอท custom ที่สร้างบนเว็บ: เปลี่ยนชื่อได้ ชุดกฎไม่ถูกส่ง (เซิร์ฟเวอร์เก็บชุดเดิม) และบอกว่าช่องไหนแก้ไม่ได้',
       (tester) async {
     final rules = {
       'entry': [
@@ -333,7 +333,10 @@ void main() {
     final draft = api.updated.single;
     expect(draft.name, 'กฎของฉัน');
     expect(draft.strategy, 'custom');
-    expect(draft.params['rules'], rules);
+    // ชุดกฎไม่ถูกส่งกลับ: เซิร์ฟเวอร์เก็บชุดที่บันทึกไว้เมื่อคำขอแก้บอทไม่มี `rules`
+    // (ส่งกลับไปชุดที่ถูกติดธง invalid จะโดนปฏิเสธทั้งคำขอ — ดู ai_bot_custom_web_only_test.dart)
+    expect(draft.params.containsKey('rules'), isFalse);
+    expect(draft.template, isNull);
     expect(draft.params['news_mode'], 'off');
     expect(h.closed, isTrue);
   });

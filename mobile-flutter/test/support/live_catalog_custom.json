@@ -1,0 +1,515 @@
+{
+  "rental_days": [
+    1,
+    7,
+    30,
+    90
+  ],
+  "timeframes": [
+    "1m",
+    "5m",
+    "15m",
+    "1h",
+    "4h",
+    "1d"
+  ],
+  "limits": {
+    "max_bots_hard_cap": 25,
+    "max_name_length": 60,
+    "stop_loss_pct": {
+      "min": 0.5,
+      "max": 50,
+      "default": 5
+    },
+    "take_profit_pct": {
+      "min": 0.5,
+      "max": 200,
+      "default": 10
+    },
+    "max_position_usd": {
+      "min": 10,
+      "max": 1000000,
+      "default": 100
+    },
+    "max_daily_loss_usd": {
+      "min": 5,
+      "max": 1000000,
+      "default": 50
+    }
+  },
+  "common_params": [
+    {
+      "key": "news_mode",
+      "label": "ข่าวมีผลต่อการซื้อขายแค่ไหน",
+      "label_en": "How news affects trading",
+      "type": "select",
+      "default": "confirm_exit",
+      "options": [
+        "off",
+        "block_entries",
+        "confirm_exit",
+        "immediate_exit"
+      ],
+      "option_labels": {
+        "off": {
+          "th": "ไม่ใช้ข่าว",
+          "en": "Ignore news"
+        },
+        "block_entries": {
+          "th": "ข่าวแรง = งดเปิดไม้ใหม่ (ไม่ขายของที่ถือ)",
+          "en": "Bad news pauses new entries only"
+        },
+        "confirm_exit": {
+          "th": "งดเปิดไม้ + ขายเมื่อราคายืนยัน (แนะนำ)",
+          "en": "Pause entries + sell once price confirms (recommended)"
+        },
+        "immediate_exit": {
+          "th": "ข่าวแรง = ขายทันที ไม่รอราคา",
+          "en": "Sell immediately on bad news"
+        }
+      }
+    },
+    {
+      "key": "auto_pair",
+      "label": "ให้ AI เลือกเหรียญให้",
+      "label_en": "Let AI pick the coin",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "key": "ai_gate",
+      "label": "ให้ AI ร่วมตัดสินใจ",
+      "label_en": "Let the AI market view weigh in",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "macro_filter",
+      "label": "เปิดไม้เฉพาะตอนตลาดใหญ่เป็นขาขึ้น",
+      "label_en": "Only open trades while the market trend is up",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "macro_ema",
+      "label": "ความไวของตัวกรองตลาดใหญ่",
+      "label_en": "Market-trend filter speed",
+      "type": "select",
+      "default": "50",
+      "options": [
+        "50",
+        "100",
+        "200"
+      ],
+      "group": "advanced",
+      "option_labels": {
+        "50": {
+          "th": "ไว — EMA 50 วัน (แนะนำ)",
+          "en": "Fast — 50-day EMA (recommended)"
+        },
+        "100": {
+          "th": "กลาง — EMA 100 วัน",
+          "en": "Medium — 100-day EMA"
+        },
+        "200": {
+          "th": "ช้า — EMA 200 วัน",
+          "en": "Slow — 200-day EMA"
+        }
+      }
+    }
+  ],
+  "analyst_enabled": true,
+  "features": {
+    "live_trading": false,
+    "live_execution": false,
+    "credit_topup": false,
+    "credit_topup_ready": false,
+    "sales_open": false
+  },
+  "strategies": [
+    {
+      "code": "grid",
+      "name": "Grid Trading",
+      "name_th": "ตารางเทรด (Grid)",
+      "description": "Buys when price dips inside its range and sells one grid step higher. Holds one position at a time.",
+      "description_th": "ซื้อเมื่อราคาย่อลงในกรอบ แล้วขายเมื่อเด้งขึ้นครบหนึ่งชั้น ถือครั้งละหนึ่งไม้ เหมาะกับตลาด sideway",
+      "risk": "low",
+      "tier": "free",
+      "icon": "grid",
+      "timeframes": [
+        "1h",
+        "4h"
+      ],
+      "params": [
+        {
+          "key": "grid_levels",
+          "label": "ความถี่การเก็บกำไร (ชั้น)",
+          "label_en": "Profit steps",
+          "type": "number",
+          "default": 8,
+          "min": 3,
+          "max": 60,
+          "step": 1
+        },
+        {
+          "key": "range_pct",
+          "label": "กรอบราคา (%)",
+          "label_en": "Price range (%)",
+          "type": "number",
+          "default": 10,
+          "min": 0.5,
+          "max": 50,
+          "step": 0.5
+        },
+        {
+          "key": "order_size_usd",
+          "label": "ขนาดต่อไม้ (USD)",
+          "label_en": "Order size (USD)",
+          "type": "number",
+          "default": 20,
+          "min": 5,
+          "max": 100000,
+          "step": 5
+        },
+        {
+          "key": "regime_filter",
+          "label": "เข้าเฉพาะตลาดออกข้าง",
+          "label_en": "Only trade ranging markets",
+          "type": "bool",
+          "default": true,
+          "group": "advanced"
+        },
+        {
+          "key": "er_max",
+          "label": "เกณฑ์ \"ออกข้าง\" (efficiency ratio)",
+          "label_en": "Ranging threshold (efficiency ratio)",
+          "type": "number",
+          "default": 0.35,
+          "min": 0.1,
+          "max": 0.9,
+          "step": 0.05,
+          "group": "advanced"
+        }
+      ],
+      "default_timeframe": "4h",
+      "templates": [
+        {
+          "code": "conservative",
+          "name": "Wide & slow",
+          "name_th": "กรอบกว้าง เก็บช้า",
+          "tagline_th": "กรอบ 10% แบ่ง 5 ชั้นบนแท่ง 4 ชม. เก็บกำไรชั้นละ 2% — ⚠️ 2 ปี 5 เหรียญหลัก (เปิดตัวกรองตลาดใหญ่) ขาดทุน −3.8% (ปีขาขึ้น −2.1% · ปีขาลง −1.7%) — ไม่ชนะต้นทุนเข้า-ออก",
+          "tagline_en": "10% range in 5 steps on 4h, 2% per step — ⚠️ 2y on BTC/ETH/SOL/BNB/XRP with the market-trend filter: −3.8% on capital (up-year −2.1%, down-year −1.7%) — does not beat trading costs",
+          "timeframe": "4h",
+          "params": {
+            "grid_levels": 5,
+            "range_pct": 10,
+            "order_size_usd": 20,
+            "regime_filter": true,
+            "er_max": 0.3
+          },
+          "risk": {
+            "max_position_usd": 100,
+            "stop_loss_pct": 8,
+            "take_profit_pct": 20,
+            "max_daily_loss_usd": 50
+          }
+        },
+        {
+          "code": "balanced",
+          "name": "Balanced",
+          "name_th": "สมดุล",
+          "tagline_th": "กรอบ 10% แบ่ง 8 ชั้นบนแท่ง 4 ชม. เข้าเฉพาะตลาดออกข้าง — ⚠️ 2 ปี 5 เหรียญหลัก (เปิดตัวกรองตลาดใหญ่) ขาดทุน −3.6% (ปีขาขึ้น −1.9% · ปีขาลง −1.8%) — ไม่ชนะต้นทุนเข้า-ออก",
+          "tagline_en": "10% range in 8 steps on 4h, ranging markets only — ⚠️ 2y on BTC/ETH/SOL/BNB/XRP with the market-trend filter: −3.6% on capital (up-year −1.9%, down-year −1.8%) — does not beat trading costs",
+          "timeframe": "4h",
+          "params": {
+            "grid_levels": 8,
+            "range_pct": 10,
+            "order_size_usd": 20,
+            "regime_filter": true,
+            "er_max": 0.35
+          },
+          "risk": {
+            "max_position_usd": 100,
+            "stop_loss_pct": 6,
+            "take_profit_pct": 15,
+            "max_daily_loss_usd": 50
+          }
+        },
+        {
+          "code": "aggressive",
+          "name": "Faster grid",
+          "name_th": "เก็บถี่ขึ้น",
+          "tagline_th": "กรอบ 10% แบ่ง 8 ชั้นบนแท่ง 1 ชม. ไม้ถี่ขึ้น — ⚠️ 2 ปี 5 เหรียญหลัก (เปิดตัวกรองตลาดใหญ่) ขาดทุน −8.2% (ปีขาขึ้น −5.7% · ปีขาลง −2.5%) — ไม่ชนะต้นทุนเข้า-ออก",
+          "tagline_en": "10% range in 8 steps on 1h, more trades — ⚠️ 2y on BTC/ETH/SOL/BNB/XRP with the market-trend filter: −8.2% on capital (up-year −5.7%, down-year −2.5%) — does not beat trading costs",
+          "timeframe": "1h",
+          "params": {
+            "grid_levels": 8,
+            "range_pct": 10,
+            "order_size_usd": 20,
+            "regime_filter": true,
+            "er_max": 0.4
+          },
+          "risk": {
+            "max_position_usd": 100,
+            "stop_loss_pct": 5,
+            "take_profit_pct": 10,
+            "max_daily_loss_usd": 50
+          }
+        }
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_reason_en": null,
+      "coming_soon": false
+    },
+    {
+      "code": "custom",
+      "name": "Build Your Own",
+      "name_th": "วางกลยุทธ์เอง",
+      "description": "Compose your own entry and exit rules from indicator blocks. The bot only executes the rules you set — test them on history before you start.",
+      "description_th": "ประกอบเงื่อนไขเข้าและออกเองจากบล็อกอินดิเคเตอร์ บอทลงมือตามกฎที่คุณตั้งเท่านั้น — ทดสอบย้อนหลังก่อนเริ่มได้",
+      "risk": "high",
+      "tier": "pro",
+      "icon": "sliders",
+      "timeframes": [
+        "15m",
+        "1h",
+        "4h",
+        "1d"
+      ],
+      "params": [
+        {
+          "key": "rules",
+          "label": "กฎเข้า/ออก",
+          "label_en": "Entry / exit rules",
+          "type": "rules",
+          "default": null
+        },
+        {
+          "key": "order_size_usd",
+          "label": "ขนาดต่อไม้ (USD)",
+          "label_en": "Order size (USD)",
+          "type": "number",
+          "default": 100,
+          "min": 5,
+          "max": 100000,
+          "step": 5
+        },
+        {
+          "key": "add_to_position",
+          "label": "ซื้อเพิ่มได้ขณะถือของ (ทยอยสะสม)",
+          "label_en": "Add to an open position (accumulate)",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "key": "trailing_stop_pct",
+          "label": "Trailing stop — ขายเมื่อย่อจากจุดสูงสุด (%) · 0 = ปิด",
+          "label_en": "Trailing stop — sell on a drop from the peak (%) · 0 = off",
+          "type": "number",
+          "default": 0,
+          "min": 0,
+          "max": 50,
+          "step": 0.5
+        },
+        {
+          "key": "max_hold_bars",
+          "label": "Time stop — ถือสูงสุด (แท่ง) · 0 = ไม่จำกัด",
+          "label_en": "Time stop — max hold (bars) · 0 = unlimited",
+          "type": "number",
+          "default": 0,
+          "min": 0,
+          "max": 2000,
+          "step": 1
+        },
+        {
+          "key": "time_stop_mode",
+          "label": "Time stop ทำงานเมื่อ",
+          "label_en": "Time stop applies",
+          "type": "select",
+          "default": "no_profit",
+          "options": [
+            "no_profit",
+            "always"
+          ],
+          "option_labels": {
+            "no_profit": {
+              "th": "ครบเวลาแล้วยังไม่กำไรเท่านั้น",
+              "en": "Only when still not in profit"
+            },
+            "always": {
+              "th": "ครบเวลาแล้วปิดเสมอ",
+              "en": "Always once the time is up"
+            }
+          }
+        },
+        {
+          "key": "cooldown_bars",
+          "label": "พักหลังปิดไม้ (แท่ง)",
+          "label_en": "Cooldown after closing (bars)",
+          "type": "number",
+          "default": 0,
+          "min": 0,
+          "max": 500,
+          "step": 1,
+          "group": "advanced"
+        }
+      ],
+      "default_timeframe": "4h",
+      "templates": [
+        {
+          "code": "trend_follow",
+          "name": "Example: trend + volume",
+          "name_th": "ตัวอย่าง: ตามเทรนด์ + วอลุ่ม",
+          "tagline_th": "ตัวอย่างโครงกฎ — เข้าเมื่อ EMA 12 ตัดขึ้น EMA 26 เหนือเส้นเทรนด์ใหญ่และวอลุ่มยืนยัน ออกเมื่อตัดลง · ยังไม่มีผลวัดของทีมงาน กดทดสอบย้อนหลังก่อนใช้",
+          "tagline_en": "Example rule set — enter when EMA 12 crosses above EMA 26 above the long trend with volume, exit on the cross down · no team-measured result, backtest it before use",
+          "timeframe": "4h",
+          "params": {
+            "rules": {
+              "entry": {
+                "match": "all",
+                "blocks": [
+                  {
+                    "type": "ema_cross",
+                    "when": "crosses_above",
+                    "fast": 12,
+                    "slow": 26
+                  },
+                  {
+                    "type": "trend",
+                    "side": "above",
+                    "period": 200
+                  },
+                  {
+                    "type": "volume_ratio",
+                    "op": "above",
+                    "ratio": 1,
+                    "period": 20
+                  }
+                ]
+              },
+              "exit": {
+                "match": "any",
+                "blocks": [
+                  {
+                    "type": "ema_cross",
+                    "when": "crosses_below",
+                    "fast": 12,
+                    "slow": 26
+                  }
+                ]
+              }
+            },
+            "order_size_usd": 100,
+            "add_to_position": false,
+            "trailing_stop_pct": 0,
+            "max_hold_bars": 48,
+            "time_stop_mode": "no_profit",
+            "cooldown_bars": 0,
+            "ai_gate": false
+          },
+          "risk": {
+            "max_position_usd": 100,
+            "stop_loss_pct": 5,
+            "take_profit_pct": 12,
+            "max_daily_loss_usd": 50
+          }
+        },
+        {
+          "code": "dip_buy",
+          "name": "Example: buy the dip in an uptrend",
+          "name_th": "ตัวอย่าง: ซื้อย่อในขาขึ้น",
+          "tagline_th": "ตัวอย่างโครงกฎ — เข้าเมื่อ RSI ต่ำกว่า 30 ขณะราคายังเหนือเส้นเทรนด์ใหญ่ ออกเมื่อ RSI เกิน 60 พัก 6 แท่งหลังปิดไม้ · ยังไม่มีผลวัดของทีมงาน กดทดสอบย้อนหลังก่อนใช้",
+          "tagline_en": "Example rule set — enter when RSI is below 30 while price is above the long trend, exit when RSI passes 60, 6-bar cooldown · no team-measured result, backtest it before use",
+          "timeframe": "1h",
+          "params": {
+            "rules": {
+              "entry": {
+                "match": "all",
+                "blocks": [
+                  {
+                    "type": "rsi",
+                    "op": "below",
+                    "period": 14,
+                    "level": 30
+                  },
+                  {
+                    "type": "trend",
+                    "side": "above",
+                    "period": 200
+                  }
+                ]
+              },
+              "exit": {
+                "match": "any",
+                "blocks": [
+                  {
+                    "type": "rsi",
+                    "op": "above",
+                    "period": 14,
+                    "level": 60
+                  }
+                ]
+              }
+            },
+            "order_size_usd": 100,
+            "add_to_position": false,
+            "trailing_stop_pct": 0,
+            "max_hold_bars": 72,
+            "time_stop_mode": "no_profit",
+            "cooldown_bars": 6,
+            "ai_gate": false
+          },
+          "risk": {
+            "max_position_usd": 100,
+            "stop_loss_pct": 5,
+            "take_profit_pct": 10,
+            "max_daily_loss_usd": 50
+          }
+        },
+        {
+          "code": "steady_dca",
+          "name": "Example: scheduled accumulation",
+          "name_th": "ตัวอย่าง: ทยอยสะสมตามรอบ",
+          "tagline_th": "ตัวอย่างโครงกฎ — ซื้อ $25 ทุก 6 แท่ง (≈ 24 ชม. บนแท่ง 4 ชม.) สะสมได้ถึงทุนสูงสุด ขายที่ +20% ตัดที่ −10% · ยังไม่มีผลวัดของทีมงาน กดทดสอบย้อนหลังก่อนใช้",
+          "tagline_en": "Example rule set — buys $25 every 6 bars (≈ 24h on 4h candles) up to the position cap, sells at +20% / cuts at −10% · no team-measured result, backtest it before use",
+          "timeframe": "4h",
+          "params": {
+            "rules": {
+              "entry": {
+                "match": "all",
+                "blocks": [
+                  {
+                    "type": "interval",
+                    "bars": 6
+                  }
+                ]
+              },
+              "exit": {
+                "match": "any",
+                "blocks": []
+              }
+            },
+            "order_size_usd": 25,
+            "add_to_position": true,
+            "trailing_stop_pct": 0,
+            "max_hold_bars": 0,
+            "time_stop_mode": "no_profit",
+            "cooldown_bars": 0,
+            "ai_gate": false
+          },
+          "risk": {
+            "max_position_usd": 200,
+            "stop_loss_pct": 10,
+            "take_profit_pct": 20,
+            "max_daily_loss_usd": 50
+          }
+        }
+      ],
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_reason_en": null,
+      "coming_soon": false
+    }
+  ]
+}

@@ -4096,6 +4096,12 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
         // รหัสเทมเพลตตามค่าที่จะส่งจริง — ตรงชุดไหนส่งชุดนั้น ไม่ตรงไม่ส่ง (เหมือนหน้าเว็บ)
         .withMatchedTemplate(strategy);
 
+    // แก้บอทเดิม: ช่องที่แอพกรอกไม่ได้และเซิร์ฟเวอร์เก็บค่าเดิมให้เอง (ชุดกฎของ custom) ไม่ถูกส่ง
+    final editing = widget.existing;
+    final toSend = editing == null
+        ? draft
+        : draft.forUpdateOf(editing, strategy, widget.catalog);
+
     setState(() {
       _saving = true;
       _formError = null;
@@ -4103,7 +4109,7 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
       _serverErrors = const {};
     });
 
-    final saved = await widget.onSave(draft);
+    final saved = await widget.onSave(toSend);
     if (!mounted) return;
 
     if (saved != null) {
@@ -4353,7 +4359,11 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                        * ผู้ใช้ต้องเห็นคำเตือนนั้นก่อนกดเลือก ไม่ใช่หลังเลือกไปแล้ว
                        * ใบที่ไฮไลต์คิดจากค่าจริงในฟอร์ม (แก้ช่องใดช่องหนึ่งแล้วป้ายหลุดทันที)
                        */
-                      if (selected != null && selected.templates.isNotEmpty) ...[
+                      // กลยุทธ์ที่แอพตั้งค่าได้ไม่ครบ (เช่น custom): ไม่โชว์เทมเพลต — เทมเพลตของมันคือ
+                      // ชุดกฎทั้งชุด ซึ่งแอพรุ่นนี้ทั้งแสดงและแก้ไม่ได้ ("เลือกแล้วแก้ต่อได้ทุกช่อง" จะไม่จริง)
+                      if (selected != null &&
+                          selected.appConfigurable &&
+                          selected.templates.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         _FieldLabel(th
                             ? 'เทมเพลตที่ทีมงานตั้งให้ — เลือกแล้วแก้ต่อได้ทุกช่อง'
@@ -4476,8 +4486,8 @@ class _BotEditorSheetState extends State<_BotEditorSheet> {
                           icon: Icons.language_rounded,
                           color: AppColors.textTertiary,
                           text: th
-                              ? 'มีบางช่องที่แอพรุ่นนี้ยังตั้งไม่ได้ (ตั้งได้บนเว็บ) — แอพจะไม่แตะค่าของช่องเหล่านั้น'
-                              : 'Some settings cannot be edited in this app version yet (use the web) — the app leaves them untouched',
+                              ? 'มีบางช่องที่แอพรุ่นนี้ยังตั้งไม่ได้ (ตั้งได้บนเว็บ หน้า AI TRADE ของ tpix.online) — แอพจะไม่แตะค่าของช่องเหล่านั้น'
+                              : 'Some settings cannot be edited in this app version yet (use AI TRADE on tpix.online) — the app leaves them untouched',
                         ),
                       ],
                       if (_specs().any((s) => s.isAdvanced)) ...[

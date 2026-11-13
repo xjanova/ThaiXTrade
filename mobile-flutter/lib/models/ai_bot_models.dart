@@ -221,6 +221,14 @@ class StrategyParam {
   bool get isSupported =>
       isNumber || isBool || (isSelect && options.isNotEmpty);
 
+  /// เซิร์ฟเวอร์เก็บค่าที่บันทึกไว้ให้เอง เมื่อคำขอ "แก้บอท" ไม่ส่งช่องนี้มา
+  ///
+  /// ตอนนี้มีชนิดเดียว: ชุดกฎของกลยุทธ์ `custom` (`AiBotController::update` — ไม่ส่ง `rules`
+  /// = ใช้ชุดที่บันทึกไว้) ช่องแบบนี้แอพ "ไม่ส่ง" ตอนแก้บอท ดีกว่าส่งของเดิมกลับไป:
+  /// ชุดกฎที่เซิร์ฟเวอร์ติดธงว่าอ่านไม่ได้ (`invalid`) ถูกปฏิเสธถ้าส่งกลับ
+  /// ผู้ใช้จะแก้ชื่อหรือกรอบความเสี่ยงของบอทตัวนั้นจากแอพไม่ได้เลย
+  bool get keptByServerWhenOmitted => type == 'rules';
+
   /// ค่าเดิมยังใช้กับช่องนี้ได้ไหม — คืนค่าที่ใช้ได้ หรือ null ถ้าต้องกลับไปใช้ค่าปริยาย
   ///
   /// ใช้ตอนเปลี่ยนกลยุทธ์: ช่องชื่อเดียวกันของกลยุทธ์ใหม่อาจมีตัวเลือก/ช่วงค่าต่างจากเดิม
@@ -2413,10 +2421,11 @@ class AiBotDraft {
     AiBotCatalog catalog,
   ) {
     final merged = <String, dynamic>{
-      // ช่องที่แอพกรอกไม่ได้ (ชนิดใหม่): ค่าเต็มก้อนจากเทมเพลตหรือของเดิม ผ่านไปเท่าเดิม ไม่แตะ
+      // ช่องที่แอพกรอกไม่ได้ (ชนิดใหม่): ของเดิมผ่านไปเท่าเดิม ไม่แตะ และ "ไม่รับค่าจากเทมเพลต"
+      // เทมเพลตของ `custom` พกชุดกฎมาทั้งชุด — ถ้ารับมา การแตะการ์ดเทมเพลตใบเดียวจะเปลี่ยนกฎ
+      // ที่ผู้ใช้มองไม่เห็นในแอพทั้งหมดโดยไม่มีอะไรบอก
       for (final p in strategy.webOnlySpecs(catalog.commonParams))
-        if ((t.params[p.key] ?? params[p.key]) != null)
-          p.key: t.params[p.key] ?? params[p.key],
+        if (params[p.key] != null) p.key: params[p.key],
       for (final p in strategy.formSpecs(catalog.commonParams))
         p.key: t.params[p.key] ?? params[p.key] ?? p.defaultValue,
     };
@@ -2536,6 +2545,9 @@ class AiBotDraft {
   /// backtest ของมันยังค้างอยู่ ทั้งที่ค่าที่จะบันทึกไม่ใช่ชุดนั้นแล้ว
   StrategyTemplate? matchingTemplate(AiBotStrategy? strategy) {
     if (strategy == null || strategy.code != this.strategy) return null;
+    // กลยุทธ์ที่แอพตั้งค่าได้ไม่ครบ: ไม่ผูกกับเทมเพลตใดเลย — เซิร์ฟเวอร์ใช้เทมเพลตเป็นฐานของคำขอ
+    // ถ้าส่งรหัสไป ชุดกฎของเทมเพลตจะถูกใช้แทนของผู้ใช้ (ดู [forUpdateOf] ที่ไม่ส่งชุดกฎ)
+    if (!strategy.appConfigurable) return null;
     final risk = riskPayload;
     for (final t in strategy.templates) {
       if (t.timeframe.isNotEmpty && t.timeframe != timeframe) continue;
@@ -2554,6 +2566,37 @@ class AiBotDraft {
   AiBotDraft withMatchedTemplate(AiBotStrategy? strategy) {
     final match = matchingTemplate(strategy);
     return copyWith(template: match?.code, clearTemplate: match == null);
+  }
+
+  /// ร่างที่จะส่งตอน "แก้บอทเดิม" — ตัดช่องที่แอพกรอกไม่ได้และเซิร์ฟเวอร์เก็บค่าเดิมให้เองออก
+  ///
+  /// ใช้กับบอทที่กลยุทธ์ไม่ถูกเปลี่ยนเท่านั้น (เปลี่ยนกลยุทธ์ = ไม่มีค่าเดิมให้เซิร์ฟเวอร์เก็บ)
+  /// ไม่ส่งรหัสเทมเพลตด้วย: เทมเพลตเป็นฐานของคำขอ ชุดกฎของเทมเพลตจะเข้ามาแทนช่องที่เราเว้นไว้
+  AiBotDraft forUpdateOf(
+    AiBot existing,
+    AiBotStrategy? strategy,
+    AiBotCatalog catalog,
+  ) {
+    if (strategy == null ||
+        strategy.code != this.strategy ||
+        existing.strategy != this.strategy) {
+      return this;
+    }
+
+    final omit = strategy
+        .webOnlySpecs(catalog.commonParams)
+        .where((p) => p.keptByServerWhenOmitted)
+        .map((p) => p.key)
+        .toSet();
+    if (omit.isEmpty) return this;
+
+    return copyWith(
+      params: {
+        for (final e in params.entries)
+          if (!omit.contains(e.key)) e.key: e.value,
+      },
+      clearTemplate: true,
+    );
   }
 
   /// คู่เทรดในรูปที่เซิร์ฟเวอร์ยอมรับ (ต้องมี `/` ไม่ใช่ `-`)
