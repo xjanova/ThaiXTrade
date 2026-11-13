@@ -17,20 +17,35 @@ library;
 /// ธงเปิด/ปิดฟีเจอร์จากเซิร์ฟเวอร์ — ห้ามฮาร์ดโค้ดค่าพวกนี้ในหน้าจอ
 class AiBotFeatures {
   final bool liveTrading;
+
+  /// โหมดจริง "ส่งคำสั่งเองจริง" แล้วหรือยัง — แยกจาก [liveTrading] โดยตั้งใจ (เหมือนหน้าเว็บ)
+  ///
+  /// liveTrading = เลือกโหมดจริงได้ · liveExecution = บอทส่งคำสั่งบนเชนเองจากกระเป๋าบอท
+  /// false = โหมดจริงยังเป็นแค่ "สัญญาณรอยืนยัน" จอต้องไม่บอกว่าบอทเทรดเงินจริงให้เอง
+  final bool liveExecution;
+
   final bool creditTopup;
+
+  /// รางรับเงินพร้อมแล้ว (ยังไม่นับเรื่องเปิดขาย) — ใช้เปิดปุ่มเติมให้กระเป๋าทีมงานทดสอบ
+  final bool creditTopupReady;
+
   final bool salesOpen;
 
   const AiBotFeatures({
     required this.liveTrading,
     required this.creditTopup,
     required this.salesOpen,
+    this.liveExecution = false,
+    this.creditTopupReady = false,
   });
 
   factory AiBotFeatures.fromJson(Map<String, dynamic>? json) {
     final m = json ?? const {};
     return AiBotFeatures(
       liveTrading: m['live_trading'] == true,
+      liveExecution: m['live_execution'] == true,
       creditTopup: m['credit_topup'] == true,
+      creditTopupReady: m['credit_topup_ready'] == true,
       salesOpen: m['sales_open'] == true,
     );
   }
@@ -198,6 +213,22 @@ class StrategyParam {
   bool get isSelect => type == 'select';
   bool get isAdvanced => group == 'advanced';
 
+  /// แอพวาดและกรอกช่องนี้ได้ไหม
+  ///
+  /// แคตตาล็อกเพิ่มชนิดใหม่ได้โดยแอพรุ่นนี้ไม่รู้จัก (เช่นชุดกฎแบบมีโครงสร้างของกลยุทธ์
+  /// `custom`) — ช่องแบบนั้นห้ามวาดเป็นช่องเปล่าและห้ามส่งค่าครึ่งๆ กลางๆ ขึ้นไป
+  /// ตัวเลือกที่ไม่มีรายการให้เลือกก็กรอกไม่ได้เหมือนกัน
+  bool get isSupported =>
+      isNumber || isBool || (isSelect && options.isNotEmpty);
+
+  /// เซิร์ฟเวอร์เก็บค่าที่บันทึกไว้ให้เอง เมื่อคำขอ "แก้บอท" ไม่ส่งช่องนี้มา
+  ///
+  /// ตอนนี้มีชนิดเดียว: ชุดกฎของกลยุทธ์ `custom` (`AiBotController::update` — ไม่ส่ง `rules`
+  /// = ใช้ชุดที่บันทึกไว้) ช่องแบบนี้แอพ "ไม่ส่ง" ตอนแก้บอท ดีกว่าส่งของเดิมกลับไป:
+  /// ชุดกฎที่เซิร์ฟเวอร์ติดธงว่าอ่านไม่ได้ (`invalid`) ถูกปฏิเสธถ้าส่งกลับ
+  /// ผู้ใช้จะแก้ชื่อหรือกรอบความเสี่ยงของบอทตัวนั้นจากแอพไม่ได้เลย
+  bool get keptByServerWhenOmitted => type == 'rules';
+
   /// ค่าเดิมยังใช้กับช่องนี้ได้ไหม — คืนค่าที่ใช้ได้ หรือ null ถ้าต้องกลับไปใช้ค่าปริยาย
   ///
   /// ใช้ตอนเปลี่ยนกลยุทธ์: ช่องชื่อเดียวกันของกลยุทธ์ใหม่อาจมีตัวเลือก/ช่วงค่าต่างจากเดิม
@@ -270,7 +301,8 @@ class StrategyTemplate {
       nameTh: _s(json['name_th'], name),
       taglineEn: _s(json['tagline_en'], _s(json['tagline_th'])),
       taglineTh: _s(json['tagline_th'], _s(json['tagline_en'])),
-      timeframe: _s(json['timeframe'], '1h'),
+      // ไม่ระบุกรอบเวลา = เทมเพลตไม่แตะกรอบเวลาของฟอร์ม (หน้าเว็บ: `!tpl.timeframe ||`)
+      timeframe: _s(json['timeframe']),
       params: _map(json['params']) ?? const {},
       risk: _map(json['risk']) ?? const {},
     );
@@ -279,6 +311,21 @@ class StrategyTemplate {
   String label(bool isThai) => isThai ? nameTh : name;
 
   String tagline(bool isThai) => isThai ? taglineTh : taglineEn;
+}
+
+/// เหตุผลที่สร้างบอทใหม่ด้วยกลยุทธ์หนึ่งไม่ได้ — ดู [AiBotStrategy.createBlock]
+enum StrategyBlock {
+  /// สร้างได้
+  none,
+
+  /// เซิร์ฟเวอร์บอกว่ายังลงมือไม่ได้ (เร็วๆ นี้ · ถอดออกจากการขาย · รอเงื่อนไขอื่น)
+  unavailable,
+
+  /// มีช่องที่แอพรุ่นนี้กรอกไม่ได้ — สร้างได้บนเว็บ
+  webOnly,
+
+  /// แพลนของกระเป๋านี้ยังไม่ปลดล็อก
+  planLocked,
 }
 
 /// หนึ่งกลยุทธ์
@@ -310,6 +357,10 @@ class AiBotStrategy {
   /// ถอดออกจากการขายแล้ว (วัดจริงแล้วแพ้) — สร้างใหม่ไม่ได้ แต่บอทเก่ายังอ่านชื่อได้
   final bool retired;
 
+  /// ยังไม่มีตัวลงมือจริง — ป้าย "เร็วๆ นี้" (ต่างจากถอดออกจากการขาย/รอเงื่อนไขอื่น
+  /// ซึ่งติดป้าย "ยังไม่เปิด") เซิร์ฟเวอร์เป็นคนบอก หน้าเว็บแยกสองป้ายนี้เหมือนกัน
+  final bool comingSoon;
+
   const AiBotStrategy({
     required this.code,
     required this.name,
@@ -327,6 +378,7 @@ class AiBotStrategy {
     this.templates = const [],
     this.defaultTimeframe,
     this.retired = false,
+    this.comingSoon = false,
   });
 
   factory AiBotStrategy.fromJson(Map<String, dynamic> json) {
@@ -354,7 +406,27 @@ class AiBotStrategy {
       ).map(StrategyTemplate.fromJson).toList(growable: false),
       defaultTimeframe: _sn(json['default_timeframe']),
       retired: json['retired'] == true,
+      comingSoon: json['coming_soon'] == true,
     );
+  }
+
+  /// แอพตั้งค่ากลยุทธ์นี้ได้ครบทุกช่องไหม
+  ///
+  /// false = มีช่องของกลยุทธ์ที่แอพรุ่นนี้ไม่รู้จักชนิด (เช่นตัวสร้างกฎของ `custom`)
+  /// → ขึ้นป้าย "สร้างได้บนเว็บ" และเลือกไม่ได้ ดีกว่าปล่อยให้สร้างบอทที่ช่องสำคัญ
+  /// ถูกส่งเป็นค่าปริยายเปล่าๆ แล้วไม่มีวันเข้าไม้
+  bool get appConfigurable => params.every((p) => p.isSupported);
+
+  /// ทำไมสร้างบอทใหม่ด้วยกลยุทธ์นี้จากแอพไม่ได้ — [StrategyBlock.none] = สร้างได้
+  ///
+  /// [unlocked] = กลยุทธ์ที่แพลนของกระเป๋านี้ปลดล็อก (`status.unlocked_strategies`)
+  /// ลำดับเดียวกับหน้าเว็บ: "ยังเปิดใช้ไม่ได้" มาก่อนเรื่องแพลน (อัปเกรดไปก็ยังใช้ไม่ได้อยู่ดี)
+  /// แล้วแทรก "สร้างได้บนเว็บ" ของแอพไว้ก่อนเรื่องแพลนด้วยเหตุผลเดียวกัน
+  StrategyBlock createBlock(Iterable<String> unlocked) {
+    if (!available) return StrategyBlock.unavailable;
+    if (!appConfigurable) return StrategyBlock.webOnly;
+    if (!unlocked.contains(code)) return StrategyBlock.planLocked;
+    return StrategyBlock.none;
   }
 
   StrategyTemplate? template(String? code) {
@@ -364,6 +436,11 @@ class AiBotStrategy {
     }
     return null;
   }
+
+  /// ชุดตั้งต้นของบอทใหม่: "สมดุล" ถ้ามี ไม่งั้นเทมเพลตตัวแรก (null = กลยุทธ์ไม่มีเทมเพลต)
+  /// — ลำดับเดียวกับ `applyBalancedTemplate()` ของหน้าเว็บ
+  StrategyTemplate? get startingTemplate =>
+      template('balanced') ?? (templates.isEmpty ? null : templates.first);
 
   /// กรอบเวลาที่ควรเริ่มด้วย — ของที่ backtest แล้ว ไม่ใช่ตัวแรกในรายการเฉยๆ
   String preferredTimeframe(List<String> fallback) {
@@ -386,23 +463,21 @@ class AiBotStrategy {
     return en ?? th;
   }
 
-  /// ค่าเริ่มต้นของพารามิเตอร์ทั้งชุด
-  Map<String, dynamic> defaultParams(List<StrategyParam> commonParams) {
-    final out = <String, dynamic>{};
-    // สวิตช์ร่วมมาก่อน แล้วให้ของกลยุทธ์เขียนทับคีย์ที่ชื่อซ้ำ
-    for (final p in commonParams) {
-      out[p.key] = p.defaultValue;
-    }
-    for (final p in params) {
-      out[p.key] = p.defaultValue;
-    }
-    return out;
-  }
+  /// ค่าเริ่มต้นของพารามิเตอร์ทั้งชุด — เฉพาะช่องที่แอพกรอกได้ ([formSpecs])
+  ///
+  /// ช่องที่แอพไม่รู้จักชนิดไม่ถูกใส่ลงไปเลย: ไม่ส่งคีย์ = เซิร์ฟเวอร์ใช้ค่าปริยายของมันเอง
+  /// (`sanitizeParams`) ซึ่งถูกกว่าการเดาค่าจากฝั่งแอพ
+  Map<String, dynamic> defaultParams(List<StrategyParam> commonParams) => {
+    for (final p in formSpecs(commonParams)) p.key: p.defaultValue,
+  };
 
   /// ชุดช่องที่ต้องวาดในฟอร์ม — สวิตช์ร่วมก่อน แล้วของกลยุทธ์เขียนทับ
   ///
   /// ถ้าวาดจาก [params] อย่างเดียว ช่อง "ข่าวมีผลกับการซื้อขายแค่ไหน" (news_mode)
   /// "ให้ AI เลือกเหรียญให้" และ "ตัวกรองตลาดใหญ่" จะไม่มีวันโผล่บนจอ
+  ///
+  /// ช่องที่แอพไม่รู้จักชนิด ([StrategyParam.isSupported] = false) ถูกตัดออก — ไม่วาด
+  /// และไม่ถูกแตะตอนประกอบค่า (ค่าเดิมของบอทที่แก้อยู่จึงผ่านกลับไปเท่าเดิม)
   List<StrategyParam> formSpecs(List<StrategyParam> commonParams) {
     final merged = <String, StrategyParam>{};
     for (final p in commonParams) {
@@ -411,7 +486,19 @@ class AiBotStrategy {
     for (final p in params) {
       merged[p.key] = p;
     }
-    return merged.values.toList(growable: false);
+    return merged.values.where((p) => p.isSupported).toList(growable: false);
+  }
+
+  /// ช่องที่แอพรุ่นนี้กรอกไม่ได้ (ชนิดใหม่) — ใช้บอกผู้ใช้ว่าต้องไปแก้บนเว็บ
+  List<StrategyParam> webOnlySpecs(List<StrategyParam> commonParams) {
+    final merged = <String, StrategyParam>{};
+    for (final p in commonParams) {
+      merged[p.key] = p;
+    }
+    for (final p in params) {
+      merged[p.key] = p;
+    }
+    return merged.values.where((p) => !p.isSupported).toList(growable: false);
   }
 }
 
@@ -827,7 +914,15 @@ class AiBot {
   final bool? online;
 
   /// worker_silent · bot_stale · not_running · banned — null เมื่อออนไลน์
+  /// บอทที่เปิดอยู่แต่แพลนไม่ให้เดินแล้วได้รหัสของแพลนแทน (ดู [planReasonCode])
   final String? offlineReason;
+
+  /// ระบบพักบอทไว้เพราะอะไร: plan_expired · plan_locked · plan_quota · strategy_retired
+  /// null = ไม่ได้พัก หรือผู้ใช้กดพักเอง
+  final String? pauseReason;
+
+  /// คู่ของบอทตัวนี้เทรดเงินจริงได้ไหม (null = เซิร์ฟเวอร์รุ่นเก่ายังไม่ส่งมา)
+  final bool? liveSupported;
 
   const AiBot({
     required this.id,
@@ -852,6 +947,8 @@ class AiBot {
     this.createdAt,
     this.online,
     this.offlineReason,
+    this.pauseReason,
+    this.liveSupported,
   });
 
   factory AiBot.fromJson(Map<String, dynamic> json) {
@@ -881,7 +978,45 @@ class AiBot {
       createdAt: _dt(json['created_at']),
       online: json['online'] is bool ? json['online'] as bool : null,
       offlineReason: _sn(json['offline_reason']),
+      pauseReason: _sn(json['pause_reason']),
+      liveSupported: _bn(json['live_supported']),
     );
+  }
+
+  /// ข้อความของรหัส "แพลนไม่ให้บอทตัวนี้เดิน" — [ไทย, อังกฤษ] (ตรงกับ aiTrade.planReason* ของเว็บ)
+  static const Map<String, List<String>> _planReasons = {
+    'plan_expired': [
+      'การเช่าหมดอายุ — บอทถูกพักไว้ ต่ออายุแพลนแล้วกดเริ่มใหม่ได้',
+      'Your rental expired — the bot is paused. Renew the plan, then start it again',
+    ],
+    'plan_locked': [
+      'แพลนปัจจุบันไม่รวมกลยุทธ์นี้ — ต่ออายุหรืออัปเกรดแพลนเพื่อใช้ต่อ',
+      'Your current plan does not include this strategy — renew or upgrade to keep using it',
+    ],
+    'plan_quota': [
+      'จำนวนบอทเกินโควตาของแพลนปัจจุบัน — กด "หยุด" หรือลบบอทที่ไม่ใช้ก่อน',
+      'You are over the bot quota of your current plan — stop or delete a bot you do not use',
+    ],
+    'strategy_retired': [
+      'กลยุทธ์นี้ถูกถอดออกจากการขายแล้ว — บอทถูกพักไว้ (ยังแก้ชื่อ ลดความเสี่ยง หรือลบได้)',
+      'This strategy has been retired — the bot is paused (you can still rename, lower risk or delete it)',
+    ],
+  };
+
+  /// รหัสเหตุผลที่แพลนไม่ให้บอทตัวนี้เดิน — null เมื่อไม่ใช่เรื่องของแพลน
+  ///
+  /// ดูทั้งบอทที่ระบบพักไว้ ([pauseReason]) และบอทที่ยังเปิดอยู่แต่แพลนไม่ให้เดินแล้ว
+  /// ([offlineReason]) เหมือน `planReasonText()` ของหน้าเว็บ — แยกให้ออกจาก "วอร์กเกอร์เงียบ"
+  /// ที่ระบบกู้คืนเอง ผู้ใช้ต้องรู้ว่าครั้งนี้ต้องต่ออายุแพลน ไม่ใช่นั่งรอ
+  String? get planReasonCode {
+    final code = isPaused ? pauseReason : (isRunning ? offlineReason : null);
+    return _planReasons.containsKey(code) ? code : null;
+  }
+
+  /// ข้อความของ [planReasonCode] ตามภาษา — null เมื่อไม่ใช่เรื่องของแพลน
+  String? planReasonText(bool isThai) {
+    final pair = _planReasons[planReasonCode];
+    return pair == null ? null : (isThai ? pair[0] : pair[1]);
   }
 
   bool get isRunning => status == 'running';
@@ -891,6 +1026,9 @@ class AiBot {
 
   /// เหตุผลที่ออฟไลน์ในภาษาคน — ใช้ตอน [isOffline] เท่านั้น
   String offlineText(bool isThai) {
+    // เรื่องแพลนมาก่อน — ไม่งั้นตกไปเป็น "ออฟไลน์" เฉยๆ แล้วผู้ใช้นั่งรอสิ่งที่ไม่มีวันเกิด
+    final plan = planReasonText(isThai);
+    if (plan != null) return plan;
     switch (offlineReason) {
       case 'worker_silent':
         return isThai
@@ -974,6 +1112,8 @@ class AiBot {
     createdAt: createdAt,
     online: online,
     offlineReason: offlineReason,
+    pauseReason: pauseReason,
+    liveSupported: liveSupported,
   );
 }
 
@@ -1058,6 +1198,28 @@ class AiBotStatus {
         .toList(growable: false),
     welcomeClaimed: welcomeClaimed,
   );
+
+  /// ใส่บอทที่เพิ่งสร้างลงหัวรายการทันที (เซิร์ฟเวอร์เรียงใหม่สุดก่อน) และนับโควตาเพิ่ม
+  ///
+  /// บอทใหม่เริ่มที่ `paused` ซึ่งนับเข้าโควตา — ใช้ก่อนดึงสถานะจริงกลับมา เพื่อให้บอท
+  /// โผล่บนจอแม้คำขอดึงสถานะรอบนั้นจะล้ม (เน็ตหลุด/โดนจำกัดอัตรา) มีอยู่แล้ว = แทนที่
+  AiBotStatus withNewBot(AiBot created) {
+    if (bot(created.id) != null) return withBot(created);
+    return AiBotStatus(
+      walletAddress: walletAddress,
+      credits: credits,
+      isActive: isActive,
+      subscription: subscription,
+      quota: AiBotQuota(
+        maxBots: quota.maxBots,
+        usedBots: quota.usedBots + (created.countsTowardQuota ? 1 : 0),
+      ),
+      unlockedStrategies: unlockedStrategies,
+      isAdmin: isAdmin,
+      bots: [created, ...bots],
+      welcomeClaimed: welcomeClaimed,
+    );
+  }
 
   /// กลยุทธ์นี้ปลดล็อกตามแพลนไหม (ยังต้องเช็ค `strategy.available` ซ้ำ)
   bool isUnlocked(String code) => unlockedStrategies.contains(code);
@@ -2242,23 +2404,30 @@ class AiBotDraft {
       maxDailyLossUsd: limits.maxDailyLossUsd.defaultValue,
     );
 
-    final balanced = strategy.template('balanced');
-    return balanced == null ? base : base.applyTemplate(balanced, strategy, catalog);
+    final start = strategy.startingTemplate;
+    return start == null ? base : base.applyTemplate(start, strategy, catalog);
   }
 
   /// ใช้เทมเพลตเป็นฐาน: กรอบเวลา + พารามิเตอร์ + กรอบเสี่ยงของเทมเพลตทับค่าเดิม
-  /// (คีย์ที่เทมเพลตไม่ได้ระบุยังใช้ค่าปริยายของกลยุทธ์ เหมือนที่เซิร์ฟเวอร์ทำ)
+  ///
+  /// กติกาเดียวกับ `applyTemplate()` ของหน้าเว็บ (AiTrade.vue) ทีละช่อง:
+  /// ค่าของเทมเพลต → ไม่มีก็ค่าที่อยู่ในฟอร์มตอนนี้ → ไม่มีก็ค่าปริยายของช่อง
+  /// ช่องที่เทมเพลตไม่ได้ระบุ (สวิตช์ร่วม และช่องขั้นสูงบางช่อง) จึงยังเป็นค่าที่ผู้ใช้ตั้งไว้
+  /// เดิมแอพรีเซ็ตช่องของกลยุทธ์ที่เทมเพลตไม่ระบุกลับเป็นค่าปริยาย — ผู้ใช้ที่แก้ช่องนั้นไว้ก่อน
+  /// กดเทมเพลตจึงได้ค่าต่างจากที่ทำแบบเดียวกันบนเว็บ
   AiBotDraft applyTemplate(
     StrategyTemplate t,
     AiBotStrategy strategy,
     AiBotCatalog catalog,
   ) {
     final merged = <String, dynamic>{
-      ...strategy.defaultParams(catalog.commonParams),
-      ...t.params,
-      // สวิตช์ร่วมที่ผู้ใช้ตั้งไว้แล้ว (ข่าว/AI เลือกเหรียญ/AI ร่วมตัดสิน) ไม่ควรหายเพราะกดเทมเพลต
-      for (final p in catalog.commonParams)
-        if (params.containsKey(p.key) && !t.params.containsKey(p.key)) p.key: params[p.key],
+      // ช่องที่แอพกรอกไม่ได้ (ชนิดใหม่): ของเดิมผ่านไปเท่าเดิม ไม่แตะ และ "ไม่รับค่าจากเทมเพลต"
+      // เทมเพลตของ `custom` พกชุดกฎมาทั้งชุด — ถ้ารับมา การแตะการ์ดเทมเพลตใบเดียวจะเปลี่ยนกฎ
+      // ที่ผู้ใช้มองไม่เห็นในแอพทั้งหมดโดยไม่มีอะไรบอก
+      for (final p in strategy.webOnlySpecs(catalog.commonParams))
+        if (params[p.key] != null) p.key: params[p.key],
+      for (final p in strategy.formSpecs(catalog.commonParams))
+        p.key: t.params[p.key] ?? params[p.key] ?? p.defaultValue,
     };
 
     double pick(String key, double current) {
@@ -2330,19 +2499,104 @@ class AiBotDraft {
   ///    ตอนนี้ทำแบบเดียวกับ `syncParamDefaults()` ของหน้าเว็บ: ช่องที่กลยุทธ์ใหม่ประกาศ
   ///    (ช่องร่วมทุกช่อง + ช่องของกลยุทธ์ที่ชื่อซ้ำ) ใช้ค่าเดิมถ้ายังอยู่ในกรอบของช่องใหม่
   ///    ช่องที่กลยุทธ์ใหม่ไม่มี = ทิ้ง · ช่องที่ขาด = ค่าปริยายของกลยุทธ์ใหม่
-  AiBotDraft withStrategy(AiBotStrategy next, AiBotCatalog catalog) {
+  ///
+  /// [startFromTemplate] = false ตอน "แก้บอทเดิม" — ทำแบบหน้าเว็บ: ไม่เอาชุดตั้งต้นของ
+  /// กลยุทธ์ใหม่มาทับ กรอบความเสี่ยงที่ผู้ใช้ตั้งไว้กับบอทตัวนั้นจึงยังอยู่ และกรอบเวลาคงเดิม
+  /// ถ้ากลยุทธ์ใหม่รองรับ (ไม่รองรับ = ตัวแรกของกลยุทธ์ใหม่) ชุดตั้งต้นมีไว้ให้บอทใหม่เท่านั้น
+  AiBotDraft withStrategy(
+    AiBotStrategy next,
+    AiBotCatalog catalog, {
+    bool startFromTemplate = true,
+  }) {
     final carried = <String, dynamic>{
+      // สวิตช์ร่วมที่แอพกรอกไม่ได้ (ชนิดใหม่): ค่าเดิมของบอทผ่านไปเท่าเดิม ไม่หายตอนสลับกลยุทธ์
+      for (final p in next.webOnlySpecs(catalog.commonParams))
+        if (params[p.key] != null) p.key: params[p.key],
       for (final spec in next.formSpecs(catalog.commonParams))
         spec.key: spec.carryOver(params[spec.key]) ?? spec.defaultValue,
     };
+
+    if (!startFromTemplate) {
+      final keeps =
+          next.timeframes.isEmpty || next.timeframes.contains(timeframe);
+      return copyWith(
+        strategy: next.code,
+        timeframe: keeps ? timeframe : next.timeframes.first,
+        params: carried,
+        clearTemplate: true,
+      );
+    }
+
     final reset = copyWith(
       strategy: next.code,
       timeframe: next.preferredTimeframe(catalog.timeframes),
       params: carried,
       clearTemplate: true,
     );
-    final balanced = next.template('balanced');
-    return balanced == null ? reset : reset.applyTemplate(balanced, next, catalog);
+    final start = next.startingTemplate;
+    return start == null ? reset : reset.applyTemplate(start, next, catalog);
+  }
+
+  /// เทมเพลตที่ "ตรงกับค่าในฟอร์มตอนนี้" — คิดจากค่าจริง ไม่ใช่จำว่ากดอะไรไว้
+  ///
+  /// กติกาเดียวกับ `activeTemplate` ของหน้าเว็บ: กรอบเวลาตรง + ทุกช่องที่เทมเพลตระบุ
+  /// (พารามิเตอร์และกรอบเสี่ยง) มีค่าเท่ากัน · ผู้ใช้แก้ช่องใดช่องหนึ่ง ป้ายต้องหลุดทันที
+  /// เดิมแอพจำรหัสที่กดไว้ — แก้กรอบเวลาหรือตัวเลขความเสี่ยงแล้วป้าย "สมดุล" กับตัวเลข
+  /// backtest ของมันยังค้างอยู่ ทั้งที่ค่าที่จะบันทึกไม่ใช่ชุดนั้นแล้ว
+  StrategyTemplate? matchingTemplate(AiBotStrategy? strategy) {
+    if (strategy == null || strategy.code != this.strategy) return null;
+    // กลยุทธ์ที่แอพตั้งค่าได้ไม่ครบ: ไม่ผูกกับเทมเพลตใดเลย — เซิร์ฟเวอร์ใช้เทมเพลตเป็นฐานของคำขอ
+    // ถ้าส่งรหัสไป ชุดกฎของเทมเพลตจะถูกใช้แทนของผู้ใช้ (ดู [forUpdateOf] ที่ไม่ส่งชุดกฎ)
+    if (!strategy.appConfigurable) return null;
+    final risk = riskPayload;
+    for (final t in strategy.templates) {
+      if (t.timeframe.isNotEmpty && t.timeframe != timeframe) continue;
+      final paramsMatch = t.params.entries.every(
+        (e) => _sameValue(params[e.key], e.value),
+      );
+      final riskMatch = t.risk.entries.every(
+        (e) => _sameValue(risk[e.key], e.value),
+      );
+      if (paramsMatch && riskMatch) return t;
+    }
+    return null;
+  }
+
+  /// ติดรหัสเทมเพลตให้ตรงกับค่าจริงก่อนส่ง — ตรงก็ส่งรหัส ไม่ตรงก็ไม่ส่ง (เหมือนหน้าเว็บ)
+  AiBotDraft withMatchedTemplate(AiBotStrategy? strategy) {
+    final match = matchingTemplate(strategy);
+    return copyWith(template: match?.code, clearTemplate: match == null);
+  }
+
+  /// ร่างที่จะส่งตอน "แก้บอทเดิม" — ตัดช่องที่แอพกรอกไม่ได้และเซิร์ฟเวอร์เก็บค่าเดิมให้เองออก
+  ///
+  /// ใช้กับบอทที่กลยุทธ์ไม่ถูกเปลี่ยนเท่านั้น (เปลี่ยนกลยุทธ์ = ไม่มีค่าเดิมให้เซิร์ฟเวอร์เก็บ)
+  /// ไม่ส่งรหัสเทมเพลตด้วย: เทมเพลตเป็นฐานของคำขอ ชุดกฎของเทมเพลตจะเข้ามาแทนช่องที่เราเว้นไว้
+  AiBotDraft forUpdateOf(
+    AiBot existing,
+    AiBotStrategy? strategy,
+    AiBotCatalog catalog,
+  ) {
+    if (strategy == null ||
+        strategy.code != this.strategy ||
+        existing.strategy != this.strategy) {
+      return this;
+    }
+
+    final omit = strategy
+        .webOnlySpecs(catalog.commonParams)
+        .where((p) => p.keptByServerWhenOmitted)
+        .map((p) => p.key)
+        .toSet();
+    if (omit.isEmpty) return this;
+
+    return copyWith(
+      params: {
+        for (final e in params.entries)
+          if (!omit.contains(e.key)) e.key: e.value,
+      },
+      clearTemplate: true,
+    );
   }
 
   /// คู่เทรดในรูปที่เซิร์ฟเวอร์ยอมรับ (ต้องมี `/` ไม่ใช่ `-`)
@@ -2761,5 +3015,46 @@ DateTime? _dt(dynamic v) {
 
 /// เผื่อไฟล์อื่นต้องอ่าน bool แบบทนพัง (เช่น อ่าน params ของบอท)
 bool? readBool(dynamic v) => _bn(v);
+
+/// ค่าในฟอร์มกับค่าในเทมเพลตเท่ากันไหม — ตัวเลขเทียบเป็นตัวเลข (8 กับ 8.0 กับ "8" คือค่าเดียวกัน)
+/// อย่างอื่นเทียบเป็นข้อความ เหมือน `String(a) === String(b)` ของหน้าเว็บ
+bool _sameValue(dynamic a, dynamic b) {
+  if (a == null || b == null) return a == b;
+  final na = a is num ? a : (a is String ? num.tryParse(a) : null);
+  final nb = b is num ? b : (b is String ? num.tryParse(b) : null);
+  if (na != null && nb != null) return na == nb;
+  return a.toString() == b.toString();
+}
+
+/// รายการคู่เทรดให้เลือกในฟอร์มบอท — รูป `BASE/QUOTE` ตามลำดับที่ได้มา ไม่ซ้ำ
+///
+/// [listed] = คู่ที่แอดมินเปิดไว้ (`/market/pairs` — ชุดเดียวกับตัวเลือกบนหน้าเว็บ)
+/// [fallback] = ใช้เมื่อ [listed] ยังว่าง (โหลดไม่สำเร็จ/ยังไม่มา) เพื่อไม่ให้ฟอร์มไม่มีอะไรให้เลือก
+/// ว่างทั้งคู่ = `BTC/USDT` ตัวเดียว เหมือนทางสำรองของหน้าเว็บ
+List<String> aiBotPairOptions(
+  Iterable<(String base, String quote)> listed, [
+  Iterable<(String base, String quote)> fallback = const [],
+]) {
+  List<String> build(Iterable<(String, String)> source) {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final (base, quote) in source) {
+      final b = base.trim().toUpperCase();
+      final q = quote.trim().toUpperCase();
+      // รูปเดียวกับที่เซิร์ฟเวอร์ตรวจ (`[A-Za-z0-9]{2,15}/[A-Za-z0-9]{2,15}`) — คู่ที่ส่งไปก็ไม่ผ่าน ไม่ต้องโชว์
+      if (!_pairPart.hasMatch(b) || !_pairPart.hasMatch(q)) continue;
+      final pair = '$b/$q';
+      if (seen.add(pair)) out.add(pair);
+    }
+    return out;
+  }
+
+  final primary = build(listed);
+  if (primary.isNotEmpty) return primary;
+  final secondary = build(fallback);
+  return secondary.isNotEmpty ? secondary : const ['BTC/USDT'];
+}
+
+final RegExp _pairPart = RegExp(r'^[A-Z0-9]{2,15}$');
 
 /// Developed by Xman Studio
