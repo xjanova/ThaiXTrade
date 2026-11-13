@@ -278,7 +278,9 @@ class DeepLinkService {
       return;
     }
 
-    final walletName = uri.queryParameters['wallet']; // optional source app name
+    // ชื่อแอปต้นทาง (ไม่บังคับ) — มาจากลิงก์ที่ใครก็สร้างได้ จึงตัดอักขระควบคุม/จำกัดความยาว
+    // ก่อนเอาไปขึ้นจอ (หน้ายืนยันเปลี่ยนกระเป๋า / snackbar)
+    final walletName = sanitizeWalletName(uri.queryParameters['wallet']);
 
     // กระเป๋ารุ่นใหม่แนบลายเซ็นยืนยันมาด้วย → เชื่อม+ยืนยันจบในฮอปเดียว
     final nonce = uri.queryParameters['nonce'];
@@ -291,12 +293,42 @@ class DeepLinkService {
 
     // Auto-link โดยไม่ต้องเปิด picker — wallet app ส่ง address มาแล้ว trust
     final wallet = context.read<WalletProvider>();
+
+    /*
+     * ลิงก์นี้จะ "แทนที่" กระเป๋าที่ผู้ใช้ใช้อยู่ — ต้องถามก่อนเสมอ
+     * `tpixtrade://connect` เปิดได้จากแอป/หน้าเว็บใดก็ได้ เดิมกดลิงก์ทีเดียวกระเป๋าที่ใช้อยู่
+     * ถูกสลับเป็นของคนอื่นเงียบ ๆ (ยอด/ที่อยู่รับเงินบนจอกลายเป็นของกระเป๋าที่ไม่ใช่ของผู้ใช้)
+     */
+    final replacing = wallet.wouldReplaceWallet(address);
+    if (replacing) {
+      // ลิงก์มาซ้ำระหว่างที่หน้ายืนยันยังเปิดอยู่ — ไม่เปิดซ้อน
+      if (_replaceDialogOpen) return;
+      _replaceDialogOpen = true;
+      bool? confirmed;
+      try {
+        confirmed = await _confirmReplaceWallet(
+          context,
+          wallet: wallet,
+          newAddress: address,
+          walletName: walletName,
+        );
+      } finally {
+        _replaceDialogOpen = false;
+      }
+      if (confirmed != true) {
+        BugReporter.I.breadcrumb('connect replace declined');
+        return;
+      }
+      if (!context.mounted) return;
+    }
+
     final ok = await wallet.linkFromDeepLink(
       address: address,
       chainId: chain,
       walletName: walletName,
       nonce: nonce,
       signature: signature,
+      confirmedReplace: replacing,
     );
 
     // linkFromDeepLink รอผลยืนยันลายเซ็นให้จบก่อนคืนค่า → isVerified ตรงนี้คือของจริง
@@ -341,6 +373,81 @@ class DeepLinkService {
           ? 'เชื่อม wallet ไม่สำเร็จ'
           : 'Failed to link wallet');
     }
+  }
+
+  bool _replaceDialogOpen = false;
+
+  /// ชื่อแอปกระเป๋าจากลิงก์ — เอาเฉพาะตัวอักษร/ตัวเลข/ช่องว่าง/ขีด ยาวไม่เกิน 32 ตัว
+  /// ว่างหรือไม่เหลืออะไร = null (ผู้เรียกใช้ชื่อปริยาย "TPIX Wallet")
+  @visibleForTesting
+  static String? sanitizeWalletName(String? raw) {
+    if (raw == null) return null;
+    final cleaned = raw
+        .replaceAll(RegExp(r'[^A-Za-z0-9ก-๙ ._\-]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (cleaned.isEmpty) return null;
+    return cleaned.length > 32 ? cleaned.substring(0, 32) : cleaned;
+  }
+
+  /// ถามยืนยันก่อนเปลี่ยนกระเป๋าที่ใช้อยู่เป็นใบที่ลิงก์ส่งมา — คืน true เมื่อผู้ใช้ยืนยัน
+  Future<bool?> _confirmReplaceWallet(
+    BuildContext context, {
+    required WalletProvider wallet,
+    required String newAddress,
+    String? walletName,
+  }) {
+    final th = _isThai(context);
+    String short(String a) =>
+        '${a.substring(0, 6)}...${a.substring(a.length - 4)}';
+    final current = wallet.shortAddress;
+    final incoming = short(newAddress);
+    final name = walletName ?? 'TPIX Wallet';
+    final embedded = wallet.kind == WalletKind.embedded;
+
+    final body = embedded
+        ? (th
+            ? 'ตอนนี้แอปใช้กระเป๋าในแอป $current อยู่ — ต้องการเปลี่ยนไปใช้ $name $incoming ไหม?\n\nกุญแจของกระเป๋าในแอปยังเก็บอยู่ในเครื่อง ไม่ถูกลบ ตัดการเชื่อมต่อ $name เมื่อไรแอปจะกลับไปใช้กระเป๋าในแอปใบเดิม'
+            : 'This app is currently using your in-app wallet $current. Switch to $name $incoming?\n\nYour in-app wallet keys stay on this phone and are not deleted. When you disconnect $name, the app goes back to your in-app wallet.')
+        : (th
+            ? 'ตอนนี้แอปเชื่อมกระเป๋า $current อยู่ — ต้องการเปลี่ยนไปใช้ $name $incoming ไหม?'
+            : 'This app is currently connected to $current. Switch to $name $incoming?');
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgElevated,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: AppColors.bgCardBorder),
+        ),
+        title: Text(
+          th ? 'เปลี่ยนกระเป๋า?' : 'Switch wallet?',
+          style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          '$body\n\n${th ? 'ถ้าคุณไม่ได้กดเชื่อมจากแอปกระเป๋าเอง ให้กดยกเลิก' : 'If you did not start this from your wallet app, tap Cancel.'}',
+          style: TextStyle(
+              color: AppColors.textSecondary, fontSize: 13, height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(th ? 'ยกเลิก' : 'Cancel',
+                style: TextStyle(color: AppColors.textTertiary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(th ? 'เปลี่ยนกระเป๋า' : 'Switch wallet',
+                style: TextStyle(color: AppColors.gold1)),
+          ),
+        ],
+      ),
+    );
   }
 
   /// `tpixtrade://kyc?result=ok&completion=<48 ตัว>` — Thaiprompt ส่งผลการอนุญาตกลับมา

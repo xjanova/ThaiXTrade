@@ -12,6 +12,8 @@
 /// Developed by Xman Studio
 library;
 
+import 'api_models.dart';
+
 /// Sentinel address ของเหรียญ native (BNB) — ตรงกับที่เว็บใช้
 const String kNativeTokenAddress = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
 
@@ -150,7 +152,84 @@ BscTradeToken? bscTradeToken(String? symbol) {
   return kBscTradeTokens[symbol.toUpperCase()];
 }
 
-/// คู่เทรดนี้ execute จริงบน BSC ได้ไหม — ทั้ง base และ quote ต้องอยู่ใน registry
+/// ทั้ง base และ quote อยู่ในทะเบียนเหรียญ BSC ของแอปไหม
+///
+/// ⚠️ ผ่านข้อนี้ **ยังไม่ได้แปลว่าเทรดได้** — ต้องผ่าน [bscPairGate] ด้วย (คู่ต้องเปิดอยู่บน
+/// เซิร์ฟเวอร์ เป็นเชน 56 แบบ onchain และที่อยู่เหรียญตรงกับทะเบียน)
 bool isBscTradablePair(String? baseSymbol, String? quoteSymbol) {
   return bscTradeToken(baseSymbol) != null && bscTradeToken(quoteSymbol) != null;
+}
+
+/// สถานะของคู่ที่จะส่งเข้า PancakeSwap — ตัดสินจากทะเบียนในแอป **และ** ทะเบียนคู่บนเซิร์ฟเวอร์
+enum BscPairGate {
+  /// ส่งคำสั่งได้: เซิร์ฟเวอร์ยืนยันว่าคู่นี้เปิดอยู่บน BSC แบบ onchain และที่อยู่เหรียญตรงกัน
+  tradable,
+
+  /// ไม่ใช่คู่ในทะเบียนเหรียญ BSC ของแอป (คู่บนเชน TPIX / คู่แปลก)
+  notInRegistry,
+
+  /// ทะเบียนคู่จากเซิร์ฟเวอร์ยังโหลดไม่เสร็จ — ยังตัดสินไม่ได้ ห้ามส่ง
+  checking,
+
+  /// โหลดทะเบียนคู่ไม่สำเร็จ — ยังตัดสินไม่ได้ ห้ามส่ง (ลองใหม่ได้)
+  checkFailed,
+
+  /// เซิร์ฟเวอร์ไม่มีคู่นี้ / ปิดอยู่ / อยู่เชนอื่น / เป็นคู่ดัชนี / ที่อยู่เหรียญไม่ตรงทะเบียน
+  unavailable,
+}
+
+/// เหรียญ native เก็บได้ทั้ง 0x000… และ 0xEeee… — ถือเป็นตัวเดียวกัน
+const List<String> _kNativeAddresses = [
+  '0x0000000000000000000000000000000000000000',
+  '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+];
+
+/// ที่อยู่เหรียญเดียวกันไหม (ไม่สนตัวพิมพ์เล็ก/ใหญ่ · ค่าว่าง = ไม่ตรงเสมอ)
+bool sameBscTokenAddress(String? a, String? b) {
+  String norm(String? v) {
+    final lower = (v ?? '').trim().toLowerCase();
+    return _kNativeAddresses.contains(lower) ? 'native' : lower;
+  }
+
+  final na = norm(a);
+  return na.isNotEmpty && na == norm(b);
+}
+
+/// คู่นี้ส่งเข้า PancakeSwap ได้จริงไหม — เชนของคู่ต้องมาจากเซิร์ฟเวอร์ ไม่ใช่เดาจากชื่อ
+/// (กติกาเดียวกับ `isBscTradable` / `bscPairPending` ใน Trade.vue ของเว็บ)
+///
+/// ⚠️ เดิมดูแค่ว่า symbol อยู่ในทะเบียนของแอป — แอดมินปิดคู่บน BSC ฉุกเฉิน หรือย้ายคู่ไปเชนอื่น
+///    แอปก็ยังส่งเข้า PancakeSwap อยู่ดี
+///
+/// [serverPair] = แถวของคู่นี้จาก `/market/pairs` (null = ไม่มีในรายการ)
+/// [pairsLoaded] = เคยโหลดทะเบียนคู่สำเร็จแล้ว · [pairsLoadFailed] = ครั้งล่าสุดโหลดไม่สำเร็จ
+/// ระหว่างที่ยังไม่รู้ (กำลังโหลด/โหลดพลาด) = ห้ามส่ง พร้อมเหตุผลที่บอกได้ ไม่ใช่ปล่อยผ่านเงียบ ๆ
+BscPairGate bscPairGate({
+  required String? baseSymbol,
+  required String? quoteSymbol,
+  required TradingPairInfo? serverPair,
+  required bool pairsLoaded,
+  bool pairsLoadFailed = false,
+}) {
+  final base = bscTradeToken(baseSymbol);
+  final quote = bscTradeToken(quoteSymbol);
+  if (base == null || quote == null) return BscPairGate.notInRegistry;
+
+  if (serverPair == null) {
+    if (!pairsLoaded) {
+      return pairsLoadFailed ? BscPairGate.checkFailed : BscPairGate.checking;
+    }
+    return BscPairGate.unavailable;
+  }
+
+  if (!serverPair.isActive ||
+      serverPair.networkChainId != 56 ||
+      !serverPair.isOnchain) {
+    return BscPairGate.unavailable;
+  }
+  if (!sameBscTokenAddress(serverPair.baseAddress, base.address) ||
+      !sameBscTokenAddress(serverPair.quoteAddress, quote.address)) {
+    return BscPairGate.unavailable;
+  }
+  return BscPairGate.tradable;
 }

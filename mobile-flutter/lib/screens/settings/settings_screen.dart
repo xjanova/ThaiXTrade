@@ -26,6 +26,7 @@ import '../../widgets/common/bug_report_sheet.dart';
 import '../../widgets/common/buy_tpix_button.dart';
 import '../../widgets/common/glass_card.dart';
 import '../../widgets/common/gradient_button.dart';
+import '../../widgets/wallet/disconnect_wallet_dialog.dart';
 import '../../widgets/wallet/profile_edit_sheet.dart';
 import '../../widgets/wallet/wallet_connect_sheet.dart';
 import '../../widgets/obsidian/obsidian_icons.dart';
@@ -710,47 +711,10 @@ class _WalletCard extends StatelessWidget {
     return 'TPIX Wallet';
   }
 
+  /// หน้ายืนยัน/กติกาลบกุญแจอยู่ที่ [confirmAndDisconnectWallet] ที่เดียว
+  /// (กระเป๋าในแอป: ต้องยืนยันว่าสำรองวลีกู้คืนแล้ว · กระเป๋าที่ลิงก์/ภายนอก: ไม่แตะกุญแจในแอป)
   void _showDisconnectDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgElevated,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: AppColors.bgCardBorder),
-        ),
-        title: Text(
-          locale.t('settings.disconnect'),
-          style: TextStyle(color: AppColors.textPrimary),
-        ),
-        // กระเป๋าในแอป: disconnect ลบกุญแจในเครื่องจริง — ต้องเตือนเรื่องวลีกู้คืนก่อนยืนยัน
-        content: Text(
-          wallet.kind == WalletKind.embedded
-              ? (locale.isThai
-                  ? 'กุญแจของกระเป๋านี้จะถูกลบออกจากเครื่อง — กู้คืนได้ด้วยวลีกู้คืน 12 คำเท่านั้น ถ้ายังไม่ได้จดไว้ เงินในกระเป๋าจะเข้าถึงไม่ได้อีก'
-                  : 'This wallet\'s keys will be deleted from this phone. Only your 12-word recovery phrase can restore it — without it the funds are lost.')
-              : (locale.isThai
-                  ? 'คุณต้องการยกเลิกการเชื่อมต่อกระเป๋าหรือไม่?'
-                  : 'Are you sure you want to disconnect your wallet?'),
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(locale.t('common.cancel'),
-                style: TextStyle(color: AppColors.textTertiary)),
-          ),
-          TextButton(
-            onPressed: () async {
-              await wallet.disconnect();
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: Text(locale.t('common.confirm'),
-                style: TextStyle(color: AppColors.tradingRed)),
-          ),
-        ],
-      ),
-    );
+    confirmAndDisconnectWallet(context);
   }
 }
 

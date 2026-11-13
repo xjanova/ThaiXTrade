@@ -7,9 +7,53 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../core/constants/api_constants.dart';
+import '../core/locale/app_locale.dart';
 import '../models/api_models.dart';
 import 'bug_reporter.dart';
 import 'wallet_session.dart';
+
+/// คำตอบของ `GET /swap/quote` แบบเก็บเหตุผล — ใช้ตัดสินแบบ fail-closed ก่อนส่งธุรกรรม
+///
+/// เดิมทุกความล้มเหลวยุบเหลือ null แล้วผู้เรียกเดาอัตรา 0.3% เอง — แอดมินปิดเชน/คู่ฉุกเฉิน
+/// (404 `INVALID_CHAIN` / `INVALID_TOKEN` / `PAIR_DISABLED`) จึงไม่มีผลกับแอป
+class SwapQuoteResponse {
+  /// HTTP status — null = ยิงไม่ถึงเซิร์ฟเวอร์ (เน็ตหลุด/หมดเวลา)
+  final int? status;
+
+  /// `error.code` ของเซิร์ฟเวอร์ (เมื่อไม่สำเร็จ)
+  final String? errorCode;
+
+  /// เนื้อ `data.quote` (หรือ `data` เมื่อไม่มีชั้น quote) — null เมื่อไม่สำเร็จ
+  final Map<String, dynamic>? quote;
+
+  const SwapQuoteResponse({this.status, this.errorCode, this.quote});
+
+  bool get ok => quote != null;
+}
+
+/// ผลของการแจ้งบันทึกไม้ (`POST /swap/execute`) หนึ่งครั้ง
+enum SwapRecordOutcome {
+  /// เซิร์ฟเวอร์มีแถวของไม้นี้แล้ว (200 / 201 / 202 ที่ recorded ไม่ใช่ false) — เอาออกจากคิว
+  recorded,
+
+  /// ปฏิเสธถาวร (409 ไม้ของกระเป๋าอื่น · 422 ไม้ไม่ลง/ข้อมูลผิดรูป) — ส่งกี่ครั้งก็ไม่ผ่าน เอาออกจากคิว
+  rejected,
+
+  /// 202 + recorded:false — เชนยังไม่เห็นธุรกรรม เก็บไว้ส่งใหม่
+  notYetOnChain,
+
+  /// 403 (ยังไม่ยืนยันกระเป๋า / ติดด่าน KYC) · 5xx · 404 · 429 — เก็บไว้ส่งใหม่
+  retryLater,
+
+  /// ยิงไม่ถึงเซิร์ฟเวอร์ — เก็บไว้ และหยุดส่งรายการถัดไปในรอบนี้
+  offline,
+}
+
+extension SwapRecordOutcomeX on SwapRecordOutcome {
+  /// เอาออกจากคิวได้ (สำเร็จ หรือปฏิเสธถาวร)
+  bool get isDone =>
+      this == SwapRecordOutcome.recorded || this == SwapRecordOutcome.rejected;
+}
 
 class ApiService {
   static final ApiService _instance = ApiService._();
@@ -36,6 +80,8 @@ class ApiService {
         }
         // เซสชันกระเป๋าแบบยาว — ใช้แทนการเซ็นซ้ำทุกครั้งที่เปิดแอป
         options.headers.addAll(WalletSession.headers());
+        // ภาษาของแอป — ข้อความที่เซิร์ฟเวอร์แปลให้ (SetLocale) ต้องตรงกับที่ผู้ใช้เลือก
+        options.headers.addAll(AppLocale.headers());
         return handler.next(options);
       },
       onError: (error, handler) {
@@ -103,6 +149,27 @@ class ApiService {
     }
   }
 
+  /// POST ที่คืน HTTP status + เนื้อคำตอบเสมอ (ไม่ยุบความล้มเหลวเป็น null)
+  ///
+  /// `status == null` = ยิงไม่ถึงเซิร์ฟเวอร์ · `body == null` = คำตอบไม่ใช่ JSON object
+  /// ใช้กับเส้นทางที่ผู้เรียกต้องแยกเหตุของความล้มเหลว (ค่าวางไม้ / ใบอนุญาตวางไม้)
+  Future<({int? status, Map<String, dynamic>? body})> postJson(
+    String path,
+    Map<String, dynamic> data,
+  ) async {
+    try {
+      final response = await _dio.post(
+        path,
+        data: data,
+        options: Options(validateStatus: (_) => true),
+      );
+      return (status: response.statusCode, body: _asMap(response.data));
+    } on DioException catch (e) {
+      debugPrint('[API] POST $path: ${e.type.name}');
+      return (status: null, body: null);
+    }
+  }
+
   // ── Config (fees + chains + pairs) ──
 
   /// Fetch fee config — pass [chainId] for chain-specific swap fee.
@@ -133,13 +200,25 @@ class ApiService {
     return res['data'] as Map<String, dynamic>?;
   }
 
-  Future<List<TradingPairInfo>> getPairs() async {
+  /// ทะเบียนคู่เทรดจากเซิร์ฟเวอร์ — **null = ขอไม่สำเร็จ** (แยกจาก [] = ไม่มีคู่เปิดอยู่จริง)
+  ///
+  /// หน้าเทรดใช้ตัดสินว่าคู่ไหนส่งเข้า PancakeSwap ได้ — โหลดไม่สำเร็จต้องบล็อก ไม่ใช่ถือว่า
+  /// "ไม่มีข้อมูล = เทรดได้" (ดู bscPairGate)
+  Future<List<TradingPairInfo>?> getPairs() async {
     final res = await _get(ApiConstants.pairs);
-    if (res == null || res['success'] != true) return [];
-    final list = res['data'] as List<dynamic>? ?? [];
-    return list
-        .map((e) => TradingPairInfo.fromJson(e as Map<String, dynamic>))
-        .toList();
+    if (res == null || res['success'] != true) return null;
+    final list = res['data'];
+    if (list is! List) return null;
+    final pairs = <TradingPairInfo>[];
+    for (final row in list) {
+      if (row is! Map<String, dynamic>) continue;
+      try {
+        pairs.add(TradingPairInfo.fromJson(row));
+      } catch (_) {
+        // แถวเดียวผิดรูป — ข้าม ไม่ทำให้ทั้งรายการล้ม
+      }
+    }
+    return pairs;
   }
 
   Future<List<Map<String, dynamic>>> getChainTokens(int chainId) async {
@@ -384,15 +463,55 @@ class ApiService {
     return TradeOrder.fromJson(res['data'] as Map<String, dynamic>);
   }
 
-  Future<List<TradeOrder>> getOpenOrders(String walletAddress) async {
-    final res = await _get(ApiConstants.tradingOrders, queryParams: {
-      'wallet_address': walletAddress,
-    });
-    if (res == null || res['success'] != true) return [];
-    final list = res['data'] as List<dynamic>? ?? [];
-    return list
-        .map((e) => TradeOrder.fromJson(e as Map<String, dynamic>))
-        .toList();
+  /// คำสั่งที่เปิดอยู่ — รวมคำสั่งตั้งราคาของคู่บนเชน (`source: limit`)
+  /// แยก "ไม่มีจริง" / "ต้องยืนยันกระเป๋า" / "โหลดไม่ได้" ออกจากกัน (ดู [ListLoad])
+  Future<ListLoad<TradeOrder>> getOpenOrders(String walletAddress) =>
+      _getOrderList(ApiConstants.tradingOrders, walletAddress);
+
+  /// โหลดรายการคำสั่ง/ประวัติ — ไม่ยุบความล้มเหลวเป็นรายการว่าง
+  Future<ListLoad<TradeOrder>> _getOrderList(
+      String path, String walletAddress) async {
+    try {
+      final response = await _dio.get(
+        path,
+        queryParameters: {'wallet_address': walletAddress},
+        options: Options(validateStatus: (_) => true),
+      );
+      return parseOrderList(response.statusCode, response.data);
+    } on DioException catch (e) {
+      debugPrint('[API] GET $path: ${e.type.name}');
+      return ListLoad<TradeOrder>.failed();
+    }
+  }
+
+  /// แปลงคำตอบของรายการคำสั่ง/ประวัติ — ฟังก์ชันเพียวไว้ทดสอบ
+  ///
+  /// 403 = ต้องยืนยันกระเป๋า · สำเร็จ = รายการ (แถวผิดรูปถูกข้าม ไม่ทำให้ทั้งรายการล้ม)
+  /// อย่างอื่นทั้งหมด = โหลดไม่ได้ (ไม่ใช่ "ว่าง")
+  @visibleForTesting
+  static ListLoad<TradeOrder> parseOrderList(int? status, dynamic body) {
+    if (status == 403) return ListLoad<TradeOrder>.needsVerify();
+    final map = _asMap(body);
+    if (status == null ||
+        status < 200 ||
+        status >= 300 ||
+        map == null ||
+        map['success'] != true) {
+      return ListLoad<TradeOrder>.failed();
+    }
+    final list = map['data'];
+    if (list is! List) return ListLoad<TradeOrder>.failed();
+    final items = <TradeOrder>[];
+    for (final row in list) {
+      if (row is! Map) continue;
+      try {
+        items.add(TradeOrder.fromJson(
+            row.map((k, v) => MapEntry(k.toString(), v))));
+      } catch (_) {
+        // แถวเดียวผิดรูป — ข้าม
+      }
+    }
+    return ListLoad<TradeOrder>.ok(items);
   }
 
   Future<bool> cancelOrder(String orderId, String walletAddress) async {
@@ -402,35 +521,56 @@ class ApiService {
     return res?['success'] == true;
   }
 
-  Future<List<TradeOrder>> getTradeHistory(String walletAddress) async {
-    final res = await _get(ApiConstants.tradingHistory, queryParams: {
-      'wallet_address': walletAddress,
-    });
-    if (res == null || res['success'] != true) return [];
-    final list = res['data'] as List<dynamic>? ?? [];
-    return list
-        .map((e) => TradeOrder.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
+  /// ประวัติไม้ — แยก "ไม่มีจริง" / "ต้องยืนยันกระเป๋า" / "โหลดไม่ได้" (ดู [ListLoad])
+  Future<ListLoad<TradeOrder>> getTradeHistory(String walletAddress) =>
+      _getOrderList(ApiConstants.tradingHistory, walletAddress);
 
   // ── Swap ──
 
-  Future<Map<String, dynamic>?> getSwapQuote({
+  /// ขออัตราค่าธรรมเนียม/slippage ของคู่จาก backend — คืนเหตุผลเสมอ ไม่ยุบเป็น null
+  ///
+  /// ผู้เรียก (BscSwapService.getQuote) ต้อง fail-closed: ไม่สำเร็จ = ไม่มีราคา = ไม่ส่งธุรกรรม
+  /// [amount] ส่งเป็นข้อความทศนิยม (ไม่ใช่ double ดิบที่อาจออกมาเป็น 1e-7)
+  Future<SwapQuoteResponse> getSwapQuote({
     required String fromToken,
     required String toToken,
-    required double amount,
+    required String amount,
     required int chainId,
-    double slippage = 0.5,
   }) async {
-    final res = await _get(ApiConstants.swapQuote, queryParams: {
-      'from_token': fromToken,
-      'to_token': toToken,
-      'amount': amount,
-      'chain_id': chainId,
-      'slippage': slippage,
-    });
-    if (res == null || res['success'] != true) return null;
-    return res['data'] as Map<String, dynamic>?;
+    try {
+      final response = await _dio.get(
+        ApiConstants.swapQuote,
+        queryParameters: {
+          'from_token': fromToken,
+          'to_token': toToken,
+          'amount': amount,
+          'chain_id': chainId,
+        },
+        options: Options(validateStatus: (_) => true),
+      );
+      return parseSwapQuote(response.statusCode, response.data);
+    } on DioException catch (e) {
+      debugPrint('[API] GET ${ApiConstants.swapQuote}: ${e.type.name}');
+      return const SwapQuoteResponse();
+    }
+  }
+
+  /// แปลงคำตอบของ `/swap/quote` — ฟังก์ชันเพียวไว้ทดสอบ
+  @visibleForTesting
+  static SwapQuoteResponse parseSwapQuote(int? status, dynamic body) {
+    final map = _asMap(body);
+    final ok = status != null && status >= 200 && status < 300;
+    if (!ok || map == null || map['success'] != true) {
+      final err = map == null ? null : _asMap(map['error']);
+      final code = err?['code'];
+      return SwapQuoteResponse(
+        status: status,
+        errorCode: code is String && code.isNotEmpty ? code : null,
+      );
+    }
+    final data = _asMap(map['data']);
+    final quote = data == null ? null : (_asMap(data['quote']) ?? data);
+    return SwapQuoteResponse(status: status, quote: quote);
   }
 
   /// ที่อยู่ fee collector + fee rate ของแพลตฟอร์ม — ใช้ตรวจแบบ fail-closed
@@ -442,37 +582,42 @@ class ApiService {
     return res['data'] as Map<String, dynamic>?;
   }
 
-  /// บันทึกผล swap ที่ execute บนเชนแล้วให้ backend (best-effort)
-  /// — payload ต้องตรงกับที่เว็บส่ง (useSwap.js → POST /swap/execute)
-  /// บันทึกไม้ — เซิร์ฟเวอร์อ่านยอดจริงจากใบเสร็จบนเชนเอง (BSC)
+  /// แจ้งบันทึกไม้ที่ลงเชนแล้ว (`POST /swap/execute`) — เซิร์ฟเวอร์อ่านยอดจริงจากใบเสร็จบนเชนเอง
   ///
-  /// [feeTxHash] = ธุรกรรมโอนค่าธรรมเนียม ให้เซิร์ฟเวอร์ตรวจบนเชน (ไม่มี hash = ไม่นับเป็นรายได้)
-  /// [feeCollected] = บอกตรงๆ ว่าโอนค่าธรรมเนียมแล้วหรือยัง — เดิมไม่ส่ง แล้วไม้ที่ค่าธรรมเนียมพลาด
-  /// โดน 422 FEE_MISMATCH หายจากประวัติ (ออดิท 2026-10-28 L10)
-  Future<bool> recordSwapExecution({
-    required String fromToken,
-    required String toToken,
-    required double fromAmount,
-    required double toAmount,
-    required double feeAmount,
-    required String txHash,
-    required int chainId,
-    required String walletAddress,
-    bool? feeCollected,
-    String? feeTxHash,
-  }) async {
-    final res = await _post(ApiConstants.swapExecute, data: {
-      'from_token': fromToken,
-      'to_token': toToken,
-      'from_amount': fromAmount,
-      'to_amount': toAmount,
-      'fee_amount': feeAmount,
-      'tx_hash': txHash,
-      'chain_id': chainId,
-      'wallet_address': walletAddress,
-      if (feeCollected != null) 'fee_collected': feeCollected,
-      if (feeTxHash != null) 'fee_tx_hash': feeTxHash,
-    });
-    return res?['success'] == true;
+  /// [payload] ต้องตรงกับที่เว็บส่ง (useSwap.js) — สร้างด้วย `PendingSwapRecords.buildRecord`
+  /// ไม่ throw: ทุกทางจบด้วย [SwapRecordOutcome] ให้คิว (PendingSwapRecords) ตัดสินว่าเก็บหรือทิ้ง
+  ///
+  /// ⚠️ เดิมคืน bool จาก `success` อย่างเดียว — 202 `recorded:false` (เชนยังไม่เห็นธุรกรรม)
+  ///    ถูกนับเป็นสำเร็จ และ 403/5xx ถูกทิ้งเงียบ ไม้จริงหายจากประวัติ ค่าธรรมเนียมไม่เคยถูกตรวจ
+  Future<SwapRecordOutcome> postSwapRecord(Map<String, dynamic> payload) async {
+    try {
+      final response = await _dio.post(
+        ApiConstants.swapExecute,
+        data: payload,
+        options: Options(validateStatus: (_) => true),
+      );
+      return swapRecordOutcome(response.statusCode, response.data);
+    } on DioException catch (e) {
+      debugPrint('[API] POST ${ApiConstants.swapExecute}: ${e.type.name}');
+      return SwapRecordOutcome.offline;
+    }
+  }
+
+  /// ตัดสินผลจาก HTTP status + เนื้อคำตอบ — กติกาเดียวกับเว็บ (useSwap.js postSwapRecord)
+  @visibleForTesting
+  static SwapRecordOutcome swapRecordOutcome(int? status, dynamic body) {
+    if (status == null) return SwapRecordOutcome.offline;
+    if (status == 409 || status == 422) return SwapRecordOutcome.rejected;
+    if (status < 200 || status >= 300) return SwapRecordOutcome.retryLater;
+    final map = _asMap(body);
+    // 2xx ที่อ่านไม่ออก/ไม่ success (หน้า HTML ของ CDN ฯลฯ) = ยังไม่รู้ว่าบันทึกแล้ว
+    if (map == null || map['success'] != true) {
+      return SwapRecordOutcome.retryLater;
+    }
+    final data = _asMap(map['data']);
+    if (status == 202 && data?['recorded'] == false) {
+      return SwapRecordOutcome.notYetOnChain;
+    }
+    return SwapRecordOutcome.recorded;
   }
 }

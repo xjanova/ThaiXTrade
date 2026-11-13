@@ -51,6 +51,18 @@ class ApiConstants {
   // fee-info = ที่อยู่ fee collector (fail-closed: ไม่มี = ห้ามเทรด)
   static const String tradingFeeInfo = '/trading/fee-info';
 
+  // ── ค่าวางไม้ (เครดิต TPIX) + ใบอนุญาตวางไม้ ──
+  // ไม้บน TPIX Chain ต้องจ่ายค่าวางไม้ด้วยเครดิต TPIX ทุกไม้ (ดู TradingFeeFlow)
+  static const String tradingFeeQuote = '/trading-fee/quote';
+  static const String tradingFeeTickets = '/trading-fee/tickets';
+  // uuid มาจากเซิร์ฟเวอร์ — encode เสมอ ห้ามต่อสตริงดิบเข้า path
+  static String tradingFeeTicketBind(String uuid) =>
+      '/trading-fee/tickets/${Uri.encodeComponent(uuid)}/bind';
+  static String tradingFeeTicketConsume(String uuid) =>
+      '/trading-fee/tickets/${Uri.encodeComponent(uuid)}/consume';
+  static String tradingFeeTicketRefund(String uuid) =>
+      '/trading-fee/tickets/${Uri.encodeComponent(uuid)}/refund';
+
   // ── Market Data ──
   static const String marketTickers = '/market/tickers';
   static String marketOrderbook(String symbol) => '/market/orderbook/$symbol';
